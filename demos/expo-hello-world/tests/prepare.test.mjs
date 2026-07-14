@@ -241,6 +241,37 @@ test('prepare downloads client Firebase files and wires app.json', async (t) => 
   );
 });
 
+test('prepare downloads icon and splash and wires app.json', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-assets-'));
+  const icon = Buffer.from('icon-bytes');
+  const splash = Buffer.from('splash-bytes');
+  const fetchImpl = buildFetch({
+    assets: {
+      icon: { mime_type: 'image/png', url: 'http://platform.test:8000/assets/icon' },
+      splashscreen: { mime_type: 'image/png', url: 'http://platform.test:8000/assets/splash' },
+    },
+    assetBody: { icon, splash },
+  });
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  const appJson = JSON.parse(await readFile(join(workspace, 'app.json'), 'utf8'));
+  assert.equal(appJson.expo.icon, './assets/icon.png');
+  assert.equal(appJson.expo.splash.image, './assets/splash.png');
+  assert.equal(appJson.expo.splash.resizeMode, 'contain');
+  assert.deepEqual(await readFile(join(workspace, 'assets/icon.png')), icon);
+  assert.deepEqual(await readFile(join(workspace, 'assets/splash.png')), splash);
+});
+
 function json(body) {
   return Response.json(body);
 }

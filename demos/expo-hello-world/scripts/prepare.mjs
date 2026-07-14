@@ -119,7 +119,22 @@ export async function prepare({
     firebaseWiring.iosGoogleServicesFile = './GoogleService-Info.plist';
   }
 
-  const appJson = buildAppJson(app, androidIdentifier, iosIdentifier, firebaseWiring);
+  const assets = app.assets && typeof app.assets === 'object' ? app.assets : {};
+  const assetWiring = {};
+  if (assets.icon && typeof assets.icon.url === 'string') {
+    const contents = await downloadAsset(request, assets.icon, 'App icon');
+    const relativePath = `assets/icon.${assetExtension(assets.icon.mime_type)}`;
+    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
+    assetWiring.icon = `./${relativePath}`;
+  }
+  if (assets.splashscreen && typeof assets.splashscreen.url === 'string') {
+    const contents = await downloadAsset(request, assets.splashscreen, 'Splash screen');
+    const relativePath = `assets/splash.${assetExtension(assets.splashscreen.mime_type)}`;
+    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
+    assetWiring.splash = `./${relativePath}`;
+  }
+
+  const appJson = buildAppJson(app, androidIdentifier, iosIdentifier, { ...firebaseWiring, ...assetWiring });
   const credentialsJson = {
     android: {
       keystore: {
@@ -445,11 +460,39 @@ function buildAppJson(app, androidIdentifier, iosIdentifier, extras = {}) {
     expo.ios.googleServicesFile = extras.iosGoogleServicesFile;
   }
 
+  if (extras.icon) {
+    expo.icon = extras.icon;
+  }
+  if (extras.splash) {
+    expo.splash = { image: extras.splash, resizeMode: 'contain', backgroundColor: '#ffffff' };
+  }
+
   if (typeof app.description === 'string' && app.description.trim()) {
     expo.description = app.description;
   }
 
   return { expo };
+}
+
+const ASSET_EXTENSIONS = Object.freeze({
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+});
+
+async function downloadAsset(request, asset, label) {
+  const response = await request(asset.url);
+  const contents = Buffer.from(await response.arrayBuffer());
+
+  if (contents.byteLength === 0) {
+    throw new Error(`${label} returned an empty file.`);
+  }
+
+  return contents;
+}
+
+function assetExtension(mimeType) {
+  return ASSET_EXTENSIONS[mimeType] ?? 'png';
 }
 
 function platformLabel(platform) {
