@@ -134,6 +134,40 @@ export async function prepare({
     assetWiring.splash = `./${relativePath}`;
   }
 
+  const googlePlayKey = selectIdentifierCredential(
+    credentials,
+    'google_play_service_account',
+    androidIdentifier.identifier,
+    config.googlePlayCredentialId,
+    'Google Play service account',
+  );
+  const appleApiKey = selectIdentifierCredential(
+    credentials,
+    'apple_api_key',
+    iosIdentifier.identifier,
+    config.appleApiKeyCredentialId,
+    'App Store Connect API key',
+  );
+
+  let googlePlayKeyPath = null;
+  if (googlePlayKey) {
+    const contents = await downloadCredential(request, appEndpoint, googlePlayKey, 'Google Play service account');
+    googlePlayKeyPath = 'credentials/android/google-play-service-account.json';
+    await writeAtomically(join(cwd, ...googlePlayKeyPath.split('/')), contents, 0o600);
+  }
+
+  let appleApiKeyContext = null;
+  if (appleApiKey) {
+    const payload = expectObject(appleApiKey.payload, 'The App Store Connect API key payload is missing.');
+    if (typeof payload.key_id !== 'string' || typeof payload.issuer_id !== 'string') {
+      throw new Error('The App Store Connect API key payload is missing key_id or issuer_id.');
+    }
+    const contents = await downloadCredential(request, appEndpoint, appleApiKey, 'App Store Connect API key');
+    const path = 'credentials/ios/appstore-api-key.p8';
+    await writeAtomically(join(cwd, ...path.split('/')), contents, 0o600);
+    appleApiKeyContext = { path, keyId: payload.key_id, issuerId: payload.issuer_id };
+  }
+
   const appJson = buildAppJson(app, androidIdentifier, iosIdentifier, { ...firebaseWiring, ...assetWiring });
   const credentialsJson = {
     android: {
@@ -166,6 +200,22 @@ export async function prepare({
   await writeAtomically(provisioningProfilePath, provisioningProfileContents, 0o600);
   await writeJsonAtomically(credentialsJsonPath, credentialsJson, 0o600);
   await writeJsonAtomically(appJsonPath, appJson, 0o644);
+
+  const context = {
+    version: appJson.expo.version,
+    android: {
+      package: androidIdentifier.identifier,
+      versionCode: appJson.expo.android.versionCode,
+      profileType: config.androidProfileType,
+      googlePlayJsonKeyPath: googlePlayKeyPath,
+    },
+    ios: {
+      bundleIdentifier: iosIdentifier.identifier,
+      profileType: config.iosProfileType,
+      appStoreApiKey: appleApiKeyContext,
+    },
+  };
+  await writeJsonAtomically(join(cwd, 'fastlane', 'context.json'), context, 0o600);
 
   logger.log(`Prepared ${appJson.expo.name} from App Manager.`);
   logger.log(`  Android: ${androidIdentifier.identifier}`);
@@ -221,6 +271,8 @@ function readConfig(env) {
       env.APP_MANAGER_ANDROID_PROFILE_TYPE ?? env.APP_MANAGER_PROFILE_TYPE,
       DEFAULTS.androidProfileType,
     ),
+    appleApiKeyCredentialId: optionalValue(env.APP_MANAGER_APPLE_API_KEY_CREDENTIAL_ID),
+    googlePlayCredentialId: optionalValue(env.APP_MANAGER_GOOGLE_PLAY_CREDENTIAL_ID),
     iosCertificateId: optionalValue(env.APP_MANAGER_IOS_CERTIFICATE_ID),
     iosGoogleServicesId: optionalValue(env.APP_MANAGER_IOS_GOOGLE_SERVICES_ID),
     iosIdentifier: valueOrDefault(env.APP_MANAGER_IOS_IDENTIFIER, DEFAULTS.iosIdentifier),

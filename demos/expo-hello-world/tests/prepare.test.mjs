@@ -272,6 +272,61 @@ test('prepare downloads icon and splash and wires app.json', async (t) => {
   assert.deepEqual(await readFile(join(workspace, 'assets/splash.png')), splash);
 });
 
+test('prepare downloads store keys and writes fastlane/context.json', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-store-'));
+  const googlePlay = Buffer.from('{"type":"service_account"}');
+  const appleKey = Buffer.from('-----BEGIN PRIVATE KEY-----demo-----END PRIVATE KEY-----');
+  const fetchImpl = buildFetch({ googlePlay, appleKey });
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  const context = JSON.parse(await readFile(join(workspace, 'fastlane/context.json'), 'utf8'));
+  assert.equal(context.version, '2.3.0');
+  assert.equal(context.android.package, 'com.example.app');
+  assert.equal(context.android.versionCode, 20300);
+  assert.equal(context.android.profileType, 'production');
+  assert.equal(context.android.googlePlayJsonKeyPath, 'credentials/android/google-play-service-account.json');
+  assert.equal(context.ios.bundleIdentifier, 'com.example.app');
+  assert.equal(context.ios.profileType, 'appstore');
+  assert.deepEqual(context.ios.appStoreApiKey, {
+    path: 'credentials/ios/appstore-api-key.p8',
+    keyId: 'ABCDE12345',
+    issuerId: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.deepEqual(await readFile(join(workspace, 'credentials/android/google-play-service-account.json')), googlePlay);
+  assert.deepEqual(await readFile(join(workspace, 'credentials/ios/appstore-api-key.p8')), appleKey);
+  assert.equal((await stat(join(workspace, 'fastlane/context.json'))).mode & 0o777, 0o600);
+});
+
+test('prepare writes context.json with null store keys when absent', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-nostore-'));
+  const fetchImpl = buildFetch({});
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  const context = JSON.parse(await readFile(join(workspace, 'fastlane/context.json'), 'utf8'));
+  assert.equal(context.android.googlePlayJsonKeyPath, null);
+  assert.equal(context.ios.appStoreApiKey, null);
+});
+
 function json(body) {
   return Response.json(body);
 }
