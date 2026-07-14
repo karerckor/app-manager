@@ -91,7 +91,35 @@ export async function prepare({
   const keystoreRelativePath = 'credentials/android/production.keystore';
   const certificateRelativePath = 'credentials/ios/distribution.p12';
   const provisioningProfileRelativePath = 'credentials/ios/profile.mobileprovision';
-  const appJson = buildAppJson(app, androidIdentifier, iosIdentifier);
+
+  const androidFirebase = selectIdentifierCredential(
+    credentials,
+    'google_services_json',
+    androidIdentifier.identifier,
+    config.androidGoogleServicesId,
+    'Android google-services.json',
+  );
+  const iosFirebase = selectIdentifierCredential(
+    credentials,
+    'google_service_info_plist',
+    iosIdentifier.identifier,
+    config.iosGoogleServicesId,
+    'iOS GoogleService-Info.plist',
+  );
+
+  const firebaseWiring = {};
+  if (androidFirebase) {
+    const contents = await downloadCredential(request, appEndpoint, androidFirebase, 'Android google-services.json');
+    await writeAtomically(join(cwd, 'google-services.json'), contents, 0o600);
+    firebaseWiring.androidGoogleServicesFile = './google-services.json';
+  }
+  if (iosFirebase) {
+    const contents = await downloadCredential(request, appEndpoint, iosFirebase, 'iOS GoogleService-Info.plist');
+    await writeAtomically(join(cwd, 'GoogleService-Info.plist'), contents, 0o600);
+    firebaseWiring.iosGoogleServicesFile = './GoogleService-Info.plist';
+  }
+
+  const appJson = buildAppJson(app, androidIdentifier, iosIdentifier, firebaseWiring);
   const credentialsJson = {
     android: {
       keystore: {
@@ -173,11 +201,13 @@ function readConfig(env) {
     androidCredentialId:
       optionalValue(env.APP_MANAGER_ANDROID_CREDENTIAL_ID) ??
       optionalValue(env.APP_MANAGER_CREDENTIAL_ID),
+    androidGoogleServicesId: optionalValue(env.APP_MANAGER_ANDROID_GOOGLE_SERVICES_ID),
     androidProfileType: valueOrDefault(
       env.APP_MANAGER_ANDROID_PROFILE_TYPE ?? env.APP_MANAGER_PROFILE_TYPE,
       DEFAULTS.androidProfileType,
     ),
     iosCertificateId: optionalValue(env.APP_MANAGER_IOS_CERTIFICATE_ID),
+    iosGoogleServicesId: optionalValue(env.APP_MANAGER_IOS_GOOGLE_SERVICES_ID),
     iosIdentifier: valueOrDefault(env.APP_MANAGER_IOS_IDENTIFIER, DEFAULTS.iosIdentifier),
     iosProfileType: valueOrDefault(
       env.APP_MANAGER_IOS_PROFILE_TYPE,
@@ -298,6 +328,32 @@ function selectProfileCredential(
   return matches[0];
 }
 
+function selectIdentifierCredential(credentials, type, appIdentifier, requestedCredentialId, label) {
+  const matches = credentials.filter(
+    (credential) =>
+      credential &&
+      credential.type === type &&
+      (!requestedCredentialId || String(credential.id) === requestedCredentialId) &&
+      Array.isArray(credential.app_identifiers) &&
+      credential.app_identifiers.some(
+        (identifier) => identifier && identifier.identifier === appIdentifier,
+      ),
+  );
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (matches.length > 1) {
+    const choices = matches.map((credential) => `${credential.name} (${credential.id})`).join(', ');
+    throw new Error(
+      `Multiple ${label} credentials match; select one with its APP_MANAGER_*_ID variable. Candidates: ${choices}`,
+    );
+  }
+
+  return matches[0];
+}
+
 function validateKeystorePayload(payload) {
   const value = expectObject(payload, 'The Android keystore payload is missing.');
 
@@ -342,7 +398,7 @@ async function downloadCredential(request, appEndpoint, credential, label) {
   return contents;
 }
 
-function buildAppJson(app, androidIdentifier, iosIdentifier) {
+function buildAppJson(app, androidIdentifier, iosIdentifier, extras = {}) {
   if (typeof app.name !== 'string' || !app.name.trim()) {
     throw new Error('App Manager returned an app without a name.');
   }
@@ -381,6 +437,13 @@ function buildAppJson(app, androidIdentifier, iosIdentifier) {
       bundleIdentifier: iosIdentifier.identifier,
     },
   };
+
+  if (extras.androidGoogleServicesFile) {
+    expo.android.googleServicesFile = extras.androidGoogleServicesFile;
+  }
+  if (extras.iosGoogleServicesFile) {
+    expo.ios.googleServicesFile = extras.iosGoogleServicesFile;
+  }
 
   if (typeof app.description === 'string' && app.description.trim()) {
     expo.description = app.description;
