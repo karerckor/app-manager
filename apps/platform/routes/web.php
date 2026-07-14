@@ -28,6 +28,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/apps', DashboardController::class)->name('apps.index');
         Route::post('/apps', [MobileAppController::class, 'store'])->name('apps.store');
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->name('apps.show');
+        Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->name('apps.update');
+        Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
         Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');

@@ -203,6 +203,126 @@ class PlatformDashboardTest extends TestCase
         $this->get("/accounts/{$team->slug}/apps/{$foreignApp->slug}")->assertNotFound();
     }
 
+    public function test_user_can_update_an_application(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create([
+            'team_id' => $team->id,
+            'name' => 'Old name',
+            'slug' => 'old-name',
+            'description' => 'Old description',
+        ]);
+
+        $this->actingAs($user)->patch(route('accounts.apps.update', [$team, $app]), [
+            'name' => 'New name',
+            'description' => 'New description',
+        ])->assertRedirect(route('accounts.apps.show', [$team, $app]))
+            ->assertSessionHas('status', 'Application updated.');
+
+        $this->assertDatabaseHas('mobile_apps', [
+            'id' => $app->id,
+            'name' => 'New name',
+            'description' => 'New description',
+            'slug' => 'old-name',
+        ]);
+    }
+
+    public function test_update_requires_a_name(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Keep me']);
+
+        $this->actingAs($user)->patch(route('accounts.apps.update', [$team, $app]), [
+            'name' => '',
+            'description' => 'whatever',
+        ])->assertSessionHasErrors('name');
+
+        $this->assertSame('Keep me', $app->fresh()->name);
+    }
+
+    public function test_update_ignores_a_submitted_slug(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id, 'slug' => 'stable-slug']);
+
+        $this->actingAs($user)->patch(route('accounts.apps.update', [$team, $app]), [
+            'name' => 'Renamed',
+            'slug' => 'hacked-slug',
+        ])->assertRedirect();
+
+        $this->assertSame('stable-slug', $app->fresh()->slug);
+    }
+
+    public function test_user_cannot_update_an_app_from_another_team(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create(['name' => 'Foreign']);
+
+        $this->actingAs($user)->patch(route('accounts.apps.update', [$foreignApp->team, $foreignApp]), [
+            'name' => 'Hijacked',
+        ])->assertForbidden();
+
+        $this->assertSame('Foreign', $foreignApp->fresh()->name);
+    }
+
+    public function test_update_url_is_exposed_on_the_drilldown(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('app.urls.update', route('accounts.apps.update', [$team, $app])));
+    }
+
+    public function test_user_can_delete_an_application(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->delete(route('accounts.apps.destroy', [$team, $app]))
+            ->assertRedirect(route('accounts.apps.index', $team))
+            ->assertSessionHas('status', 'Application deleted.');
+
+        $this->assertDatabaseMissing('mobile_apps', ['id' => $app->id]);
+    }
+
+    public function test_user_cannot_delete_an_app_from_another_team(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+
+        $this->actingAs($user)->delete(route('accounts.apps.destroy', [$foreignApp->team, $foreignApp]))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('mobile_apps', ['id' => $foreignApp->id]);
+    }
+
+    public function test_update_and_destroy_404_when_app_belongs_to_another_team(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+
+        $this->actingAs($user)
+            ->patch("/accounts/{$team->slug}/apps/{$foreignApp->slug}", ['name' => 'X'])
+            ->assertNotFound();
+        $this->delete("/accounts/{$team->slug}/apps/{$foreignApp->slug}")->assertNotFound();
+
+        $this->assertDatabaseHas('mobile_apps', ['id' => $foreignApp->id]);
+    }
+
+    public function test_destroy_url_is_exposed_on_the_drilldown(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('app.urls.destroy', route('accounts.apps.destroy', [$team, $app])));
+    }
+
     private function userWithTeam(): array
     {
         $user = User::factory()->create();
