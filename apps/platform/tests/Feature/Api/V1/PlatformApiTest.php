@@ -219,6 +219,45 @@ class PlatformApiTest extends TestCase
             ]);
     }
 
+    public function test_identifier_scoped_credential_is_listed_with_identifier_and_file(): void
+    {
+        Storage::fake('public');
+        [$user, $team] = $this->teamMember();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.app',
+        ]);
+        $this->authenticate($user);
+
+        $valid = json_encode([
+            'project_info' => ['project_id' => 'demo'],
+            'client' => [['client_info' => ['mobilesdk_app_id' => '1:1:android:a']]],
+        ], JSON_THROW_ON_ERROR);
+
+        $url = "/api/v1/{$team->slug}/apps/{$app->slug}/credentials";
+        $this->post($url, [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServicesJson->value,
+            'name' => 'Android Firebase',
+            'file' => UploadedFile::fake()->createWithContent('google-services.json', $valid),
+        ], ['Accept' => 'application/json'])
+            ->assertCreated();
+
+        $response = $this->getJson($url)->assertOk();
+
+        $credential = collect($response->json('data'))
+            ->firstWhere('type', CredentialType::GoogleServicesJson->value);
+
+        $this->assertNotNull($credential);
+        $this->assertSame('com.example.app', $credential['app_identifiers'][0]['identifier']);
+        $this->assertNotNull($credential['file']['url']);
+
+        $this->get($credential['file']['url'], ['Authorization' => 'Bearer '.$this->token])
+            ->assertOk();
+    }
+
     private string $token;
 
     private function teamMember(): array
