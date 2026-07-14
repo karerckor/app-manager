@@ -16,6 +16,25 @@
     let showCredential = false;
     let editingIdentifier = null;
     let editingCredential = null;
+    let showEdit = false;
+    let confirmingDelete = false;
+
+    const editForm = useForm({ name: app.name, description: app.description ?? '' });
+
+    const openEdit = () => {
+        editForm.name = app.name;
+        editForm.description = app.description ?? '';
+        editForm.clearErrors();
+        confirmingDelete = false;
+        showEdit = true;
+    };
+    const closeEdit = () => {
+        showEdit = false;
+        confirmingDelete = false;
+        editForm.clearErrors();
+    };
+    const saveEdit = () => editForm.patch(app.urls.update, { preserveScroll: true, onSuccess: closeEdit });
+    const deleteApp = () => router.delete(app.urls.destroy);
 
     const identifierForm = useForm({ platform: 'ios', identifier: '', name: '', version: '', version_code: '' });
     const initialIdentifier = identifiers[0] ?? null;
@@ -183,10 +202,16 @@
                 {#if app.assets.app_icon}<img src={app.assets.app_icon.preview_url} alt={`${app.name} icon`} class="h-14 w-14 shrink-0 rounded-2xl bg-white object-cover shadow-lg shadow-slate-200 ring-1 ring-slate-200" />{:else}<span class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-200">{initials(app.name)}</span>{/if}
                 <div class="min-w-0"><div class="flex items-center gap-2"><h1 class="truncate text-2xl font-bold tracking-tight">{app.name}</h1><span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Active</span></div><p class="mt-1 text-sm text-slate-500">{app.description || app.slug}</p></div>
             </div>
-            <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
-                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-                {identifiers.length ? 'Add credential' : 'Add identifier'}
-            </button>
+            <div class="flex items-center gap-2">
+                <button type="button" class="secondary flex items-center gap-2" on:click={openEdit}>
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    Edit
+                </button>
+                <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                    {identifiers.length ? 'Add credential' : 'Add identifier'}
+                </button>
+            </div>
         </header>
 
         {#if flash?.status}<div class="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"><span class="grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-xs text-white">✓</span>{flash.status}</div>{/if}
@@ -381,6 +406,36 @@
                 </label>
             </div>
             <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeCredential}>Cancel</button><button disabled={credentialForm.processing}>{credentialForm.processing ? 'Saving…' : editingCredential ? 'Save changes' : 'Add credential'}</button></div>
+        </form>
+    </div>
+{/if}
+
+{#if showEdit}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeEdit()}>
+        <form class="modal" on:submit|preventDefault={saveEdit}>
+            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+                <div><h2 class="text-lg font-bold">Edit application</h2><p class="mt-1 text-sm text-slate-500">Update the project name and description.</p></div>
+                <button type="button" class="ghost -mr-2 p-2" on:click={closeEdit}>✕</button>
+            </div>
+            <div class="space-y-5 p-6">
+                <label><span class="label">Name</span><input bind:value={editForm.name} required />{#if editForm.errors.name}<span class="error">{editForm.errors.name}</span>{/if}</label>
+                <label><span class="label">Description <span class="font-normal text-slate-400">(optional)</span></span><textarea class="min-h-24" bind:value={editForm.description} placeholder="What is this project?"></textarea>{#if editForm.errors.description}<span class="error">{editForm.errors.description}</span>{/if}</label>
+                <div class="rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+                    {#if confirmingDelete}
+                        <p class="text-xs font-semibold text-rose-800">Delete this application? This can't be undone.</p>
+                        <div class="mt-3 flex gap-2">
+                            <button type="button" class="secondary px-3 py-2 text-xs" on:click={() => confirmingDelete = false}>Cancel</button>
+                            <button type="button" class="bg-rose-600 px-3 py-2 text-xs text-white hover:bg-rose-700" on:click={deleteApp}>Confirm delete</button>
+                        </div>
+                    {:else}
+                        <div class="flex items-center justify-between gap-3">
+                            <div><p class="text-xs font-bold text-rose-800">Danger zone</p><p class="mt-0.5 text-[11px] text-rose-700/80">Permanently delete this application and its data.</p></div>
+                            <button type="button" class="border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100" on:click={() => confirmingDelete = true}>Delete application</button>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeEdit}>Cancel</button><button disabled={editForm.processing}>{editForm.processing ? 'Saving…' : 'Save changes'}</button></div>
         </form>
     </div>
 {/if}
