@@ -27,7 +27,7 @@ class AppIdentifier extends Model
 
     public function credentials(): MorphToMany
     {
-        return $this->morphToMany(Credential::class, 'credentialable');
+        return $this->morphToMany(Credential::class, 'credentialable')->withTimestamps();
     }
 
     protected function casts(): array

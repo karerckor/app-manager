@@ -23,12 +23,12 @@ class Credential extends Model implements HasMedia
 
     public function appIdentifiers(): MorphToMany
     {
-        return $this->morphedByMany(AppIdentifier::class, 'credentialable');
+        return $this->morphedByMany(AppIdentifier::class, 'credentialable')->withTimestamps();
     }
 
     public function profiles(): MorphToMany
     {
-        return $this->morphedByMany(Profile::class, 'credentialable');
+        return $this->morphedByMany(Profile::class, 'credentialable')->withTimestamps();
     }
 
     public function registerMediaCollections(): void

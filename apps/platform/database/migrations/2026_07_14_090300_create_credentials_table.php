@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('type');                 // CredentialType enum
             $table->string('name');
             $table->text('payload')->nullable();    // encrypted:array cast
-            $table->timestamp('expires_at')->nullable();
+            $table->timestamp('expires_at')->nullable()->index();
             $table->timestamps();
         });
     }
