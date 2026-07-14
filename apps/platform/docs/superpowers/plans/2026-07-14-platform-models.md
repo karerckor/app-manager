@@ -305,8 +305,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('mobile_apps', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
             $table->string('slug');
             $table->string('name');
             $table->text('description')->nullable();
@@ -359,6 +359,7 @@ class TeamFactory extends Factory
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -369,7 +370,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'slug', 'name', 'description'])]
 class MobileApp extends Model implements HasMedia
 {
-    use HasFactory, InteractsWithMedia;
+    use HasFactory, HasUuids, InteractsWithMedia;
 
     public function team(): BelongsTo
     {
@@ -522,8 +523,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('app_identifiers', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('mobile_app_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('mobile_app_id')->constrained()->cascadeOnDelete();
             $table->string('platform');       // Platform enum
             $table->string('identifier');     // bundle id / package name
             $table->string('name')->nullable();
@@ -550,6 +551,7 @@ namespace App\Models;
 
 use App\Enums\Platform;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -558,7 +560,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['mobile_app_id', 'platform', 'identifier', 'name'])]
 class AppIdentifier extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     public function mobileApp(): BelongsTo
     {
@@ -708,8 +710,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('profiles', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('app_identifier_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('app_identifier_id')->constrained()->cascadeOnDelete();
             $table->string('type');           // ProfileType enum
             $table->string('name')->nullable();
             $table->timestamps();
@@ -735,6 +737,7 @@ namespace App\Models;
 
 use App\Enums\ProfileType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -742,7 +745,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['app_identifier_id', 'type', 'name'])]
 class Profile extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     public function appIdentifier(): BelongsTo
     {
@@ -894,8 +897,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('credentials', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
             $table->string('type');                 // CredentialType enum
             $table->string('name');
             $table->text('payload')->nullable();    // encrypted:array cast
@@ -928,8 +931,8 @@ return new class extends Migration
     {
         Schema::create('credentialables', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('credential_id')->constrained()->cascadeOnDelete();
-            $table->morphs('credentialable'); // credentialable_id + credentialable_type
+            $table->foreignUuid('credential_id')->constrained()->cascadeOnDelete();
+            $table->uuidMorphs('credentialable'); // credentialable_id + credentialable_type
             $table->timestamps();
             $table->unique(
                 ['credential_id', 'credentialable_id', 'credentialable_type'],
@@ -956,6 +959,7 @@ namespace App\Models;
 
 use App\Enums\CredentialType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -965,7 +969,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at'])]
 class Credential extends Model implements HasMedia
 {
-    use HasFactory, InteractsWithMedia;
+    use HasFactory, HasUuids, InteractsWithMedia;
 
     public function team(): BelongsTo
     {

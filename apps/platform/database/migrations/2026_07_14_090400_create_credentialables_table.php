@@ -10,8 +10,8 @@ return new class extends Migration
     {
         Schema::create('credentialables', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('credential_id')->constrained()->cascadeOnDelete();
-            $table->morphs('credentialable'); // credentialable_id + credentialable_type
+            $table->foreignUuid('credential_id')->constrained()->cascadeOnDelete();
+            $table->uuidMorphs('credentialable'); // credentialable_id + credentialable_type
             $table->timestamps();
             $table->unique(
                 ['credential_id', 'credentialable_id', 'credentialable_type'],

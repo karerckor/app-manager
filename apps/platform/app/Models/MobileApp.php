@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,7 +14,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'slug', 'name', 'description'])]
 class MobileApp extends Model implements HasMedia
 {
-    use HasFactory, InteractsWithMedia;
+    use HasFactory, HasUuids, InteractsWithMedia;
 
     public function team(): BelongsTo
     {
@@ -29,6 +30,11 @@ class MobileApp extends Model implements HasMedia
     {
         $this->addMediaCollection('app_icon')->singleFile();
         $this->addMediaCollection('splash_icon')->singleFile();
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'slug';
     }
 
     protected static function booted(): void

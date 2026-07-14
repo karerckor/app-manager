@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('credentials', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
             $table->string('type');                 // CredentialType enum
             $table->string('name');
             $table->text('payload')->nullable();    // encrypted:array cast

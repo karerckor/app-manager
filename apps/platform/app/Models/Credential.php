@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CredentialType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,7 +15,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at'])]
 class Credential extends Model implements HasMedia
 {
-    use HasFactory, InteractsWithMedia;
+    use HasFactory, HasUuids, InteractsWithMedia;
 
     public function team(): BelongsTo
     {

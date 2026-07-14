@@ -31,5 +31,4 @@ bundle install
 bundle exec rspec
 ```
 
-The sample action is named `app_manager` and accepts a `message` option.
-
+Configure the API with `app_manager_configure`, then combine the typed asset and credential download actions described in [`libs/fastlane-plugin/README.md`](libs/fastlane-plugin/README.md).

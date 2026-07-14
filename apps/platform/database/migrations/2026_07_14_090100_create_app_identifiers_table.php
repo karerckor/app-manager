@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('app_identifiers', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('mobile_app_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('mobile_app_id')->constrained()->cascadeOnDelete();
             $table->string('platform');       // Platform enum
             $table->string('identifier');     // bundle id / package name
             $table->string('name')->nullable();

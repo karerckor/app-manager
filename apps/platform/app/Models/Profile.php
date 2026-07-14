@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ProfileType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 #[Fillable(['app_identifier_id', 'type', 'name'])]
 class Profile extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     public function appIdentifier(): BelongsTo
     {

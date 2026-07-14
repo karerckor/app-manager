@@ -14,8 +14,9 @@
 
 | Topic | Decision |
 |---|---|
+| Identifiers | UUID primary keys for every application model; UUID foreign and morph keys throughout |
 | Credential representation | Single **polymorphic `credentials` table** (`type` enum + encrypted `payload`) |
-| Credential attachment | **Mixed** — most credentials attach to `AppIdentifier`; provisioning profiles attach to `Profile` |
+| Credential attachment | **Mixed** — signing credentials attach to a build `Profile`; service credentials attach to `AppIdentifier` |
 | Sharing | Credentials are shareable many-to-many via one **polymorphic pivot** (`credentialables`, Laravel `morphToMany`) |
 | Profile | **First-class table** under `AppIdentifier` |
 | Ownership | **Team-owned**, shareable within the same team only |
@@ -26,7 +27,7 @@
 ```
 Team (existing)
  └─< MobileApp                team_id, slug, name, description  (+ media: app_icon, splash_icon)
-       └─< AppIdentifier      mobile_app_id, platform(ios|android), identifier, name
+       └─< AppIdentifier      mobile_app_id, platform(ios|android), identifier, name, version, version_code(android only)
              └─< Profile      app_identifier_id, type, name
 
 Team
@@ -41,23 +42,23 @@ Enforced in the app layer (form requests / service), **not** the schema, consist
 
 | Credential type | Attaches to | Shareable |
 |---|---|---|
-| `ios_certificate` (distribution / development) | AppIdentifier | ✅ |
+| `ios_certificate` (App Store / development / Ad Hoc / enterprise) | **Profile** | ✅ |
 | `provisioning_profile` | **Profile** | ✅ |
 | `apns_key` | AppIdentifier | ✅ |
 | `apple_api_key` (App Store Connect / TestFlight) | AppIdentifier | ✅ |
-| `android_keystore` | AppIdentifier | ✅ |
+| `android_keystore` (production / preview / development) | **Profile** | ✅ |
 | `firebase_config` (Firebase HTTP v1) | AppIdentifier | ✅ |
 | `google_play_service_account` | AppIdentifier | ✅ |
 
-Everything shares through the same pivot; provisioning profiles are the only type binding at the Profile level (AdHoc ≠ AppStore profile).
+Everything shares through the same pivot. Signing material is build-scoped because the Profile determines the distribution channel and output artifact (`.ipa`, `.apk`, or `.aab`); service credentials remain reusable at the identifier level.
 
 ## Migrations
 
 **1. `create_mobile_apps_table`**
 ```php
 Schema::create('mobile_apps', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+    $table->uuid('id')->primary();
+    $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
     $table->string('slug');
     $table->string('name');
     $table->text('description')->nullable();
@@ -69,11 +70,13 @@ Schema::create('mobile_apps', function (Blueprint $table) {
 **2. `create_app_identifiers_table`**
 ```php
 Schema::create('app_identifiers', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('mobile_app_id')->constrained()->cascadeOnDelete();
+    $table->uuid('id')->primary();
+    $table->foreignUuid('mobile_app_id')->constrained()->cascadeOnDelete();
     $table->string('platform');          // ios | android  (Platform enum cast)
     $table->string('identifier');        // bundle id / package name
     $table->string('name')->nullable();
+    $table->string('version')->nullable();
+    $table->unsignedBigInteger('version_code')->nullable(); // Android only
     $table->timestamps();
     $table->unique(['mobile_app_id', 'platform', 'identifier']);
 });
@@ -82,8 +85,8 @@ Schema::create('app_identifiers', function (Blueprint $table) {
 **3. `create_profiles_table`**
 ```php
 Schema::create('profiles', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('app_identifier_id')->constrained()->cascadeOnDelete();
+    $table->uuid('id')->primary();
+    $table->foreignUuid('app_identifier_id')->constrained()->cascadeOnDelete();
     $table->string('type');              // ProfileType enum
     $table->string('name')->nullable();
     $table->timestamps();
@@ -94,8 +97,8 @@ Schema::create('profiles', function (Blueprint $table) {
 **4. `create_credentials_table`**
 ```php
 Schema::create('credentials', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('team_id')->constrained()->cascadeOnDelete();
+    $table->uuid('id')->primary();
+    $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
     $table->string('type');              // CredentialType enum
     $table->string('name');
     $table->text('payload')->nullable(); // encrypted cast: passwords, key_id, issuer_id, alias, etc.
@@ -108,8 +111,8 @@ Schema::create('credentials', function (Blueprint $table) {
 ```php
 Schema::create('credentialables', function (Blueprint $table) {
     $table->id();
-    $table->foreignId('credential_id')->constrained()->cascadeOnDelete();
-    $table->morphs('credentialable');    // credentialable_id + credentialable_type → AppIdentifier | Profile
+    $table->foreignUuid('credential_id')->constrained()->cascadeOnDelete();
+    $table->uuidMorphs('credentialable'); // credentialable_id + credentialable_type → AppIdentifier | Profile
     $table->timestamps();
     $table->unique(['credential_id', 'credentialable_id', 'credentialable_type'], 'credentialable_unique');
 });
@@ -153,13 +156,14 @@ enum CredentialType: string {
 
 | Model | Implements / Traits | Relations & casts |
 |---|---|---|
-| `Team` (existing) | — | add `hasMany(MobileApp)`, `hasMany(Credential)` |
-| `MobileApp` | `HasMedia`, `InteractsWithMedia` | `belongsTo(Team)`, `hasMany(AppIdentifier)`. Media collections `app_icon`, `splash_icon` (single-file). `#[Fillable(['team_id','slug','name','description'])]` |
-| `AppIdentifier` | — | `belongsTo(MobileApp)`, `hasMany(Profile)`, `morphToMany(Credential, 'credentialable')`. Cast `platform → Platform`. `#[Fillable(['mobile_app_id','platform','identifier','name'])]` |
-| `Profile` | — | `belongsTo(AppIdentifier)`, `morphToMany(Credential, 'credentialable')`. Cast `type → ProfileType`. `#[Fillable(['app_identifier_id','type','name'])]` |
-| `Credential` | `HasMedia`, `InteractsWithMedia` | `belongsTo(Team)`, `morphedByMany(AppIdentifier, 'credentialable')`, `morphedByMany(Profile, 'credentialable')`. Casts `type → CredentialType`, `payload → 'encrypted:array'`, `expires_at → 'datetime'`. Media collection `file` (single-file). `#[Fillable(['team_id','type','name','payload','expires_at'])]` |
+| `User` (existing) | `HasUuids` | UUID primary key; UUID current-team, session, and Sanctum morph references |
+| `Team` (existing) | `HasUuids` | add `hasMany(MobileApp)`, `hasMany(Credential)` |
+| `MobileApp` | `HasUuids`, `HasMedia`, `InteractsWithMedia` | `belongsTo(Team)`, `hasMany(AppIdentifier)`. Media collections `app_icon`, `splash_icon` (single-file). `#[Fillable(['team_id','slug','name','description'])]` |
+| `AppIdentifier` | `HasUuids` | `belongsTo(MobileApp)`, `hasMany(Profile)`, `morphToMany(Credential, 'credentialable')`. Casts `platform → Platform`, `version_code → integer`. `#[Fillable(['mobile_app_id','platform','identifier','name','version','version_code'])]` |
+| `Profile` | `HasUuids` | `belongsTo(AppIdentifier)`, `morphToMany(Credential, 'credentialable')`. Cast `type → ProfileType`. `#[Fillable(['app_identifier_id','type','name'])]` |
+| `Credential` | `HasUuids`, `HasMedia`, `InteractsWithMedia` | `belongsTo(Team)`, `morphedByMany(AppIdentifier, 'credentialable')`, `morphedByMany(Profile, 'credentialable')`. Casts `type → CredentialType`, `payload → 'encrypted:array'`, `expires_at → 'datetime'`. Media collection `file` (single-file). `#[Fillable(['team_id','type','name','payload','expires_at'])]` |
 
-Model config follows the existing attribute-based style (`#[Fillable]`, `#[Hidden]`). Media single-file collections use `->singleFile()` in `registerMediaCollections()`.
+Model config follows the existing attribute-based style (`#[Fillable]`, `#[Hidden]`). Application models use Laravel's `HasUuids` trait. Media single-file collections use `->singleFile()` in `registerMediaCollections()`.
 
 ## Out of scope
 

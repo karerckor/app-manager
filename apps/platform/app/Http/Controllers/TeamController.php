@@ -19,7 +19,7 @@ class TeamController extends Controller
 
         $user->update(['current_team_id' => $team->id]);
 
-        return back()->with('status', 'Team created.');
+        return redirect()->route('accounts.apps.index', ['team' => $team])->with('status', 'Team created.');
     }
 
     public function switch(Request $request, Team $team): RedirectResponse
@@ -27,6 +27,6 @@ class TeamController extends Controller
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
         $request->user()->update(['current_team_id' => $team->id]);
 
-        return back()->with('status', 'Current team changed.');
+        return redirect()->route('accounts.apps.index', ['team' => $team])->with('status', 'Current team changed.');
     }
 }

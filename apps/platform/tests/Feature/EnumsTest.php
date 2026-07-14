@@ -28,6 +28,8 @@ class EnumsTest extends TestCase
         $this->assertSame('ios_certificate', CredentialType::IosCertificate->value);
         $this->assertSame('provisioning_profile', CredentialType::ProvisioningProfile->value);
         $this->assertSame('google_play_service_account', CredentialType::GooglePlayServiceAccount->value);
-        $this->assertCount(7, CredentialType::cases());
+        $this->assertSame('google_services_json', CredentialType::GoogleServicesJson->value);
+        $this->assertSame('google_service_info_plist', CredentialType::GoogleServiceInfoPlist->value);
+        $this->assertCount(9, CredentialType::cases());
     }
 }

@@ -1,0 +1,23 @@
+{
+  "name": "expo-hello-world",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "prepare": "rm -rf android/ ios/ && node scripts/prepare.mjs && pnpm prebuild",
+    "start": "expo start --offline",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "expo": "~57.0.0",
+    "react": "19.2.3",
+    "react-native": "0.86.0"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
+
