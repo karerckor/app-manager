@@ -91,6 +91,7 @@ class MobileAppController extends Controller
                 }),
                 'urls' => [
                     'index' => route('accounts.apps.index', ['team' => $team]),
+                    'update' => route('accounts.apps.update', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'identifiers' => route('accounts.apps.identifiers.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'credentials' => route('accounts.apps.credentials.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'assets' => route('accounts.apps.assets.upload', ['team' => $team, 'mobileApp' => $mobileApp, 'collection' => '__collection__']),
@@ -119,6 +120,25 @@ class MobileAppController extends Controller
             'credentials' => $credentials,
             'credentialTypes' => CredentialSchema::definitions(),
         ]);
+    }
+
+    public function update(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
+    {
+        $this->authorizeTeam($request, $team);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $mobileApp->update([
+            'name' => $data['name'],
+            'description' => $data['description'] ?? null,
+        ]);
+
+        return redirect()
+            ->route('accounts.apps.show', ['team' => $team, 'mobileApp' => $mobileApp])
+            ->with('status', 'Application updated.');
     }
 
     private function credentialData(Team $team, $credential, $identifier, $profile): array
