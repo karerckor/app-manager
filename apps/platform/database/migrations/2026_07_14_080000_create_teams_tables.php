@@ -9,23 +9,23 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('teams', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('owner_id')->constrained('users')->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('owner_id')->constrained('users')->cascadeOnDelete();
             $table->string('name');
             $table->timestamps();
         });
 
         Schema::create('team_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
+            $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
             $table->string('role')->default('member');
             $table->timestamps();
             $table->unique(['team_id', 'user_id']);
         });
 
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('current_team_id')->nullable()->constrained('teams')->nullOnDelete();
+            $table->foreignUuid('current_team_id')->nullable()->constrained('teams')->nullOnDelete();
         });
     }
 

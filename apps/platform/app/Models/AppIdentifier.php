@@ -4,16 +4,17 @@ namespace App\Models;
 
 use App\Enums\Platform;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
-#[Fillable(['mobile_app_id', 'platform', 'identifier', 'name'])]
+#[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code'])]
 class AppIdentifier extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
 
     public function mobileApp(): BelongsTo
     {
@@ -34,11 +35,18 @@ class AppIdentifier extends Model
     {
         return [
             'platform' => Platform::class,
+            'version_code' => 'integer',
         ];
     }
 
     protected static function booted(): void
     {
+        static::saving(function (AppIdentifier $appIdentifier) {
+            if ($appIdentifier->platform !== Platform::Android) {
+                $appIdentifier->version_code = null;
+            }
+        });
+
         static::deleting(function (AppIdentifier $appIdentifier) {
             $appIdentifier->credentials()->detach();
             $appIdentifier->profiles->each->delete();

@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('profiles', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('app_identifier_id')->constrained()->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('app_identifier_id')->constrained()->cascadeOnDelete();
             $table->string('type');           // ProfileType enum
             $table->string('name')->nullable();
             $table->timestamps();

@@ -5,21 +5,26 @@
 @source '../js/**/*.svelte';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Inter', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
 @layer base {
-    body { min-height: 100vh; }
-    input, select { @apply w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-violet-500; }
-    button { @apply cursor-pointer rounded-lg bg-violet-600 px-4 py-2 font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50; }
+    body { @apply min-h-screen bg-[#f6f7fb] text-slate-950 antialiased; }
+    input, select, textarea { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10; }
+    textarea { @apply min-h-24 resize-y; }
+    button { @apply cursor-pointer rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50; }
 }
 
 @layer components {
-    .card { @apply rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl shadow-black/10; }
-    .label { @apply mb-1 block text-sm font-medium text-slate-300; }
-    .error { @apply mt-1 text-sm text-rose-400; }
-    .muted { @apply text-sm text-slate-400; }
-    .secondary { @apply border border-slate-700 bg-slate-800 hover:bg-slate-700; }
-    .danger { @apply bg-rose-700 hover:bg-rose-600; }
+    .card { @apply rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_8px_24px_rgba(15,23,42,0.035)]; }
+    .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+    .error { @apply mt-1.5 block text-xs font-medium text-rose-600; }
+    .muted { @apply text-sm text-slate-500; }
+    .secondary { @apply border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50; }
+    .ghost { @apply bg-transparent text-slate-600 shadow-none hover:bg-slate-100 hover:text-slate-900; }
+    .danger { @apply bg-rose-600 hover:bg-rose-700; }
+    .eyebrow { @apply text-xs font-semibold tracking-[0.14em] text-slate-400 uppercase; }
+    .modal-backdrop { @apply fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-[2px]; }
+    .modal { @apply max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl shadow-slate-950/20; }
 }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Platform;
 use App\Models\AppIdentifier;
 use App\Models\MobileApp;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -26,6 +27,24 @@ class AppIdentifierTest extends TestCase
         $this->assertSame(Platform::Android, $identifier->fresh()->platform);
     }
 
+    public function test_version_code_is_an_integer_and_is_only_stored_for_android(): void
+    {
+        $android = AppIdentifier::factory()->create([
+            'platform' => Platform::Android,
+            'version' => '2.3.0',
+            'version_code' => 20300,
+        ]);
+        $ios = AppIdentifier::factory()->create([
+            'platform' => Platform::Ios,
+            'version' => '2.3.0',
+            'version_code' => 20300,
+        ]);
+
+        $this->assertSame('2.3.0', $android->fresh()->version);
+        $this->assertSame(20300, $android->fresh()->version_code);
+        $this->assertNull($ios->fresh()->version_code);
+    }
+
     public function test_identifier_is_unique_per_app_and_platform(): void
     {
         $app = MobileApp::factory()->create();
@@ -35,7 +54,7 @@ class AppIdentifierTest extends TestCase
             'identifier' => 'com.example.app',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         AppIdentifier::factory()->create([
             'mobile_app_id' => $app->id,
             'platform' => Platform::Ios,

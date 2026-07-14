@@ -3,11 +3,12 @@
 namespace Database\Factories;
 
 use App\Enums\Platform;
+use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<\App\Models\AppIdentifier>
+ * @extends Factory<AppIdentifier>
  */
 class AppIdentifierFactory extends Factory
 {
@@ -18,6 +19,8 @@ class AppIdentifierFactory extends Factory
             'platform' => Platform::Ios,
             'identifier' => 'com.example.'.fake()->unique()->word().fake()->unique()->numberBetween(1, 999999),
             'name' => fake()->words(2, true),
+            'version' => '1.0.0',
+            'version_code' => null,
         ];
     }
 }

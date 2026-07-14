@@ -8,6 +8,7 @@ use App\Enums\ProfileType;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\User;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -33,23 +34,92 @@ class DemoSeederTest extends TestCase
         $this->assertSame($user->id, $team->owner_id);
         $this->assertSame('owner', $user->teams()->firstOrFail()->pivot->role);
 
-        // Example App with an Android identifier and production profile.
+        // Stable Sanctum API key, stored only as a hash and usable immediately.
+        $token = $user->tokens()->where('name', 'Demo API Key')->firstOrFail();
+        $this->assertSame(hash('sha256', DemoSeeder::API_KEY), $token->token);
+        $this->assertSame(['*'], $token->abilities);
+        $this->withToken(DemoSeeder::API_KEY)
+            ->getJson("/api/v1/{$team->slug}/apps")
+            ->assertOk();
+
+        // Example App with Android and iOS release targets.
         $app = MobileApp::where('slug', 'example-app')->firstOrFail();
         $this->assertSame('Example App', $app->name);
         $this->assertSame($team->id, $app->team_id);
 
-        $identifier = $app->appIdentifiers()->firstOrFail();
-        $this->assertSame(Platform::Android, $identifier->platform);
-        $this->assertSame('com.example.app', $identifier->identifier);
-        $this->assertSame(ProfileType::Production, $identifier->profiles()->firstOrFail()->type);
+        $androidIdentifier = $app->appIdentifiers()->where('platform', Platform::Android)->firstOrFail();
+        $this->assertSame('com.example.app', $androidIdentifier->identifier);
+        $androidProfile = $androidIdentifier->profiles()->firstOrFail();
+        $this->assertSame(ProfileType::Production, $androidProfile->type);
 
-        // Production keystore credential, attached to the identifier, with file + secrets.
+        $iosIdentifier = $app->appIdentifiers()->where('platform', Platform::Ios)->firstOrFail();
+        $this->assertSame('com.example.app', $iosIdentifier->identifier);
+        $iosProfile = $iosIdentifier->profiles()->firstOrFail();
+        $this->assertSame(ProfileType::AppStore, $iosProfile->type);
+
+        // Production keystore credential, attached to its build profile, with file + secrets.
         $keystore = Credential::where('name', 'Production Keystore')->firstOrFail();
         $this->assertSame(CredentialType::AndroidKeystore, $keystore->type);
         $this->assertSame($team->id, $keystore->team_id);
         $this->assertSame('production', $keystore->payload['key_alias']);
-        $this->assertTrue($identifier->credentials()->whereKey($keystore->id)->exists());
+        $this->assertSame('DemoKeystore123!', $keystore->payload['store_password']);
+        $this->assertSame('DemoKeystore123!', $keystore->payload['key_password']);
+        $this->assertFalse($androidIdentifier->credentials()->whereKey($keystore->id)->exists());
+        $this->assertTrue($androidProfile->credentials()->whereKey($keystore->id)->exists());
         $this->assertTrue($keystore->hasMedia('file'));
+
+        $media = $keystore->getFirstMedia('file');
+        $this->assertSame('production.keystore', $media->file_name);
+        $certificates = [];
+        $this->assertTrue(openssl_pkcs12_read(file_get_contents($media->getPath()), $certificates, 'DemoKeystore123!'));
+        $this->assertArrayHasKey('pkey', $certificates);
+        $this->assertArrayHasKey('cert', $certificates);
+
+        // iOS certificate and CMS provisioning profile share the App Store target.
+        $iosCertificate = Credential::where('name', 'App Store Certificate')->firstOrFail();
+        $this->assertSame(CredentialType::IosCertificate, $iosCertificate->type);
+        $this->assertSame('DemoCertificate123!', $iosCertificate->payload['password']);
+        $this->assertTrue($iosProfile->credentials()->whereKey($iosCertificate->id)->exists());
+        $certificateMedia = $iosCertificate->getFirstMedia('file');
+        $this->assertSame('distribution.p12', $certificateMedia->file_name);
+        $iosCertificates = [];
+        $this->assertTrue(openssl_pkcs12_read(
+            file_get_contents($certificateMedia->getPath()),
+            $iosCertificates,
+            'DemoCertificate123!',
+        ));
+        $this->assertArrayHasKey('pkey', $iosCertificates);
+        $this->assertArrayHasKey('cert', $iosCertificates);
+
+        $provisioningProfile = Credential::where('name', 'App Store Provisioning Profile')->firstOrFail();
+        $this->assertSame(CredentialType::ProvisioningProfile, $provisioningProfile->type);
+        $this->assertTrue($iosProfile->credentials()->whereKey($provisioningProfile->id)->exists());
+        $profileMedia = $provisioningProfile->getFirstMedia('file');
+        $this->assertSame('appstore.mobileprovision', $profileMedia->file_name);
+        $decodedProfile = tempnam(sys_get_temp_dir(), 'demo-profile-test-');
+        $this->assertNotFalse($decodedProfile);
+
+        try {
+            $this->assertTrue(openssl_cms_verify(
+                $profileMedia->getPath(),
+                OPENSSL_CMS_NOVERIFY,
+                null,
+                [],
+                null,
+                $decodedProfile,
+                null,
+                null,
+                OPENSSL_ENCODING_DER,
+            ));
+            $profileContents = file_get_contents($decodedProfile);
+            $this->assertStringContainsString(
+                '<string>DEMO123456.com.example.app</string>',
+                $profileContents,
+            );
+            $this->assertStringContainsString('<string>DEMO123456</string>', $profileContents);
+        } finally {
+            @unlink($decodedProfile);
+        }
     }
 
     public function test_it_is_idempotent(): void
@@ -62,7 +132,28 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, User::where('email', 'demo@example.com')->count());
         $this->assertSame(1, MobileApp::where('slug', 'example-app')->count());
         $this->assertSame(1, Credential::where('name', 'Production Keystore')->count());
-        $this->assertDatabaseCount('credentialables', 1);
-        $this->assertDatabaseCount('media', 1);
+        $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
+        $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseCount('app_identifiers', 2);
+        $this->assertDatabaseCount('profiles', 2);
+        $this->assertDatabaseCount('credentialables', 3);
+        $this->assertDatabaseCount('media', 3);
+    }
+
+    public function test_database_seeder_is_idempotent(): void
+    {
+        Storage::fake('public');
+
+        $this->seed(DatabaseSeeder::class);
+        $this->seed(DatabaseSeeder::class);
+
+        $this->assertSame(1, User::where('email', 'test@example.com')->count());
+        $this->assertSame(1, User::where('email', 'demo@example.com')->count());
+        $this->assertSame(1, Credential::where('name', 'Production Keystore')->count());
+        $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
+        $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertDatabaseCount('media', 3);
     }
 }

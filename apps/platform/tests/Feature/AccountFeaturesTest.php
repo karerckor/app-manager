@@ -23,7 +23,11 @@ class AccountFeaturesTest extends TestCase
         $user = User::where('email', 'ada@example.com')->firstOrFail();
         $this->assertAuthenticatedAs($user);
         $this->assertNotNull($user->current_team_id);
-        $this->assertDatabaseHas('teams', ['id' => $user->current_team_id, 'owner_id' => $user->id]);
+        $this->assertDatabaseHas('teams', [
+            'id' => $user->current_team_id,
+            'owner_id' => $user->id,
+            'slug' => 'ada-lovelaces-team',
+        ]);
         $this->assertDatabaseHas('team_user', ['team_id' => $user->current_team_id, 'user_id' => $user->id, 'role' => 'owner']);
     }
 
@@ -42,18 +46,21 @@ class AccountFeaturesTest extends TestCase
         $user = User::factory()->create();
         $foreignTeam = Team::create(['name' => 'Foreign', 'owner_id' => User::factory()->create()->id]);
 
-        $this->actingAs($user)->put("/teams/{$foreignTeam->id}/switch")->assertForbidden();
+        $this->actingAs($user)->put(route('accounts.switch', $foreignTeam))->assertForbidden();
     }
 
     public function test_user_can_start_two_factor_setup_and_view_the_qr_code(): void
     {
         $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->users()->attach($user, ['role' => 'owner']);
+        $user->update(['current_team_id' => $team->id]);
 
         $this->actingAs($user)
             ->post('/user/confirm-password', ['password' => 'password'])
             ->assertRedirect();
         $this->post('/user/two-factor-authentication')->assertRedirect();
-        $this->get('/dashboard')->assertSuccessful();
+        $this->get(route('accounts.apps.index', $team))->assertSuccessful();
 
         $this->assertNotNull($user->refresh()->two_factor_secret);
     }
