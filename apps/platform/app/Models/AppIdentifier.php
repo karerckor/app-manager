@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 #[Fillable(['mobile_app_id', 'platform', 'identifier', 'name'])]
 class AppIdentifier extends Model
@@ -22,6 +23,11 @@ class AppIdentifier extends Model
     public function profiles(): HasMany
     {
         return $this->hasMany(Profile::class);
+    }
+
+    public function credentials(): MorphToMany
+    {
+        return $this->morphToMany(Credential::class, 'credentialable');
     }
 
     protected function casts(): array
