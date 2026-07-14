@@ -61,10 +61,12 @@ class DemoApiKeyTest extends TestCase
 
         $response = $this->getJson($this->api('/apps/example-app/credentials'))
             ->assertOk()
-            ->assertJsonCount(3, 'data')
+            ->assertJsonCount(5, 'data')
             ->assertJsonFragment(['type' => CredentialType::AndroidKeystore->value])
             ->assertJsonFragment(['type' => CredentialType::IosCertificate->value])
-            ->assertJsonFragment(['type' => CredentialType::ProvisioningProfile->value]);
+            ->assertJsonFragment(['type' => CredentialType::ProvisioningProfile->value])
+            ->assertJsonFragment(['type' => CredentialType::GooglePlayServiceAccount->value])
+            ->assertJsonFragment(['type' => CredentialType::AppleApiKey->value]);
 
         $expectedFiles = [
             CredentialType::AndroidKeystore->value => 'production.keystore',

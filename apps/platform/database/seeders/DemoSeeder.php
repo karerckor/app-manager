@@ -159,6 +159,36 @@ class DemoSeeder extends Seeder
                 ->usingFileName('splash.png')
                 ->toMediaCollection('splash_icon');
         }
+
+        // Google Play service account (store submission) on the Android identifier.
+        $googlePlay = Credential::updateOrCreate(
+            ['team_id' => $team->id, 'type' => CredentialType::GooglePlayServiceAccount, 'name' => 'Google Play Service Account'],
+            ['payload' => null],
+        );
+        $identifier->credentials()->syncWithoutDetaching([$googlePlay->id]);
+
+        if (! $googlePlay->hasMedia('file')) {
+            $googlePlay->addMediaFromString($this->makeDemoServiceAccount())
+                ->usingFileName('google-play-service-account.json')
+                ->toMediaCollection('file');
+        }
+
+        // App Store Connect API key (TestFlight submission) on the iOS identifier.
+        $appleKey = Credential::updateOrCreate(
+            ['team_id' => $team->id, 'type' => CredentialType::AppleApiKey, 'name' => 'App Store Connect API Key'],
+            ['payload' => ['key_id' => 'DEMOKEY123', 'issuer_id' => '11111111-1111-4111-8111-111111111111']],
+        );
+        $iosIdentifier->credentials()->syncWithoutDetaching([$appleKey->id]);
+
+        if (! $appleKey->hasMedia('file')) {
+            openssl_pkey_export(openssl_pkey_new([
+                'private_key_bits' => 2048,
+                'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            ]), $p8);
+            $appleKey->addMediaFromString($p8)
+                ->usingFileName('appstore-api-key.p8')
+                ->toMediaCollection('file');
+        }
     }
 
     private function makePng(int $size, string $hex): string
@@ -178,6 +208,24 @@ class DemoSeeder extends Seeder
         imagedestroy($image);
 
         return $contents;
+    }
+
+    private function makeDemoServiceAccount(): string
+    {
+        openssl_pkey_export(openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]), $privateKey);
+
+        return json_encode([
+            'type' => 'service_account',
+            'project_id' => 'app-manager-demo',
+            'private_key_id' => 'demo-key-id',
+            'private_key' => $privateKey,
+            'client_email' => 'demo@app-manager-demo.iam.gserviceaccount.com',
+            'client_id' => '000000000000000000000',
+            'token_uri' => 'https://oauth2.googleapis.com/token',
+        ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
     }
 
     private function isValidDemoKeystore(string $path): bool

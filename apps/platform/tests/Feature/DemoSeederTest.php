@@ -126,6 +126,22 @@ class DemoSeederTest extends TestCase
         $this->assertTrue($app->hasMedia('splash_icon'));
         $this->assertSame('icon.png', $app->getFirstMedia('app_icon')->file_name);
         $this->assertSame('splash.png', $app->getFirstMedia('splash_icon')->file_name);
+
+        // Google Play service account, attached directly to the Android identifier.
+        $googlePlay = Credential::where('name', 'Google Play Service Account')->firstOrFail();
+        $this->assertSame(CredentialType::GooglePlayServiceAccount, $googlePlay->type);
+        $this->assertTrue($androidIdentifier->credentials()->whereKey($googlePlay->id)->exists());
+        $googlePlayJson = json_decode(file_get_contents($googlePlay->getFirstMedia('file')->getPath()), true);
+        $this->assertSame('service_account', $googlePlayJson['type']);
+        $this->assertArrayHasKey('private_key', $googlePlayJson);
+
+        // App Store Connect API key, attached directly to the iOS identifier.
+        $appleKey = Credential::where('name', 'App Store Connect API Key')->firstOrFail();
+        $this->assertSame(CredentialType::AppleApiKey, $appleKey->type);
+        $this->assertTrue($iosIdentifier->credentials()->whereKey($appleKey->id)->exists());
+        $this->assertSame('DEMOKEY123', $appleKey->payload['key_id']);
+        $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $appleKey->payload['issuer_id']);
+        $this->assertStringContainsString('BEGIN PRIVATE KEY', file_get_contents($appleKey->getFirstMedia('file')->getPath()));
     }
 
     public function test_it_is_idempotent(): void
@@ -140,11 +156,13 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'Production Keystore')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
+        $this->assertSame(1, Credential::where('name', 'Google Play Service Account')->count());
+        $this->assertSame(1, Credential::where('name', 'App Store Connect API Key')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
         $this->assertDatabaseCount('app_identifiers', 2);
         $this->assertDatabaseCount('profiles', 2);
-        $this->assertDatabaseCount('credentialables', 3);
-        $this->assertDatabaseCount('media', 5);
+        $this->assertDatabaseCount('credentialables', 5);
+        $this->assertDatabaseCount('media', 7);
     }
 
     public function test_database_seeder_is_idempotent(): void
@@ -160,6 +178,6 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 5);
+        $this->assertDatabaseCount('media', 7);
     }
 }
