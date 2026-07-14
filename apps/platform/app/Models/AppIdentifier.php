@@ -36,4 +36,12 @@ class AppIdentifier extends Model
             'platform' => Platform::class,
         ];
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (AppIdentifier $appIdentifier) {
+            $appIdentifier->credentials()->detach();
+            $appIdentifier->profiles->each->delete();
+        });
+    }
 }

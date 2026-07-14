@@ -30,4 +30,11 @@ class MobileApp extends Model implements HasMedia
         $this->addMediaCollection('app_icon')->singleFile();
         $this->addMediaCollection('splash_icon')->singleFile();
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (MobileApp $mobileApp) {
+            $mobileApp->appIdentifiers->each->delete();
+        });
+    }
 }

@@ -30,4 +30,11 @@ class Profile extends Model
             'type' => ProfileType::class,
         ];
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Profile $profile) {
+            $profile->credentials()->detach();
+        });
+    }
 }

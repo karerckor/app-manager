@@ -33,4 +33,12 @@ class Team extends Model
     {
         return $this->hasMany(Credential::class);
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Team $team) {
+            $team->mobileApps->each->delete();
+            $team->credentials->each->delete();
+        });
+    }
 }
