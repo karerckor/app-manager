@@ -1,0 +1,121 @@
+require "json"
+
+CONTEXT_PATH = File.expand_path("context.json", __dir__)
+CREDENTIALS_PATH = File.expand_path("../credentials.json", __dir__)
+PROJECT_ROOT = File.expand_path("..", __dir__)
+
+def load_context
+  UI.user_error!("fastlane/context.json is missing. Run `npm run prepare` first.") unless File.exist?(CONTEXT_PATH)
+  JSON.parse(File.read(CONTEXT_PATH))
+end
+
+def load_credentials
+  UI.user_error!("credentials.json is missing. Run `npm run prepare` first.") unless File.exist?(CREDENTIALS_PATH)
+  JSON.parse(File.read(CREDENTIALS_PATH))
+end
+
+def deploy_allowed?(options)
+  options[:submit] == true || ENV["APP_MANAGER_ALLOW_DEPLOY"] == "1"
+end
+
+before_all do
+  unless Dir.exist?(File.join(PROJECT_ROOT, "android")) && Dir.exist?(File.join(PROJECT_ROOT, "ios"))
+    UI.message("Native projects missing; running `expo prebuild`.")
+    Dir.chdir(PROJECT_ROOT) { sh("npx", "expo", "prebuild") }
+  end
+end
+
+desc "Build a signed Android release AAB"
+lane :build_android do
+  context = load_context
+  keystore = load_credentials.dig("android", "keystore")
+  UI.user_error!("No Android keystore in credentials.json") unless keystore
+
+  gradle(
+    project_dir: File.join(PROJECT_ROOT, "android"),
+    task: "bundle",
+    build_type: "Release",
+    properties: {
+      "android.injected.signing.store.file" => File.expand_path(keystore["keystorePath"], PROJECT_ROOT),
+      "android.injected.signing.store.password" => keystore["keystorePassword"],
+      "android.injected.signing.key.alias" => keystore["keyAlias"],
+      "android.injected.signing.key.password" => keystore["keyPassword"],
+    },
+  )
+  UI.success("Built #{context.dig('android', 'package')} release bundle.")
+end
+
+desc "Build and (optionally) upload Android to Google Play internal track"
+lane :deploy_android do |options|
+  build_android
+  context = load_context
+  json_key = context.dig("android", "googlePlayJsonKeyPath")
+
+  if json_key.nil?
+    UI.important("No Google Play service account in context.json; stopping at the signed artifact.")
+    next
+  end
+  unless deploy_allowed?(options)
+    UI.important("Deploy not requested (pass submit:true or set APP_MANAGER_ALLOW_DEPLOY=1); stopping at the signed artifact.")
+    next
+  end
+
+  upload_to_play_store(
+    package_name: context.dig("android", "package"),
+    json_key: File.expand_path(json_key, PROJECT_ROOT),
+    track: "internal",
+    aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+  )
+end
+
+desc "Build a signed iOS release IPA"
+lane :build_ios do
+  context = load_context
+  workspace = Dir[File.join(PROJECT_ROOT, "ios", "*.xcworkspace")].first
+  UI.user_error!("No Xcode workspace found; run `expo prebuild` first.") if workspace.nil?
+
+  build_app(
+    workspace: workspace,
+    scheme: File.basename(workspace, ".xcworkspace"),
+    export_method: "app-store",
+    output_directory: File.join(PROJECT_ROOT, "build"),
+  )
+  UI.success("Built #{context.dig('ios', 'bundleIdentifier')} release IPA.")
+end
+
+desc "Build and (optionally) upload iOS to TestFlight"
+lane :deploy_ios do |options|
+  build_ios
+  context = load_context
+  api_key = context.dig("ios", "appStoreApiKey")
+
+  if api_key.nil?
+    UI.important("No App Store Connect API key in context.json; stopping at the signed artifact.")
+    next
+  end
+  unless deploy_allowed?(options)
+    UI.important("Deploy not requested (pass submit:true or set APP_MANAGER_ALLOW_DEPLOY=1); stopping at the signed artifact.")
+    next
+  end
+
+  key = app_store_connect_api_key(
+    key_id: api_key["keyId"],
+    issuer_id: api_key["issuerId"],
+    key_filepath: File.expand_path(api_key["path"], PROJECT_ROOT),
+  )
+  upload_to_testflight(api_key: key)
+end
+
+desc "Build one or more platforms (platforms:\"ios,android\")"
+lane :build do |options|
+  platforms = (options[:platforms] || "ios,android").split(",").map(&:strip)
+  build_android if platforms.include?("android")
+  build_ios if platforms.include?("ios")
+end
+
+desc "Deploy one or more platforms (platforms:\"ios,android\" submit:true)"
+lane :deploy do |options|
+  platforms = (options[:platforms] || "ios,android").split(",").map(&:strip)
+  deploy_android(options) if platforms.include?("android")
+  deploy_ios(options) if platforms.include?("ios")
+end
