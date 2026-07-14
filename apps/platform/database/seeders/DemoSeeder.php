@@ -147,6 +147,37 @@ class DemoSeeder extends Seeder
                 ->usingFileName('appstore.mobileprovision')
                 ->toMediaCollection('file');
         }
+
+        if (! $app->hasMedia('app_icon')) {
+            $app->addMediaFromString($this->makePng(1024, '#3b82f6'))
+                ->usingFileName('icon.png')
+                ->toMediaCollection('app_icon');
+        }
+
+        if (! $app->hasMedia('splash_icon')) {
+            $app->addMediaFromString($this->makePng(2048, '#0f172a'))
+                ->usingFileName('splash.png')
+                ->toMediaCollection('splash_icon');
+        }
+    }
+
+    private function makePng(int $size, string $hex): string
+    {
+        $image = imagecreatetruecolor($size, $size);
+
+        if ($image === false) {
+            throw new \RuntimeException('Unable to create the demo image.');
+        }
+
+        [$r, $g, $b] = sscanf($hex, '#%02x%02x%02x');
+        imagefill($image, 0, 0, imagecolorallocate($image, $r, $g, $b));
+
+        ob_start();
+        imagepng($image);
+        $contents = (string) ob_get_clean();
+        imagedestroy($image);
+
+        return $contents;
     }
 
     private function isValidDemoKeystore(string $path): bool

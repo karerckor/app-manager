@@ -120,6 +120,12 @@ class DemoSeederTest extends TestCase
         } finally {
             @unlink($decodedProfile);
         }
+
+        // App icon and splash media.
+        $this->assertTrue($app->hasMedia('app_icon'));
+        $this->assertTrue($app->hasMedia('splash_icon'));
+        $this->assertSame('icon.png', $app->getFirstMedia('app_icon')->file_name);
+        $this->assertSame('splash.png', $app->getFirstMedia('splash_icon')->file_name);
     }
 
     public function test_it_is_idempotent(): void
@@ -138,7 +144,7 @@ class DemoSeederTest extends TestCase
         $this->assertDatabaseCount('app_identifiers', 2);
         $this->assertDatabaseCount('profiles', 2);
         $this->assertDatabaseCount('credentialables', 3);
-        $this->assertDatabaseCount('media', 3);
+        $this->assertDatabaseCount('media', 5);
     }
 
     public function test_database_seeder_is_idempotent(): void
@@ -154,6 +160,6 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 3);
+        $this->assertDatabaseCount('media', 5);
     }
 }
