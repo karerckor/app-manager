@@ -18,6 +18,7 @@
     let editingCredential = null;
     let showEdit = false;
     let confirmingDelete = false;
+    let deleting = false;
 
     const editForm = useForm({ name: app.name, description: app.description ?? '' });
 
@@ -34,7 +35,7 @@
         editForm.clearErrors();
     };
     const saveEdit = () => editForm.patch(app.urls.update, { preserveScroll: true, onSuccess: closeEdit });
-    const deleteApp = () => router.delete(app.urls.destroy);
+    const deleteApp = () => router.delete(app.urls.destroy, { onStart: () => deleting = true, onFinish: () => deleting = false });
 
     const identifierForm = useForm({ platform: 'ios', identifier: '', name: '', version: '', version_code: '' });
     const initialIdentifier = identifiers[0] ?? null;
@@ -425,7 +426,7 @@
                         <p class="text-xs font-semibold text-rose-800">Delete this application? This can't be undone.</p>
                         <div class="mt-3 flex gap-2">
                             <button type="button" class="secondary px-3 py-2 text-xs" on:click={() => confirmingDelete = false}>Cancel</button>
-                            <button type="button" class="bg-rose-600 px-3 py-2 text-xs text-white hover:bg-rose-700" on:click={deleteApp}>Confirm delete</button>
+                            <button type="button" class="bg-rose-600 px-3 py-2 text-xs text-white hover:bg-rose-700" disabled={deleting} on:click={deleteApp}>Confirm delete</button>
                         </div>
                     {:else}
                         <div class="flex items-center justify-between gap-3">

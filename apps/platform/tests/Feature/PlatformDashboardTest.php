@@ -299,6 +299,19 @@ class PlatformDashboardTest extends TestCase
         $this->assertDatabaseHas('mobile_apps', ['id' => $foreignApp->id]);
     }
 
+    public function test_update_and_destroy_404_when_app_belongs_to_another_team(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+
+        $this->actingAs($user)
+            ->patch("/accounts/{$team->slug}/apps/{$foreignApp->slug}", ['name' => 'X'])
+            ->assertNotFound();
+        $this->delete("/accounts/{$team->slug}/apps/{$foreignApp->slug}")->assertNotFound();
+
+        $this->assertDatabaseHas('mobile_apps', ['id' => $foreignApp->id]);
+    }
+
     public function test_destroy_url_is_exposed_on_the_drilldown(): void
     {
         [$user, $team] = $this->userWithTeam();
