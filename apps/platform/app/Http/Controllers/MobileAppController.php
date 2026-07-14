@@ -92,6 +92,7 @@ class MobileAppController extends Controller
                 'urls' => [
                     'index' => route('accounts.apps.index', ['team' => $team]),
                     'update' => route('accounts.apps.update', ['team' => $team, 'mobileApp' => $mobileApp]),
+                    'destroy' => route('accounts.apps.destroy', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'identifiers' => route('accounts.apps.identifiers.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'credentials' => route('accounts.apps.credentials.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'assets' => route('accounts.apps.assets.upload', ['team' => $team, 'mobileApp' => $mobileApp, 'collection' => '__collection__']),
@@ -139,6 +140,17 @@ class MobileAppController extends Controller
         return redirect()
             ->route('accounts.apps.show', ['team' => $team, 'mobileApp' => $mobileApp])
             ->with('status', 'Application updated.');
+    }
+
+    public function destroy(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
+    {
+        $this->authorizeTeam($request, $team);
+
+        $mobileApp->delete();
+
+        return redirect()
+            ->route('accounts.apps.index', ['team' => $team])
+            ->with('status', 'Application deleted.');
     }
 
     private function credentialData(Team $team, $credential, $identifier, $profile): array

@@ -276,6 +276,40 @@ class PlatformDashboardTest extends TestCase
                 ->where('app.urls.update', route('accounts.apps.update', [$team, $app])));
     }
 
+    public function test_user_can_delete_an_application(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->delete(route('accounts.apps.destroy', [$team, $app]))
+            ->assertRedirect(route('accounts.apps.index', $team))
+            ->assertSessionHas('status', 'Application deleted.');
+
+        $this->assertDatabaseMissing('mobile_apps', ['id' => $app->id]);
+    }
+
+    public function test_user_cannot_delete_an_app_from_another_team(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+
+        $this->actingAs($user)->delete(route('accounts.apps.destroy', [$foreignApp->team, $foreignApp]))
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('mobile_apps', ['id' => $foreignApp->id]);
+    }
+
+    public function test_destroy_url_is_exposed_on_the_drilldown(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('app.urls.destroy', route('accounts.apps.destroy', [$team, $app])));
+    }
+
     private function userWithTeam(): array
     {
         $user = User::factory()->create();
