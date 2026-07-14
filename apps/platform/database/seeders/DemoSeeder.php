@@ -189,6 +189,32 @@ class DemoSeeder extends Seeder
                 ->usingFileName('appstore-api-key.p8')
                 ->toMediaCollection('file');
         }
+
+        // Client Firebase config for Android.
+        $androidFirebase = Credential::updateOrCreate(
+            ['team_id' => $team->id, 'type' => CredentialType::GoogleServicesJson, 'name' => 'Firebase google-services.json'],
+            ['payload' => null],
+        );
+        $identifier->credentials()->syncWithoutDetaching([$androidFirebase->id]);
+
+        if (! $androidFirebase->hasMedia('file')) {
+            $androidFirebase->addMediaFromString($this->makeGoogleServicesJson())
+                ->usingFileName('google-services.json')
+                ->toMediaCollection('file');
+        }
+
+        // Client Firebase config for iOS.
+        $iosFirebase = Credential::updateOrCreate(
+            ['team_id' => $team->id, 'type' => CredentialType::GoogleServiceInfoPlist, 'name' => 'Firebase GoogleService-Info.plist'],
+            ['payload' => null],
+        );
+        $iosIdentifier->credentials()->syncWithoutDetaching([$iosFirebase->id]);
+
+        if (! $iosFirebase->hasMedia('file')) {
+            $iosFirebase->addMediaFromString($this->makeGoogleServiceInfoPlist())
+                ->usingFileName('GoogleService-Info.plist')
+                ->toMediaCollection('file');
+        }
     }
 
     private function makePng(int $size, string $hex): string
@@ -226,6 +252,45 @@ class DemoSeeder extends Seeder
             'client_id' => '000000000000000000000',
             'token_uri' => 'https://oauth2.googleapis.com/token',
         ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
+    }
+
+    private function makeGoogleServicesJson(): string
+    {
+        return json_encode([
+            'project_info' => [
+                'project_number' => '000000000000',
+                'project_id' => 'app-manager-demo',
+                'storage_bucket' => 'app-manager-demo.appspot.com',
+            ],
+            'client' => [[
+                'client_info' => [
+                    'mobilesdk_app_id' => '1:000000000000:android:0000000000000000',
+                    'android_client_info' => ['package_name' => self::IOS_BUNDLE_IDENTIFIER],
+                ],
+                'api_key' => [['current_key' => 'DEMO-ANDROID-API-KEY']],
+            ]],
+            'configuration_version' => '1',
+        ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
+    }
+
+    private function makeGoogleServiceInfoPlist(): string
+    {
+        $bundleId = self::IOS_BUNDLE_IDENTIFIER;
+
+        return <<<PLIST
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>BUNDLE_ID</key><string>{$bundleId}</string>
+            <key>PROJECT_ID</key><string>app-manager-demo</string>
+            <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
+            <key>API_KEY</key><string>DEMO-IOS-API-KEY</string>
+            <key>GCM_SENDER_ID</key><string>000000000000</string>
+            <key>IS_ADS_ENABLED</key><false/>
+        </dict>
+        </plist>
+        PLIST;
     }
 
     private function isValidDemoKeystore(string $path): bool
