@@ -186,6 +186,64 @@ class CredentialInputValidationTest extends TestCase
         $this->assertSame('existing.json', $credential->fresh()->getFirstMedia('file')->file_name);
     }
 
+    public function test_google_services_json_requires_firebase_client_structure(): void
+    {
+        Storage::fake('public');
+        [$user, $app, $identifier] = $this->application(Platform::Android);
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServicesJson->value,
+            'name' => 'Android Firebase',
+            'file' => UploadedFile::fake()->createWithContent('google-services.json', '{"project_info":{}}'),
+        ])->assertSessionHasErrors('file');
+
+        $valid = json_encode([
+            'project_info' => ['project_id' => 'demo', 'project_number' => '123'],
+            'client' => [['client_info' => ['mobilesdk_app_id' => '1:123:android:abc']]],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServicesJson->value,
+            'name' => 'Android Firebase',
+            'file' => UploadedFile::fake()->createWithContent('google-services.json', $valid),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('credentials', ['type' => CredentialType::GoogleServicesJson->value]);
+    }
+
+    public function test_google_service_info_plist_requires_firebase_keys(): void
+    {
+        Storage::fake('public');
+        [$user, $app, $identifier] = $this->application(Platform::Ios);
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServiceInfoPlist->value,
+            'name' => 'iOS Firebase',
+            'file' => UploadedFile::fake()->createWithContent('GoogleService-Info.plist', 'not a plist'),
+        ])->assertSessionHasErrors('file');
+
+        $valid = <<<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>BUNDLE_ID</key><string>com.example.app</string>
+<key>GOOGLE_APP_ID</key><string>1:123:ios:abc</string>
+<key>PROJECT_ID</key><string>demo</string>
+</dict></plist>
+PLIST;
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServiceInfoPlist->value,
+            'name' => 'iOS Firebase',
+            'file' => UploadedFile::fake()->createWithContent('GoogleService-Info.plist', $valid),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('credentials', ['type' => CredentialType::GoogleServiceInfoPlist->value]);
+    }
+
     private function application(Platform $platform): array
     {
         $user = User::factory()->create();

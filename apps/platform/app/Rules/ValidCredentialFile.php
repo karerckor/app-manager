@@ -44,6 +44,8 @@ class ValidCredentialFile implements ValidationRule
             CredentialType::AppleApiKey => $this->validatePrivateKey($contents, $fail),
             CredentialType::FirebaseConfig,
             CredentialType::GooglePlayServiceAccount => $this->validateServiceAccount($contents, $fail),
+            CredentialType::GoogleServicesJson => $this->validateGoogleServicesJson($contents, $fail),
+            CredentialType::GoogleServiceInfoPlist => $this->validateGoogleServiceInfoPlist($contents, $fail),
             default => null,
         };
     }
@@ -90,6 +92,43 @@ class ValidCredentialFile implements ValidationRule
 
         if (! str_contains($json['private_key'], 'BEGIN PRIVATE KEY') || @openssl_pkey_get_private($json['private_key']) === false) {
             $fail('The service-account JSON contains an invalid private_key.');
+        }
+    }
+
+    private function validateGoogleServicesJson(string $contents, Closure $fail): void
+    {
+        try {
+            $json = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            $fail('The google-services.json file must contain valid JSON.');
+
+            return;
+        }
+
+        if (! is_array($json['project_info'] ?? null) || blank($json['project_info'])) {
+            $fail('The google-services.json file must contain a non-empty project_info object.');
+
+            return;
+        }
+
+        if (! is_array($json['client'] ?? null) || blank($json['client'])) {
+            $fail('The google-services.json file must contain a non-empty client array.');
+        }
+    }
+
+    private function validateGoogleServiceInfoPlist(string $contents, Closure $fail): void
+    {
+        if (@simplexml_load_string($contents, 'SimpleXMLElement', LIBXML_NONET) === false) {
+            $fail('The GoogleService-Info.plist file must be a well-formed plist.');
+
+            return;
+        }
+
+        $hasIdentity = str_contains($contents, '<key>GOOGLE_APP_ID</key>')
+            || str_contains($contents, '<key>PROJECT_ID</key>');
+
+        if (! str_contains($contents, '<key>BUNDLE_ID</key>') || ! $hasIdentity) {
+            $fail('The GoogleService-Info.plist file must contain BUNDLE_ID and a Firebase project identifier.');
         }
     }
 }
