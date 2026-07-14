@@ -37,6 +37,16 @@ npm start
 - `credentials/ios/distribution.p12` — iOS distribution certificate;
 - `credentials/ios/profile.mobileprovision` — iOS App Store provisioning profile.
 
+Дополнительно prepare скачивает (если настроены в Platform):
+
+- `assets/icon.png` и `assets/splash.png` — иконка и splash, прописываются в `app.json`;
+- `google-services.json` / `GoogleService-Info.plist` — клиентский Firebase config,
+  прописывается в `expo.android.googleServicesFile` / `expo.ios.googleServicesFile`;
+- `credentials/android/google-play-service-account.json` — ключ Google Play для загрузки;
+- `credentials/ios/appstore-api-key.p8` — App Store Connect API key для TestFlight;
+- `fastlane/context.json` — машинный манифест для Fastlane (идентификаторы, версии,
+  типы профилей, пути к store-ключам). Пароли остаются только в `credentials.json`.
+
 По умолчанию используются данные `DemoSeeder`:
 
 ```text
@@ -69,3 +79,23 @@ Demo seed генерирует криптографически корректн
 CMS `.mobileprovision`, чтобы API и `prepare` можно было проверить локально. Apple
 не доверяет demo-сертификату: для реальной подписи и публикации замените обе iOS
 credentials в Platform материалами из Apple Developer account.
+
+## Сборка и деплой (Fastlane)
+
+Требуется Ruby + Fastlane (`bundle install`), а также Xcode (iOS) и Android SDK.
+
+```bash
+bundle install
+npm run prepare          # готовит app.json, credentials.json, context.json, native-проекты
+
+bundle exec fastlane build platforms:"android"      # signed AAB
+bundle exec fastlane build platforms:"ios"          # signed IPA
+bundle exec fastlane build                          # обе платформы
+
+# Деплой опционален: по умолчанию lane останавливается на подписанном артефакте.
+bundle exec fastlane deploy platforms:"android" submit:true   # → Google Play (internal)
+bundle exec fastlane deploy platforms:"ios" submit:true       # → TestFlight
+```
+
+Демо-credentials самоподписанные — реальные сторы их отклонят. Деплой предназначен
+для использования с настоящими store-ключами, загруженными в Platform.
