@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+.vscode/
+apps/platform/.env
+apps/platform/vendor/
+apps/platform/node_modules/
+apps/platform/public/build/
+libs/fastlane-plugin/.bundle/
+libs/fastlane-plugin/pkg/
+libs/fastlane-plugin/*.gem
