@@ -29,7 +29,8 @@ class CredentialSchema
                 [
                     self::field('password', 'Certificate password', 'password'),
                 ],
-                true,
+                profileScoped: true,
+                expires: true,
             ),
             CredentialType::ProvisioningProfile => self::make(
                 $type,
@@ -38,7 +39,8 @@ class CredentialSchema
                 ['mobileprovision'],
                 'Apple provisioning profile (.mobileprovision)',
                 [],
-                true,
+                profileScoped: true,
+                expires: true,
             ),
             CredentialType::ApnsKey => self::make(
                 $type,
@@ -145,6 +147,11 @@ class CredentialSchema
         return self::definition($type)['attachment'] === 'profile';
     }
 
+    public static function expires(CredentialType $type): bool
+    {
+        return self::definition($type)['expires'];
+    }
+
     public static function attachmentRules(CredentialType $type): array
     {
         return [
@@ -162,12 +169,14 @@ class CredentialSchema
         string $fileHint,
         array $fields = [],
         bool $profileScoped = false,
+        bool $expires = false,
     ): array {
         return [
             'value' => $type->value,
             'label' => $label,
             'platforms' => $platforms,
             'attachment' => $profileScoped ? 'profile' : 'identifier',
+            'expires' => $expires,
             'profiles' => $profileScoped
                 ? collect($platforms)->flatMap(fn (string $platform) => BuildProfileSchema::forPlatform($platform))->values()->all()
                 : [],
