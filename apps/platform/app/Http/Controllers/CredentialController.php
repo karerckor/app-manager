@@ -124,7 +124,9 @@ class CredentialController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
-            'expires_at' => ['nullable', 'date'],
+            'expires_at' => $type && CredentialSchema::expires($type)
+                ? ['nullable', 'date']
+                : ['prohibited'],
         ];
 
         if ($type) {
@@ -164,8 +166,9 @@ class CredentialController extends Controller
 
         DB::transaction(function () use ($credential, $data, $type, $mobileApp, $identifier, $profileType, $request) {
             $credential->update([
-                ...Arr::only($data, ['name', 'expires_at']),
+                ...Arr::only($data, ['name']),
                 'type' => $type,
+                'expires_at' => CredentialSchema::expires($type) ? ($data['expires_at'] ?? null) : null,
                 'payload' => $data['payload'] ?? null,
             ]);
 

@@ -51,7 +51,6 @@ class CredentialUpdateTest extends TestCase
             'type' => CredentialType::AndroidKeystore->value,
             'profile_type' => ProfileType::Preview->value,
             'name' => 'Preview keystore',
-            'expires_at' => '2027-08-09',
             'payload' => [
                 'store_password' => '',
                 'key_alias' => 'preview-alias',
@@ -66,7 +65,6 @@ class CredentialUpdateTest extends TestCase
         $newProfile = $secondIdentifier->profiles()->where('type', ProfileType::Preview)->firstOrFail();
 
         $this->assertSame('Preview keystore', $credential->name);
-        $this->assertSame('2027-08-09', $credential->expires_at->toDateString());
         $this->assertSame([
             'store_password' => 'old-store-secret',
             'key_alias' => 'preview-alias',
@@ -165,6 +163,78 @@ class CredentialUpdateTest extends TestCase
 
         $this->assertSame(CredentialType::AndroidKeystore, $credential->fresh()->type);
         $this->assertSame('release.keystore', $credential->fresh()->getFirstMedia('file')->file_name);
+    }
+
+    public function test_update_rejects_expiration_on_a_non_expiring_type(): void
+    {
+        Storage::fake('public');
+        [$user, $team, $app] = $this->application();
+        $identifier = $this->identifier($app, 'com.example.app');
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::GooglePlayServiceAccount,
+            'name' => 'Play account',
+        ]);
+        $identifier->credentials()->attach($credential);
+        $credential->addMediaFromString('{}')->usingFileName('sa.json')->toMediaCollection('file');
+
+        $this->actingAs($user)->post(route('accounts.credentials.update', [$team, $credential]), [
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GooglePlayServiceAccount->value,
+            'name' => 'Play account',
+            'expires_at' => '2027-01-31',
+            'payload' => [],
+        ])->assertSessionHasErrors('expires_at');
+    }
+
+    public function test_update_clears_expiration_when_changing_to_a_non_expiring_type(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->users()->attach($user, ['role' => 'owner']);
+        $user->update(['current_team_id' => $team->id]);
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.ios',
+        ]);
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::ProvisioningProfile,
+            'name' => 'Profile',
+            'expires_at' => '2027-01-31',
+        ]);
+        $profile = $identifier->profiles()->create([
+            'type' => ProfileType::AppStore,
+            'name' => 'App Store',
+        ]);
+        $profile->credentials()->attach($credential);
+        $credential->addMediaFromString('profile')->usingFileName('app.mobileprovision')->toMediaCollection('file');
+
+        $this->actingAs($user->fresh())->post(route('accounts.credentials.update', [$team, $credential]), [
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::ApnsKey->value,
+            'name' => 'Push key',
+            'payload' => ['key_id' => 'ABC123DEFG', 'team_id' => 'TEAM123456'],
+            'file' => UploadedFile::fake()->createWithContent('AuthKey.p8', $this->privateKey()),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertNull($credential->fresh()->expires_at);
+    }
+
+    private function privateKey(): string
+    {
+        $key = openssl_pkey_new([
+            'private_key_bits' => 2048,
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+        ]);
+        openssl_pkey_export($key, $pem);
+
+        return $pem;
     }
 
     private function application(): array
