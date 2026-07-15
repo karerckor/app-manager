@@ -115,7 +115,7 @@
         form.name = editing.name;
         form.type = editing.type;
         form.profile_type = '';
-        form.expires_at = editing.expires_at?.slice(0, 10) ?? '';
+        form.expires_at = schema?.expires ? (editing.expires_at?.slice(0, 10) ?? '') : '';
         form.payload = { ...payloadFor(schema), ...editing.payload };
         form.file = null;
         form.check_uniqueness = checkUniquenessByDefault;

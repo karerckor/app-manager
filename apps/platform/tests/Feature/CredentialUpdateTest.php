@@ -187,6 +187,8 @@ class CredentialUpdateTest extends TestCase
             'expires_at' => '2027-01-31',
             'payload' => [],
         ])->assertSessionHasErrors('expires_at');
+
+        $this->assertSame('Play account', $credential->fresh()->name);
     }
 
     public function test_update_clears_expiration_when_changing_to_a_non_expiring_type(): void
@@ -225,6 +227,46 @@ class CredentialUpdateTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertNull($credential->fresh()->expires_at);
+    }
+
+    public function test_update_stores_expiration_on_an_expiring_type(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->users()->attach($user, ['role' => 'owner']);
+        $user->update(['current_team_id' => $team->id]);
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.ios',
+        ]);
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::ProvisioningProfile,
+            'name' => 'Profile',
+            'expires_at' => '2027-01-31',
+        ]);
+        $profile = $identifier->profiles()->create([
+            'type' => ProfileType::AppStore,
+            'name' => 'App Store',
+        ]);
+        $profile->credentials()->attach($credential);
+        $credential->addMediaFromString('profile')->usingFileName('app.mobileprovision')->toMediaCollection('file');
+
+        $this->actingAs($user->fresh())->post(route('accounts.credentials.update', [$team, $credential]), [
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::ProvisioningProfile->value,
+            'profile_type' => ProfileType::AppStore->value,
+            'name' => 'Profile',
+            'expires_at' => '2028-06-01',
+            'payload' => [],
+            'file' => UploadedFile::fake()->createWithContent('app.mobileprovision', 'profile'),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('2028-06-01', $credential->fresh()->expires_at->toDateString());
     }
 
     private function privateKey(): string

@@ -142,7 +142,7 @@
         credentialForm.name = credential.name;
         credentialForm.type = credential.type;
         credentialForm.profile_type = credential.profile?.value ?? '';
-        credentialForm.expires_at = credential.expires_at?.slice(0, 10) ?? '';
+        credentialForm.expires_at = schema?.expires ? (credential.expires_at?.slice(0, 10) ?? '') : '';
         credentialForm.payload = { ...payloadFor(schema), ...credential.payload };
         credentialForm.file = null;
         credentialForm.check_uniqueness = checkUniquenessByDefault;
