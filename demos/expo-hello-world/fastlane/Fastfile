@@ -25,17 +25,19 @@ end
 
 def profile_metadata(profile_path)
   decoded = "#{profile_path}.plist"
-  sh("bash", "-c", "security cms -D -i #{profile_path.shellescape} > #{decoded.shellescape}")
-  meta = {
-    uuid: sh("plutil", "-extract", "UUID", "raw", "-o", "-", decoded).strip,
-    name: sh("plutil", "-extract", "Name", "raw", "-o", "-", decoded).strip,
-    team: sh("plutil", "-extract", "TeamIdentifier.0", "raw", "-o", "-", decoded).strip,
-  }
-  File.delete(decoded) if File.exist?(decoded)
-  meta
+  begin
+    sh("bash", "-c", "security cms -D -i #{profile_path.shellescape} > #{decoded.shellescape}")
+    {
+      uuid: sh("plutil", "-extract", "UUID", "raw", "-o", "-", decoded).strip,
+      name: sh("plutil", "-extract", "Name", "raw", "-o", "-", decoded).strip,
+      team: sh("plutil", "-extract", "TeamIdentifier.0", "raw", "-o", "-", decoded).strip,
+    }
+  ensure
+    File.delete(decoded) if File.exist?(decoded)
+  end
 end
 
-def setup_ios_signing(credentials)
+def setup_ios_signing(credentials, signing)
   cert = credentials.dig("ios", "distributionCertificate")
   UI.user_error!("No iOS distribution certificate in credentials.json") unless cert
   cert_path = File.expand_path(cert["path"], PROJECT_ROOT)
@@ -43,7 +45,7 @@ def setup_ios_signing(credentials)
   UI.user_error!("iOS provisioning profile is missing") unless File.exist?(profile_path)
 
   sh("security", "delete-keychain", IOS_KEYCHAIN) if File.exist?(IOS_KEYCHAIN)
-  # log: false on commands carrying the keychain or certificate password (avoid leaking secrets to the fastlane log)
+  # log: false on commands carrying the keychain or certificate password
   sh("security", "create-keychain", "-p", IOS_KEYCHAIN_PASSWORD, IOS_KEYCHAIN, log: false)
   sh("security", "set-keychain-settings", IOS_KEYCHAIN)
   sh("security", "unlock-keychain", "-p", IOS_KEYCHAIN_PASSWORD, IOS_KEYCHAIN, log: false)
@@ -52,8 +54,9 @@ def setup_ios_signing(credentials)
   sh("security", "set-key-partition-list", "-S", "apple-tool:,apple:",
      "-s", "-k", IOS_KEYCHAIN_PASSWORD, IOS_KEYCHAIN, log: false)
 
-  previous = sh("security", "list-keychains", "-d", "user").scan(/"([^"]+)"/).flatten
-  sh("security", "list-keychains", "-d", "user", "-s", IOS_KEYCHAIN, *previous)
+  # Record the search list BEFORE mutating it, so teardown can always restore it.
+  signing[:previous_keychains] = sh("security", "list-keychains", "-d", "user").scan(/"([^"]+)"/).flatten
+  sh("security", "list-keychains", "-d", "user", "-s", IOS_KEYCHAIN, *signing[:previous_keychains])
 
   identity = sh("security", "find-identity", "-v", "-p", "codesigning", IOS_KEYCHAIN)[/\b([0-9A-F]{40})\b/, 1]
   UI.user_error!("No valid iOS signing identity after import (missing WWDR/root in system keychain?)") unless identity
@@ -63,16 +66,18 @@ def setup_ios_signing(credentials)
   FileUtils.mkdir_p(profiles_dir)
   installed_profile = File.join(profiles_dir, "#{meta[:uuid]}.mobileprovision")
   FileUtils.cp(profile_path, installed_profile)
+  signing[:installed_profile] = installed_profile
 
-  { identity: identity, profile_name: meta[:name], team: meta[:team],
-    previous_keychains: previous, installed_profile: installed_profile }
+  { identity: identity, profile_name: meta[:name], team: meta[:team] }
 end
 
-def teardown_ios_signing(state)
-  return unless state
-  sh("security", "list-keychains", "-d", "user", "-s", *state[:previous_keychains]) if state[:previous_keychains]
+def teardown_ios_signing(signing)
+  return unless signing
+  if signing[:previous_keychains] && ! signing[:previous_keychains].empty?
+    sh("security", "list-keychains", "-d", "user", "-s", *signing[:previous_keychains])
+  end
   sh("security", "delete-keychain", IOS_KEYCHAIN) if File.exist?(IOS_KEYCHAIN)
-  File.delete(state[:installed_profile]) if state[:installed_profile] && File.exist?(state[:installed_profile])
+  File.delete(signing[:installed_profile]) if signing[:installed_profile] && File.exist?(signing[:installed_profile])
 end
 
 before_all do
@@ -133,28 +138,28 @@ lane :build_ios do
   UI.user_error!("No Xcode workspace found; run `expo prebuild` first.") if workspace.nil?
 
   bundle_id = context.dig("ios", "bundleIdentifier")
-  state = nil
+  signing = {}
   begin
-    state = setup_ios_signing(credentials)
+    info = setup_ios_signing(credentials, signing)
     build_app(
       workspace: workspace,
       scheme: File.basename(workspace, ".xcworkspace"),
       export_method: "app-store",
       output_directory: File.join(PROJECT_ROOT, "build"),
-      xcargs: %Q(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{state[:team]} ) +
-              %Q(PROVISIONING_PROFILE_SPECIFIER="#{state[:profile_name]}" ) +
-              %Q(CODE_SIGN_IDENTITY=#{state[:identity]}),
+      xcargs: %Q(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{info[:team]} ) +
+              %Q(PROVISIONING_PROFILE_SPECIFIER="#{info[:profile_name]}" ) +
+              %Q(CODE_SIGN_IDENTITY=#{info[:identity]}),
       export_options: {
         method: "app-store",
         signingStyle: "manual",
-        teamID: state[:team],
-        provisioningProfiles: { bundle_id => state[:profile_name] },
+        teamID: info[:team],
+        provisioningProfiles: { bundle_id => info[:profile_name] },
         signingCertificate: "Apple Distribution",
       },
     )
     UI.success("Built #{bundle_id} signed release IPA.")
   ensure
-    teardown_ios_signing(state)
+    teardown_ios_signing(signing)
   end
 end
 
