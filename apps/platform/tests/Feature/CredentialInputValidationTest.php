@@ -244,6 +244,46 @@ PLIST;
         $this->assertDatabaseHas('credentials', ['type' => CredentialType::GoogleServiceInfoPlist->value]);
     }
 
+    public function test_ios_certificate_accepts_an_expiration_date(): void
+    {
+        Storage::fake('public');
+        [$user, $app, $identifier] = $this->application(Platform::Ios);
+        $certificate = $this->pkcs12('pw');
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::IosCertificate->value,
+            'name' => 'Distribution certificate',
+            'profile_type' => ProfileType::AppStore->value,
+            'expires_at' => '2027-01-31',
+            'payload' => ['password' => 'pw'],
+            'file' => UploadedFile::fake()->createWithContent('distribution.p12', $certificate),
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame('2027-01-31', Credential::firstOrFail()->expires_at->toDateString());
+    }
+
+    public function test_non_expiring_type_rejects_an_expiration_date(): void
+    {
+        Storage::fake('public');
+        [$user, $app, $identifier] = $this->application(Platform::Android);
+
+        $valid = json_encode([
+            'project_info' => ['project_id' => 'demo', 'project_number' => '123'],
+            'client' => [['client_info' => ['mobilesdk_app_id' => '1:123:android:abc']]],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->actingAs($user)->post($this->credentialStoreUrl($app), [
+            'app_identifier_id' => $identifier->id,
+            'type' => CredentialType::GoogleServicesJson->value,
+            'name' => 'Android Firebase',
+            'expires_at' => '2027-01-31',
+            'file' => UploadedFile::fake()->createWithContent('google-services.json', $valid),
+        ])->assertSessionHasErrors('expires_at');
+
+        $this->assertDatabaseCount('credentials', 0);
+    }
+
     private function application(Platform $platform): array
     {
         $user = User::factory()->create();
