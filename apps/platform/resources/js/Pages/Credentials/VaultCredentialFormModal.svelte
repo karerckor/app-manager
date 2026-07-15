@@ -156,6 +156,7 @@
             ? { ...payloadFor(schema), ...editing.payload }
             : payloadFor(schema);
         form.file = null;
+        if (!schema?.expires) form.expires_at = '';
         credentialTypeChanged = Boolean(editing) && String(value) !== String(editing.type);
     };
     const changeApp = (event) => {
@@ -287,18 +288,20 @@
                     </p>
                 {/if}
 
-                <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-4 {selectedSchema?.expires ? 'sm:grid-cols-2' : ''}">
                     <label>
                         <span class="label">Credential type</span>
                         <Select bind:value={form.type} options={availableCredentialTypes.map((type) => ({ value: type.value, label: type.label }))} ariaLabel="Credential type" on:change={(event) => setType(event.detail)} disabled={typeLocked} />
                         {#if typeLocked}<span class="mt-1 block text-[10px] text-faint">Detach this credential from all targets before changing its type.</span>{/if}
                         {#if form.errors.type}<span class="error">{form.errors.type}</span>{/if}
                     </label>
-                    <label>
-                        <span class="label">Expiration <span class="font-normal text-faint">(optional)</span></span>
-                        <input type="date" bind:value={form.expires_at} />
-                        {#if form.errors.expires_at}<span class="error">{form.errors.expires_at}</span>{/if}
-                    </label>
+                    {#if selectedSchema?.expires}
+                        <label>
+                            <span class="label">Expiration <span class="font-normal text-faint">(optional)</span></span>
+                            <input type="date" bind:value={form.expires_at} />
+                            {#if form.errors.expires_at}<span class="error">{form.errors.expires_at}</span>{/if}
+                        </label>
+                    {/if}
                 </div>
 
                 {#if !editing && selectedSchema?.attachment === 'profile'}

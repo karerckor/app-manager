@@ -214,6 +214,7 @@
             ? { ...payloadFor(schema), ...editing.payload }
             : payloadFor(schema);
         credentialForm.file = null;
+        if (!schema?.expires) credentialForm.expires_at = '';
         credentialTypeChanged = Boolean(editing) && String(value) !== String(editing.type);
     };
     const changeCredentialType = (event) => selectCredentialType(event.detail);
@@ -335,18 +336,20 @@
                         </p>
                     {/if}
 
-                    <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="grid gap-4 {selectedSchema?.expires ? 'sm:grid-cols-2' : ''}">
                         <label>
                             <span class="label">Credential type</span>
                             <Select bind:value={credentialForm.type} options={availableCredentialTypes.map((type) => ({ value: type.value, label: type.label }))} ariaLabel="Credential type" on:change={changeCredentialType} disabled={editing} />
                             {#if editing}<span class="mt-1 block text-[10px] text-faint">Detach it from all targets in Credentials Vault before changing its type.</span>{/if}
                             {#if credentialForm.errors.type}<span class="error">{credentialForm.errors.type}</span>{/if}
                         </label>
-                        <label>
-                            <span class="label">Expiration <span class="font-normal text-faint">(optional)</span></span>
-                            <input type="date" bind:value={credentialForm.expires_at} />
-                            {#if credentialForm.errors.expires_at}<span class="error">{credentialForm.errors.expires_at}</span>{/if}
-                        </label>
+                        {#if selectedSchema?.expires}
+                            <label>
+                                <span class="label">Expiration <span class="font-normal text-faint">(optional)</span></span>
+                                <input type="date" bind:value={credentialForm.expires_at} />
+                                {#if credentialForm.errors.expires_at}<span class="error">{credentialForm.errors.expires_at}</span>{/if}
+                            </label>
+                        {/if}
                     </div>
                     {#if !editing && selectedSchema?.attachment === 'profile'}
                         <fieldset>
