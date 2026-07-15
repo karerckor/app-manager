@@ -183,7 +183,7 @@ class CredentialUpdateTest extends TestCase
             'mobile_app_id' => $app->id,
             'app_identifier_id' => $identifier->id,
             'type' => CredentialType::GooglePlayServiceAccount->value,
-            'name' => 'Play account',
+            'name' => 'Renamed account',
             'expires_at' => '2027-01-31',
             'payload' => [],
         ])->assertSessionHasErrors('expires_at');
