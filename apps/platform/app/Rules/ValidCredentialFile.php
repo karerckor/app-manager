@@ -78,12 +78,14 @@ class ValidCredentialFile implements ValidationRule
         try {
             file_put_contents($temp, $contents);
 
+            // Pass the password via the child environment (env:) rather than argv (pass:)
+            // so it is not exposed in the process list / /proc/<pid>/cmdline.
             $process = new Process([
                 'openssl', 'pkcs12', '-legacy',
                 '-in', $temp,
-                '-passin', 'pass:'.$password,
+                '-passin', 'env:P12PASS',
                 '-noout',
-            ]);
+            ], env: ['P12PASS' => $password]);
             $process->run();
 
             return $process->isSuccessful();
