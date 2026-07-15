@@ -54,4 +54,16 @@ class CredentialSchemaTighteningTest extends TestCase
         $this->assertSame(['plist'], $plist['file']['extensions']);
         $this->assertSame([], $plist['fields']);
     }
+
+    public function test_only_apple_signing_types_are_marked_as_expiring(): void
+    {
+        $expiring = [CredentialType::IosCertificate, CredentialType::ProvisioningProfile];
+
+        foreach (CredentialType::cases() as $type) {
+            $shouldExpire = in_array($type, $expiring, true);
+
+            $this->assertSame($shouldExpire, CredentialSchema::definition($type)['expires']);
+            $this->assertSame($shouldExpire, CredentialSchema::expires($type));
+        }
+    }
 }
