@@ -97,5 +97,11 @@ bundle exec fastlane deploy platforms:"android" submit:true   # → Google Play 
 bundle exec fastlane deploy platforms:"ios" submit:true       # → TestFlight
 ```
 
+`build ios` подписывает IPA вручную: lane создаёт временный keychain, импортирует
+скачанный distribution-сертификат, устанавливает provisioning profile и собирает с
+manual signing, затем удаляет временный keychain и профиль. Цепочку доверия (WWDR,
+Apple root) берёт из системного keychain. CocoaPods поставляется через `Gemfile`,
+поэтому `pod install` работает под `bundle exec`.
+
 Демо-credentials самоподписанные — реальные сторы их отклонят. Деплой предназначен
 для использования с настоящими store-ключами, загруженными в Platform.

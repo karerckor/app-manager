@@ -7,6 +7,7 @@ use App\Support\Credentials\CredentialSchema;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Http\UploadedFile;
+use Symfony\Component\Process\Process;
 
 class ValidCredentialFile implements ValidationRule
 {
@@ -53,9 +54,45 @@ class ValidCredentialFile implements ValidationRule
     private function validatePkcs12(string $contents, Closure $fail): void
     {
         $certificates = [];
+        $password = (string) ($this->payload['password'] ?? '');
 
-        if (! @openssl_pkcs12_read($contents, $certificates, (string) ($this->payload['password'] ?? ''))) {
-            $fail('The PKCS#12 file is invalid or the certificate password is incorrect.');
+        if (@openssl_pkcs12_read($contents, $certificates, $password)) {
+            return;
+        }
+
+        if ($this->readableWithOpensslCli($contents, $password)) {
+            return;
+        }
+
+        $fail('The PKCS#12 file is invalid or the certificate password is incorrect.');
+    }
+
+    private function readableWithOpensslCli(string $contents, string $password): bool
+    {
+        $temp = tempnam(sys_get_temp_dir(), 'p12');
+
+        if ($temp === false) {
+            return false;
+        }
+
+        try {
+            file_put_contents($temp, $contents);
+
+            // Pass the password via the child environment (env:) rather than argv (pass:)
+            // so it is not exposed in the process list / /proc/<pid>/cmdline.
+            $process = new Process([
+                'openssl', 'pkcs12', '-legacy',
+                '-in', $temp,
+                '-passin', 'env:P12PASS',
+                '-noout',
+            ], env: ['P12PASS' => $password]);
+            $process->run();
+
+            return $process->isSuccessful();
+        } catch (\Throwable) {
+            return false;
+        } finally {
+            @unlink($temp);
         }
     }
 
