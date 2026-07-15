@@ -93,7 +93,9 @@ class CredentialController extends Controller
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
-            'expires_at' => ['nullable', 'date'],
+            'expires_at' => $type && CredentialSchema::expires($type)
+                ? ['nullable', 'date']
+                : ['prohibited'],
             'check_uniqueness' => ['sometimes', 'boolean'],
             ...$this->credentialRules->forCreate($team, $request, $mode, $type),
         ];
