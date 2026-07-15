@@ -114,6 +114,7 @@
             ? { ...payloadFor(schema), ...editingCredential.payload }
             : payloadFor(schema);
         credentialForm.file = null;
+        if (! schema?.expires) credentialForm.expires_at = '';
     };
     const changeIdentifier = (event) => {
         credentialForm.app_identifier_id = event.currentTarget.value;
@@ -338,7 +339,7 @@
                     </select>
                     {#if credentialForm.errors.app_identifier_id}<span class="error">{credentialForm.errors.app_identifier_id}</span>{/if}
                 </label>
-                <div class="grid gap-4 sm:grid-cols-2">
+                <div class="grid gap-4 {selectedSchema?.expires ? 'sm:grid-cols-2' : ''}">
                     <label>
                         <span class="label">Credential type</span>
                         <select value={credentialForm.type} on:change={changeCredentialType}>
@@ -346,11 +347,13 @@
                         </select>
                         {#if credentialForm.errors.type}<span class="error">{credentialForm.errors.type}</span>{/if}
                     </label>
-                    <label>
-                        <span class="label">Expiration <span class="font-normal text-slate-400">(optional)</span></span>
-                        <input type="date" bind:value={credentialForm.expires_at} />
-                        {#if credentialForm.errors.expires_at}<span class="error">{credentialForm.errors.expires_at}</span>{/if}
-                    </label>
+                    {#if selectedSchema?.expires}
+                        <label>
+                            <span class="label">Expiration <span class="font-normal text-slate-400">(optional)</span></span>
+                            <input type="date" bind:value={credentialForm.expires_at} />
+                            {#if credentialForm.errors.expires_at}<span class="error">{credentialForm.errors.expires_at}</span>{/if}
+                        </label>
+                    {/if}
                 </div>
                 {#if selectedSchema?.attachment === 'profile'}
                     <fieldset>
