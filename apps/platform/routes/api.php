@@ -19,7 +19,7 @@ Route::prefix('v1/{team:slug}')
             ->name('credential-types.index');
 
         Route::get('/apps', [MobileAppController::class, 'index'])->middleware('abilities:apps:read')->name('apps.index');
-        Route::post('/apps', [MobileAppController::class, 'store'])->middleware('abilities:apps:write')->name('apps.store');
+        Route::post('/apps', [MobileAppController::class, 'store'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.store');
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware('abilities:apps:read')->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware('abilities:apps:write')->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware('abilities:apps:write')->name('apps.destroy');
