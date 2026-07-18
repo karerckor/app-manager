@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\ProfileType;
@@ -29,6 +30,7 @@ class IntegrationIndexController extends Controller
             'webhookEventTypes' => WebhookEventType::subscribableValues(),
             'newWebhookSecret' => $request->session()->pull('webhook_secret'),
             'profileTypes' => array_map(fn (ProfileType $type) => $type->value, ProfileType::cases()),
+            'reportingModes' => array_map(fn (BuildReportingMode $mode) => $mode->value, BuildReportingMode::cases()),
             'apps' => $team->mobileApps()
                 ->with('appIdentifiers')
                 ->orderBy('name')
@@ -70,11 +72,16 @@ class IntegrationIndexController extends Controller
                         'id' => $pipeline->id,
                         'name' => $pipeline->name,
                         'enabled' => $pipeline->enabled,
+                        'mobile_app_id' => $pipeline->mobile_app_id,
+                        'app_identifier_id' => $pipeline->app_identifier_id,
                         'app_name' => $pipeline->mobileApp->name,
                         'target_name' => $pipeline->appIdentifier?->name ?: $pipeline->appIdentifier?->identifier,
                         'profile_type' => $pipeline->profile_type->value,
+                        'reporting_mode' => $pipeline->reporting_mode->value,
+                        'build_id_input' => $pipeline->build_id_input,
                         'repository_full_name' => $pipeline->repository_full_name,
                         'workflow_name' => $pipeline->workflow_name,
+                        'workflow_id' => $pipeline->workflow_id,
                         'default_ref' => $pipeline->default_ref,
                         'input_schema' => $pipeline->input_schema ?? [],
                         'input_defaults' => $pipeline->input_defaults ?? [],

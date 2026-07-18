@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
@@ -82,6 +83,39 @@ class CiCdPipelineConfigurationTest extends TestCase
             ->assertSessionHasErrors('default_ref');
 
         $this->assertDatabaseCount('ci_cd_pipelines', 0);
+    }
+
+    public function test_manual_reporting_requires_a_declared_string_build_id_input(): void
+    {
+        [$owner, $team, $app, $identifier, $integration] = $this->context(TeamRole::Owner);
+        $this->fakeProvider();
+        $url = route('accounts.integrations.pipelines.store', [$team, $integration]);
+        $base = [
+            'name' => 'Self-hosted release',
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'profile_type' => ProfileType::Production->value,
+            'repository_full_name' => 'octo/mobile',
+            'workflow_id' => '200',
+            'default_ref' => 'main',
+            'reporting_mode' => BuildReportingMode::Manual->value,
+        ];
+
+        $this->actingAs($owner)->post($url, [
+            ...$base,
+            'build_id_input' => 'missing',
+        ])->assertSessionHasErrors('build_id_input');
+
+        $this->post($url, [
+            ...$base,
+            'build_id_input' => 'app_manager_build_id',
+            'input_defaults' => ['app_manager_build_id' => 'must-be-replaced'],
+        ])->assertRedirect();
+
+        $pipeline = CiCdPipeline::firstOrFail();
+        $this->assertSame(BuildReportingMode::Manual, $pipeline->reporting_mode);
+        $this->assertSame('app_manager_build_id', $pipeline->build_id_input);
+        $this->assertArrayNotHasKey('app_manager_build_id', $pipeline->input_defaults);
     }
 
     public function test_secret_like_or_wrongly_typed_inputs_are_rejected(): void
@@ -175,6 +209,7 @@ class CiCdPipelineConfigurationTest extends TestCase
                 $inputs = [
                     'channel' => ['description' => null, 'required' => false, 'default' => 'internal', 'type' => 'choice', 'options' => ['internal', 'production']],
                     'dry_run' => ['description' => null, 'required' => false, 'default' => false, 'type' => 'boolean', 'options' => []],
+                    'app_manager_build_id' => ['description' => null, 'required' => false, 'default' => null, 'type' => 'string', 'options' => []],
                 ];
 
                 if ($this->includeSecretInput) {

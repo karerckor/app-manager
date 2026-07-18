@@ -2,6 +2,7 @@
 
 namespace App\Actions\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Enums\WebhookEventType;
@@ -17,6 +18,7 @@ use App\Models\Integration;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class StartPipelineBuild
@@ -71,14 +73,26 @@ class StartPipelineBuild
             throw ValidationException::withMessages(['ref' => 'The selected branch or tag is unavailable.']);
         }
 
+        $buildId = (string) Str::uuid();
+
+        if ($pipeline->reporting_mode === BuildReportingMode::Manual
+            && (! is_string($pipeline->build_id_input) || $pipeline->build_id_input === '')) {
+            throw ValidationException::withMessages([
+                'pipeline' => 'The manual pipeline has no build ID workflow input.',
+            ]);
+        }
+
+        $providedInputs = $pipeline->reporting_mode === BuildReportingMode::Manual
+            ? array_replace($providedInputs, [$pipeline->build_id_input => $buildId])
+            : $providedInputs;
         $inputs = $this->inputValidator->resolve(
             $pipeline->input_schema ?? [],
             $pipeline->input_defaults ?? [],
             $providedInputs,
         );
 
-        return DB::transaction(function () use ($team, $integration, $pipeline, $user, $requestUuid, $ref, $inputs) {
-            $build = BuildRecord::create([
+        return DB::transaction(function () use ($team, $integration, $pipeline, $user, $requestUuid, $ref, $inputs, $buildId) {
+            $build = new BuildRecord([
                 'team_id' => $team->id,
                 'mobile_app_id' => $pipeline->mobile_app_id,
                 'app_identifier_id' => $pipeline->app_identifier_id,
@@ -86,8 +100,10 @@ class StartPipelineBuild
                 'request_uuid' => $requestUuid,
                 'profile_type' => $pipeline->profile_type,
                 'status' => BuildStatus::Pending,
+                'reporting_mode' => $pipeline->reporting_mode,
                 'context_snapshot' => [
                     'schema_version' => 1,
+                    'source' => 'ci_cd',
                     'app' => [
                         'id' => $pipeline->mobileApp->id,
                         'slug' => $pipeline->mobileApp->slug,
@@ -107,6 +123,8 @@ class StartPipelineBuild
                     ],
                 ],
             ]);
+            $build->id = $buildId;
+            $build->save();
             $run = CiCdRun::create([
                 'team_id' => $team->id,
                 'build_record_id' => $build->id,
@@ -114,6 +132,7 @@ class StartPipelineBuild
                 'integration_id' => $integration->id,
                 'requested_by_user_id' => $user->id,
                 'dispatch_status' => CiCdDispatchStatus::Created,
+                'reporting_mode' => $pipeline->reporting_mode,
                 'request_snapshot' => [
                     'ref' => $ref,
                     'inputs' => $inputs,

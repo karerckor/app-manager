@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationKind;
 use App\Enums\ProfileType;
 use DomainException;
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'name',
     'profile_type',
     'enabled',
+    'reporting_mode',
+    'build_id_input',
     'repository_id',
     'repository_full_name',
     'workflow_id',
@@ -35,6 +38,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class CiCdPipeline extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;
+
+    protected $attributes = [
+        'reporting_mode' => 'automatic',
+    ];
 
     public function team(): BelongsTo
     {
@@ -76,6 +83,7 @@ class CiCdPipeline extends Model
         return [
             'profile_type' => ProfileType::class,
             'enabled' => 'boolean',
+            'reporting_mode' => BuildReportingMode::class,
             'input_schema' => 'encrypted:array',
             'input_defaults' => 'encrypted:array',
         ];

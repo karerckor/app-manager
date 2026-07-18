@@ -226,4 +226,51 @@ RSpec.describe Fastlane::AppManager::Client do
       end
     end
   end
+
+  describe "manual builds" do
+    it "creates a build through the app-scoped endpoint" do
+      response = Struct.new(:body).new(JSON.generate(
+        "data" => { "id" => "build-1", "status" => "pending" }
+      ))
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/builds",
+        method: :post,
+        body: {
+          request_uuid: "request-1",
+          profile_type: "production",
+          context: { commit: "abc" }
+        }
+      ).and_return(response)
+
+      build = client.create_build(
+        request_uuid: "request-1",
+        profile_type: "production",
+        context: { commit: "abc" }
+      )
+
+      expect(build).to include("id" => "build-1", "status" => "pending")
+    end
+
+    it "updates status and appends exact log text" do
+      status_response = Struct.new(:body).new(JSON.generate(
+        "data" => { "id" => "build-1", "status" => "running" }
+      ))
+      log_response = Struct.new(:body).new(JSON.generate(
+        "data" => { "build_id" => "build-1", "bytes" => 6 }
+      ))
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/builds/build-1",
+        method: :patch,
+        body: { status: "running" }
+      ).and_return(status_response)
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/builds/build-1/logs",
+        method: :post,
+        body: { content: "hello\n" }
+      ).and_return(log_response)
+
+      expect(client.update_build(build_id: "build-1", status: "running")["status"]).to eq("running")
+      expect(client.append_build_log(build_id: "build-1", content: "hello\n")["bytes"]).to eq(6)
+    end
+  end
 end

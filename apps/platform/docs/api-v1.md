@@ -38,7 +38,7 @@ Scopes чтения и записи независимы: например, CI r
 | `builds:read` / `builds:write` | История и детали / создание и изменение сборок |
 | `logs:read` / `logs:write` | Чтение / добавление build logs |
 
-Текущие API routes приложений, identifiers, assets и credentials проверяют соответствующий scope. Scopes `builds:*` и `logs:*` зарезервированы для endpoints сборок и логов и могут выдаваться CI-ключам заранее.
+Все API routes проверяют соответствующий scope. Для собственного runner обычно достаточно `builds:write` и `logs:write`; `builds:read` и `logs:read` нужны только для чтения состояния и журнала.
 
 ## Mobile apps
 
@@ -136,3 +136,63 @@ curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/credentials \
 ```
 
 Успешное создание возвращает `201`, чтение и изменение — `200`, удаление — `204`. Ошибки валидации возвращаются стандартным JSON Laravel со статусом `422`.
+
+## Builds и logs
+
+Builds поддерживают два режима отчётности:
+
+- `automatic` — App Manager запускает CI/CD pipeline, проверяет состояние у провайдера и загружает его журнал;
+- `manual` — собственный runner управляет lifecycle и дописывает plain-text журнал через API.
+
+Pipeline сохраняет режим в каждом новом build, поэтому изменение настройки не меняет уже запущенные задачи. Для automatic build ручная запись статуса или лога возвращает `409`.
+
+| Method | Endpoint | Scope | Назначение |
+| --- | --- | --- | --- |
+| `GET` | `/apps/{app_slug}/builds` | `builds:read` | Последние builds с пагинацией |
+| `POST` | `/apps/{app_slug}/builds` | `builds:write` | Создать manual build в `pending` |
+| `GET` | `/apps/{app_slug}/builds/{id}` | `builds:read` | Прочитать состояние build |
+| `PATCH` | `/apps/{app_slug}/builds/{id}` | `builds:write` | Установить `running`, `completed`, `failed` или `cancelled` |
+| `GET` | `/apps/{app_slug}/builds/{id}/logs` | `logs:read` | Прочитать полный журнал |
+| `POST` | `/apps/{app_slug}/builds/{id}/logs` | `logs:write` | Дописать plain-text chunk |
+
+Создание идемпотентно по паре team + `request_uuid`. Повторный запрос возвращает тот же build и не создаёт дубликат:
+
+```bash
+BUILD_RESPONSE=$(curl -sS -X POST \
+  http://localhost:8000/api/v1/acme/apps/customer-app/builds \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "request_uuid":"598a349f-b526-40ba-8e54-247772bce160",
+    "profile_type":"production",
+    "app_identifier_id":"019f...",
+    "context":{"commit":"abc123","runner":"self-hosted"}
+  }')
+```
+
+Runner использует `data.id` из ответа для последующих запросов:
+
+```bash
+curl -X PATCH http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_ID \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"running"}'
+
+curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_ID/logs \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"content":"compile: started\n"}'
+
+curl -X PATCH http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_ID \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"completed"}'
+```
+
+Один log chunk ограничен 256 KiB, полный журнал — 5 MB. Переводы статуса идемпотентны; попытка изменить уже завершённый build на другой terminal status возвращает `409`. Запрос отмены из UI переводит manual build в `cancel_requested`, после чего runner подтверждает `cancelled` либо сообщает фактический `completed`/`failed`.
+
+Для manual GitHub pipeline App Manager создаёт build до dispatch и передаёт его UUID через выбранный string input `workflow_dispatch`. Runner должен экспортировать это значение как `APP_MANAGER_BUILD_ID` или явно передать в actions fastlane-плагина. Полный пример находится в [`libs/fastlane-plugin/README.md`](../../../libs/fastlane-plugin/README.md).

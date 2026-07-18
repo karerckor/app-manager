@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\CiCdDispatchStatus;
 use DomainException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'integration_id',
     'requested_by_user_id',
     'dispatch_status',
+    'reporting_mode',
     'external_run_id',
     'external_run_url',
     'provider_status',
@@ -30,6 +32,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CiCdRun extends Model
 {
     use HasFactory, HasUuids;
+
+    protected $attributes = [
+        'reporting_mode' => 'automatic',
+    ];
 
     public function team(): BelongsTo
     {
@@ -60,6 +66,7 @@ class CiCdRun extends Model
     {
         return [
             'dispatch_status' => CiCdDispatchStatus::class,
+            'reporting_mode' => BuildReportingMode::class,
             'request_snapshot' => 'encrypted:array',
             'dispatched_at' => 'datetime',
             'last_synced_at' => 'datetime',

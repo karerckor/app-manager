@@ -6,7 +6,7 @@ Gem::Specification.new do |spec|
   spec.version = Fastlane::AppManager::VERSION
   spec.authors = ["App Manager contributors"]
   spec.summary = "Composable Fastlane actions for App Manager"
-  spec.description = "Downloads application assets, signing credentials and submission keys from App Manager."
+  spec.description = "Downloads build configuration and reports manual build lifecycle and logs to App Manager."
   spec.homepage = "https://rubygems.org/gems/fastlane-plugin-app_manager"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"

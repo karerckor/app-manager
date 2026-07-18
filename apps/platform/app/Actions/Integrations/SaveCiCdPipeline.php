@@ -2,6 +2,7 @@
 
 namespace App\Actions\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Integrations\CiCd\Data\PipelineData;
 use App\Integrations\CiCd\WorkflowInputValidator;
@@ -63,6 +64,21 @@ class SaveCiCdPipeline
         }
 
         $inputs = $data['input_defaults'] ?? [];
+        $reportingMode = BuildReportingMode::from($data['reporting_mode'] ?? BuildReportingMode::Automatic->value);
+
+        if ($reportingMode === BuildReportingMode::Manual) {
+            $buildIdInput = $data['build_id_input'] ?? null;
+            $definition = is_string($buildIdInput) ? ($workflow->inputs[$buildIdInput] ?? null) : null;
+
+            if (! is_array($definition) || ($definition['type'] ?? 'string') !== 'string') {
+                throw ValidationException::withMessages([
+                    'build_id_input' => 'Manual reporting requires a string workflow input that receives the App Manager build ID.',
+                ]);
+            }
+
+            unset($inputs[$buildIdInput]);
+        }
+
         try {
             $this->inputValidator->validate($workflow->inputs, $inputs);
         } catch (ValidationException $exception) {
@@ -71,7 +87,7 @@ class SaveCiCdPipeline
             ])->all());
         }
 
-        return DB::transaction(function () use ($team, $integration, $user, $data, $pipeline, $mobileApp, $identifier, $repository, $workflow, $inputs) {
+        return DB::transaction(function () use ($team, $integration, $user, $data, $pipeline, $mobileApp, $identifier, $repository, $workflow, $inputs, $reportingMode) {
             $pipeline ??= new CiCdPipeline([
                 'team_id' => $team->id,
                 'integration_id' => $integration->id,
@@ -83,6 +99,10 @@ class SaveCiCdPipeline
                 'name' => $data['name'],
                 'profile_type' => $data['profile_type'],
                 'enabled' => $data['enabled'] ?? true,
+                'reporting_mode' => $reportingMode,
+                'build_id_input' => $reportingMode === BuildReportingMode::Manual
+                    ? $data['build_id_input']
+                    : null,
                 'repository_id' => $repository->id,
                 'repository_full_name' => $repository->fullName,
                 'workflow_id' => $workflow->id,

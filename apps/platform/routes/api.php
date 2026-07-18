@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\V1\AppAssetController;
 use App\Http\Controllers\Api\V1\AppIdentifierController;
+use App\Http\Controllers\Api\V1\BuildController;
+use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CredentialController;
 use App\Http\Controllers\Api\V1\CredentialTypeController;
 use App\Http\Controllers\Api\V1\MobileAppController;
@@ -49,4 +51,11 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware('abilities:credentials:read')->name('apps.credentials.file.show');
         Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware('abilities:credentials:write')->name('apps.credentials.file.store');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware('abilities:credentials:write')->name('apps.credentials.file.destroy');
+
+        Route::get('/apps/{mobileApp:slug}/builds', [BuildController::class, 'index'])->middleware('abilities:builds:read')->name('apps.builds.index');
+        Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware('abilities:builds:write')->name('apps.builds.store');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'show'])->middleware('abilities:builds:read')->name('apps.builds.show');
+        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'update'])->middleware('abilities:builds:write')->name('apps.builds.update');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware('abilities:logs:read')->name('apps.builds.logs.show');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware('abilities:logs:write')->name('apps.builds.logs.store');
     });

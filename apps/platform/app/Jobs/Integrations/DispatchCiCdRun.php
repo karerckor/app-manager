@@ -2,6 +2,7 @@
 
 namespace App\Jobs\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Integrations\CiCd\CiCdProviderRegistry;
@@ -89,8 +90,10 @@ class DispatchCiCdRun implements ShouldQueue
             'dispatched_at' => now(),
         ]);
 
-        ReconcileCiCdRun::dispatch($run->id)
-            ->delay(now()->addSeconds(5))
-            ->onQueue('integrations');
+        if ($run->reporting_mode === BuildReportingMode::Automatic) {
+            ReconcileCiCdRun::dispatch($run->id)
+                ->delay(now()->addSeconds(5))
+                ->onQueue('integrations');
+        }
     }
 }

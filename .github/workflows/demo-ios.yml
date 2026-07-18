@@ -21,6 +21,10 @@ on:
         required: true
         default: false
         type: boolean
+      app_manager_build_id:
+        description: Build UUID injected by App Manager in manual reporting mode
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -39,6 +43,7 @@ jobs:
       APP_MANAGER_BASE_URL: ${{ secrets.APP_MANAGER_DEMO_BASE_URL || 'http://127.0.0.1:4567' }}
       APP_MANAGER_TEAM: ${{ vars.APP_MANAGER_DEMO_TEAM || 'demo-users-team' }}
       APP_MANAGER_APP: ${{ vars.APP_MANAGER_DEMO_APP || 'example-app' }}
+      APP_MANAGER_BUILD_ID: ${{ inputs.app_manager_build_id }}
     defaults:
       run:
         working-directory: demos/expo-hello-world

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Integrations;
 
 use App\Actions\Integrations\SaveCiCdPipeline;
+use App\Enums\BuildReportingMode;
 use App\Enums\ProfileType;
 use App\Http\Controllers\Controller;
 use App\Models\CiCdPipeline;
@@ -67,6 +68,8 @@ class CiCdPipelineController extends Controller
             'default_ref' => ['required', 'string', 'max:255'],
             'input_defaults' => ['sometimes', 'array', 'max:25'],
             'enabled' => ['sometimes', 'boolean'],
+            'reporting_mode' => ['sometimes', Rule::enum(BuildReportingMode::class)],
+            'build_id_input' => ['nullable', 'string', 'max:255'],
         ]);
     }
 }

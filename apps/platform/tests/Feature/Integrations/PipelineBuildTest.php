@@ -5,6 +5,7 @@ namespace Tests\Feature\Integrations;
 use App\Actions\Integrations\RequestPipelineBuildCancellation;
 use App\Actions\Integrations\StartPipelineBuild;
 use App\Actions\Integrations\SyncCiCdRunStatus;
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Enums\IntegrationKind;
@@ -33,6 +34,7 @@ use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\Builds\BuildLifecycle;
+use App\Support\Builds\BuildLog;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -165,9 +167,10 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(BuildStatus::Completed, $build->refresh()->status);
         Queue::assertPushed(SyncCiCdRunLogs::class, fn (SyncCiCdRunLogs $job) => $job->runId === $run->id);
 
-        (new SyncCiCdRunLogs($run->id))->handle($registry);
+        (new SyncCiCdRunLogs($run->id))->handle($registry, app(BuildLog::class));
 
         $this->assertStringContainsString('demo build started', $run->refresh()->log_output);
+        $this->assertStringContainsString('demo build started', $build->refresh()->log_output);
         $this->assertNotNull($run->logs_synced_at);
     }
 
@@ -192,6 +195,43 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(CiCdDispatchStatus::Unknown, $build->ciCdRun->refresh()->dispatch_status);
         $this->assertSame(BuildStatus::Pending, $build->refresh()->status);
         $this->assertSame(1, $provider->dispatchCalls);
+    }
+
+    public function test_manual_pipeline_injects_build_id_and_does_not_poll_provider(): void
+    {
+        [$owner, $team, , $pipeline] = $this->context();
+        $schema = $pipeline->input_schema;
+        $schema['app_manager_build_id'] = [
+            'required' => false,
+            'type' => 'string',
+            'options' => [],
+        ];
+        $pipeline->update([
+            'reporting_mode' => BuildReportingMode::Manual,
+            'build_id_input' => 'app_manager_build_id',
+            'input_schema' => $schema,
+        ]);
+        $provider = $this->provider();
+        $registry = $this->bindProvider($provider);
+        Queue::fake();
+
+        $build = app(StartPipelineBuild::class)->handle(
+            $team,
+            $pipeline->integration,
+            $pipeline,
+            $owner,
+            (string) Str::uuid(),
+        );
+        $run = $build->ciCdRun;
+
+        $this->assertSame(BuildReportingMode::Manual, $build->reporting_mode);
+        $this->assertSame(BuildReportingMode::Manual, $run->reporting_mode);
+        $this->assertSame($build->id, $run->request_snapshot['inputs']['app_manager_build_id']);
+
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+
+        $this->assertSame(CiCdDispatchStatus::Accepted, $run->refresh()->dispatch_status);
+        Queue::assertNotPushed(ReconcileCiCdRun::class);
     }
 
     public function test_cancellation_before_dispatch_is_terminal_without_external_call(): void

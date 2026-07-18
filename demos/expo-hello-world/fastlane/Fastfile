@@ -90,27 +90,48 @@ lane :plugin_demo do |options|
     app: ENV.fetch("APP_MANAGER_APP"),
   )
 
-  UI.message("[1/4] Loading application metadata through fastlane-plugin-app_manager")
-  info = app_manager_app_info
-  identifier = info.fetch(:default_app_identifiers).fetch(platform.to_sym)
-  UI.message("Resolved #{platform} identifier: #{identifier.fetch(:identifier)}")
-
-  UI.message("[2/4] Downloading the application icon through fastlane-plugin-app_manager")
-  icon_path = app_manager_download_icon(
-    output_path: File.join(PROJECT_ROOT, "build", "app-manager-demo-icon.svg"),
-  )
-  UI.message("Downloaded #{File.size(icon_path)} bytes to #{icon_path}")
-
-  UI.message("[3/4] Compiling demo application #{info.fetch(:name)}")
-  UI.message("compile: sources -> #{platform}/#{configuration}")
-  UI.message("package: #{identifier.fetch(:identifier)}@#{version_name}")
-
-  UI.message("[4/4] Finalizing demo artifact")
-  if simulate_failure
-    UI.user_error!("Demo build failed as requested by simulate_failure")
+  manually_reported = !ENV.fetch("APP_MANAGER_BUILD_ID", "").strip.empty?
+  if manually_reported
+    app_manager_build_start
+    app_manager_build_log(message: "App Manager demo build started")
+    app_manager_build_log(message: "Platform: #{platform}")
+    app_manager_build_log(message: "Configuration: #{configuration}")
+    app_manager_build_log(message: "Version: #{version_name}")
   end
 
-  UI.success("App Manager demo build completed successfully")
+  begin
+    UI.message("[1/4] Loading application metadata through fastlane-plugin-app_manager")
+    info = app_manager_app_info
+    identifier = info.fetch(:default_app_identifiers).fetch(platform.to_sym)
+    UI.message("Resolved #{platform} identifier: #{identifier.fetch(:identifier)}")
+    app_manager_build_log(message: "Resolved #{platform} identifier: #{identifier.fetch(:identifier)}") if manually_reported
+
+    UI.message("[2/4] Downloading the application icon through fastlane-plugin-app_manager")
+    icon_path = app_manager_download_icon(
+      output_path: File.join(PROJECT_ROOT, "build", "app-manager-demo-icon.svg"),
+    )
+    UI.message("Downloaded #{File.size(icon_path)} bytes to #{icon_path}")
+    app_manager_build_log(message: "Downloaded application icon (#{File.size(icon_path)} bytes)") if manually_reported
+
+    UI.message("[3/4] Compiling demo application #{info.fetch(:name)}")
+    UI.message("compile: sources -> #{platform}/#{configuration}")
+    UI.message("package: #{identifier.fetch(:identifier)}@#{version_name}")
+    app_manager_build_log(message: "compile: sources -> #{platform}/#{configuration}") if manually_reported
+    app_manager_build_log(message: "package: #{identifier.fetch(:identifier)}@#{version_name}") if manually_reported
+
+    UI.message("[4/4] Finalizing demo artifact")
+    UI.user_error!("Demo build failed as requested by simulate_failure") if simulate_failure
+
+    app_manager_build_log(message: "App Manager demo build completed successfully") if manually_reported
+    app_manager_build_finish(status: "completed") if manually_reported
+    UI.success("App Manager demo build completed successfully")
+  rescue StandardError => error
+    if manually_reported
+      app_manager_build_log(message: "Build failed: #{error.message}")
+      app_manager_build_finish(status: "failed")
+    end
+    raise
+  end
 end
 
 desc "Build a signed Android release AAB"

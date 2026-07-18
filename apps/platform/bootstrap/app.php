@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trimStrings(except: [
+            fn (Request $request) => $request->is('api/v1/*/apps/*/builds/*/logs'),
+        ]);
+
         $middleware->preventRequestForgery(except: [
             'webhooks/github',
         ]);

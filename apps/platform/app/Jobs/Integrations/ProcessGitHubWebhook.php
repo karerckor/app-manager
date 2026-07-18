@@ -3,6 +3,7 @@
 namespace App\Jobs\Integrations;
 
 use App\Actions\Integrations\SyncCiCdRunStatus;
+use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Integrations\CiCd\Data\ProviderRunStatus;
@@ -116,7 +117,7 @@ class ProcessGitHubWebhook implements ShouldQueue
             ->whereHas('pipeline', fn ($query) => $query->where('repository_full_name', $repository))
             ->first();
 
-        if (! $run) {
+        if (! $run || $run->reporting_mode !== BuildReportingMode::Automatic) {
             return;
         }
 

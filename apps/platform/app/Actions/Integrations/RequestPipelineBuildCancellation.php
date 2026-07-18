@@ -2,6 +2,7 @@
 
 namespace App\Actions\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Jobs\Integrations\CancelCiCdRun;
@@ -23,6 +24,10 @@ class RequestPipelineBuildCancellation
         $run = $build->ciCdRun;
 
         if (! $run) {
+            if ($build->reporting_mode === BuildReportingMode::Manual) {
+                return $build;
+            }
+
             return $this->lifecycle->finish($build, BuildStatus::Cancelled);
         }
 

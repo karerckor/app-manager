@@ -11,6 +11,7 @@
     export let integrations = [];
     export let apps = [];
     export let profileTypes = [];
+    export let reportingModes = ['automatic', 'manual'];
     export let storeWebhookUrl;
     export let webhooksEnabled = false;
     export let webhookEventTypes = [];
@@ -20,6 +21,7 @@
     let tab = 'ci_cd';
     let showPipeline = false;
     let activeIntegration = null;
+    let editingPipeline = null;
     let repositories = [];
     let workflows = [];
     let refs = [];
@@ -38,6 +40,8 @@
         default_ref: '',
         input_defaults: {},
         enabled: true,
+        reporting_mode: 'automatic',
+        build_id_input: '',
     });
     const webhookForm = useForm({
         name: '',
@@ -48,6 +52,9 @@
 
     $: selectedApp = apps.find((app) => app.id === pipelineForm.mobile_app_id);
     $: selectedWorkflow = workflows.find((workflow) => String(workflow.id) === String(pipelineForm.workflow_id));
+    $: manualBuildInputs = Object.entries(selectedWorkflow?.inputs ?? {})
+        .filter(([, definition]) => (definition.type ?? 'string') === 'string')
+        .map(([name]) => name);
 
     const getJson = async (url) => {
         const response = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
@@ -59,8 +66,9 @@
         target.searchParams.set('repository', repository);
         return target.toString();
     };
-    const openPipeline = async (integration) => {
+    const openPipeline = async (integration, pipeline = null) => {
         activeIntegration = integration;
+        editingPipeline = pipeline;
         repositories = [];
         workflows = [];
         refs = [];
@@ -69,13 +77,28 @@
         pipelineForm.mobile_app_id = apps[0]?.id ?? '';
         pipelineForm.profile_type = profileTypes[0] ?? '';
         pipelineForm.enabled = true;
+        pipelineForm.reporting_mode = 'automatic';
+        pipelineForm.build_id_input = '';
         showPipeline = true;
         discovering = true;
         try {
             repositories = await getJson(integration.repositories_url);
             if (repositories.length) {
-                pipelineForm.repository_full_name = repositories[0].fullName;
-                await loadRepository(integration, repositories[0].fullName);
+                const repository = repositories.find((item) => item.fullName === pipeline?.repository_full_name) ?? repositories[0];
+                pipelineForm.repository_full_name = repository.fullName;
+                await loadRepository(integration, repository.fullName);
+                if (pipeline) {
+                    pipelineForm.name = pipeline.name;
+                    pipelineForm.mobile_app_id = pipeline.mobile_app_id;
+                    pipelineForm.app_identifier_id = pipeline.app_identifier_id ?? '';
+                    pipelineForm.profile_type = pipeline.profile_type;
+                    pipelineForm.workflow_id = pipeline.workflow_id;
+                    pipelineForm.default_ref = pipeline.default_ref;
+                    pipelineForm.input_defaults = { ...(pipeline.input_defaults ?? {}) };
+                    pipelineForm.enabled = pipeline.enabled;
+                    pipelineForm.reporting_mode = pipeline.reporting_mode;
+                    pipelineForm.build_id_input = pipeline.build_id_input ?? '';
+                }
             }
         } catch (error) {
             discoveryError = error.message;
@@ -98,6 +121,12 @@
             pipelineForm.input_defaults = Object.fromEntries(Object.entries(workflows[0]?.inputs ?? {})
                 .filter(([, definition]) => definition.default !== undefined && definition.default !== null)
                 .map(([name, definition]) => [name, definition.default]));
+            const stringInputs = Object.entries(workflows[0]?.inputs ?? {})
+                .filter(([, definition]) => (definition.type ?? 'string') === 'string')
+                .map(([name]) => name);
+            pipelineForm.build_id_input = stringInputs.includes('app_manager_build_id')
+                ? 'app_manager_build_id'
+                : (stringInputs[0] ?? '');
         } catch (error) {
             workflows = [];
             refs = [];
@@ -113,11 +142,18 @@
         pipelineForm.input_defaults = Object.fromEntries(Object.entries(workflow?.inputs ?? {})
             .filter(([, definition]) => definition.default !== undefined && definition.default !== null)
             .map(([name, definition]) => [name, definition.default]));
+        const stringInputs = Object.entries(workflow?.inputs ?? {})
+            .filter(([, definition]) => (definition.type ?? 'string') === 'string')
+            .map(([name]) => name);
+        pipelineForm.build_id_input = stringInputs.includes('app_manager_build_id')
+            ? 'app_manager_build_id'
+            : (stringInputs[0] ?? '');
     };
-    const savePipeline = () => pipelineForm.post(activeIntegration.pipelines_store_url, {
-        preserveScroll: true,
-        onSuccess: () => showPipeline = false,
-    });
+    const savePipeline = () => {
+        const options = { preserveScroll: true, onSuccess: () => showPipeline = false };
+        if (editingPipeline) pipelineForm.patch(editingPipeline.update_url, options);
+        else pipelineForm.post(activeIntegration.pipelines_store_url, options);
+    };
     const runPipeline = (pipeline) => router.post(pipeline.run_url, {
         request_uuid: crypto.randomUUID(),
         ref: pipeline.default_ref,
@@ -208,7 +244,7 @@
                         {#if integration.pipelines.length}
                             <div class="divide-y divide-slate-100">
                                 {#each integration.pipelines as pipeline}
-                                    <div class="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.5fr)_auto] md:items-center"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p>{#if !pipeline.enabled}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">Disabled</span>{/if}</div><p class="mt-1 text-xs text-slate-500">{pipeline.repository_full_name} · {pipeline.workflow_name} · {pipeline.default_ref}</p></div><div class="text-xs"><p class="font-medium">{pipeline.app_name}</p><p class="mt-1 text-slate-500">{pipeline.target_name || 'All targets'} · {pipeline.profile_type}</p></div><div class="flex justify-end gap-2"><button class="px-3 py-2 text-xs" disabled={!pipeline.enabled} on:click={() => runPipeline(pipeline)}>Run build</button><button class="ghost px-2 py-2 text-xs text-rose-600" on:click={() => deletePipeline(pipeline)}>Remove</button></div></div>
+                                    <div class="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.5fr)_auto] md:items-center"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span>{#if !pipeline.enabled}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">Disabled</span>{/if}</div><p class="mt-1 text-xs text-slate-500">{pipeline.repository_full_name} · {pipeline.workflow_name} · {pipeline.default_ref}</p></div><div class="text-xs"><p class="font-medium">{pipeline.app_name}</p><p class="mt-1 text-slate-500">{pipeline.target_name || 'All targets'} · {pipeline.profile_type}</p></div><div class="flex justify-end gap-2"><button class="px-3 py-2 text-xs" disabled={!pipeline.enabled} on:click={() => runPipeline(pipeline)}>Run build</button><button class="secondary px-2 py-2 text-xs" on:click={() => openPipeline(integration, pipeline)}>Edit</button><button class="ghost px-2 py-2 text-xs text-rose-600" on:click={() => deletePipeline(pipeline)}>Remove</button></div></div>
                                 {/each}
                             </div>
                         {:else}<div class="px-5 py-9 text-center text-sm text-slate-500">No pipelines configured yet.</div>{/if}
@@ -231,14 +267,16 @@
 </AppShell>
 
 {#if showPipeline}
-    <div class="modal-backdrop" role="presentation"><form class="modal max-w-2xl" on:submit|preventDefault={savePipeline}><div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Configure GitHub pipeline</h2><p class="mt-1 text-sm text-slate-500">Bind a workflow_dispatch workflow to an application.</p></div><button type="button" class="ghost p-2" on:click={() => showPipeline = false}>✕</button></div><div class="space-y-5 p-6">
+    <div class="modal-backdrop" role="presentation"><form class="modal max-w-2xl" on:submit|preventDefault={savePipeline}><div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">{editingPipeline ? 'Edit GitHub pipeline' : 'Configure GitHub pipeline'}</h2><p class="mt-1 text-sm text-slate-500">Bind a workflow_dispatch workflow to an application.</p></div><button type="button" class="ghost p-2" on:click={() => showPipeline = false}>✕</button></div><div class="space-y-5 p-6">
         {#if discoveryError}<div class="rounded-xl bg-rose-50 px-4 py-3 text-xs font-medium text-rose-700">{discoveryError}</div>{/if}
         <label><span class="label">Repository</span><select bind:value={pipelineForm.repository_full_name} disabled={discovering} on:change={(event) => loadRepository(activeIntegration, event.currentTarget.value)}>{#each repositories as repository}<option value={repository.fullName}>{repository.fullName}</option>{/each}</select>{#if pipelineForm.errors.repository_full_name}<span class="error">{pipelineForm.errors.repository_full_name}</span>{/if}</label>
         <label><span class="label">Workflow</span><select value={pipelineForm.workflow_id} disabled={discovering} on:change={chooseWorkflow}>{#each workflows as workflow}<option value={workflow.id}>{workflow.name} · {workflow.path}</option>{/each}</select>{#if pipelineForm.errors.workflow_id}<span class="error">{pipelineForm.errors.workflow_id}</span>{/if}</label>
         <label><span class="label">Pipeline name</span><input bind:value={pipelineForm.name} required /></label>
         <div class="grid gap-4 sm:grid-cols-2"><label><span class="label">Application</span><select bind:value={pipelineForm.mobile_app_id} on:change={() => pipelineForm.app_identifier_id = ''}>{#each apps as app}<option value={app.id}>{app.name}</option>{/each}</select></label><label><span class="label">App identifier</span><select bind:value={pipelineForm.app_identifier_id}><option value="">All targets</option>{#each selectedApp?.identifiers ?? [] as identifier}<option value={identifier.id}>{identifier.name} · {identifier.platform}</option>{/each}</select></label></div>
         <div class="grid gap-4 sm:grid-cols-2"><label><span class="label">Build profile</span><select bind:value={pipelineForm.profile_type}>{#each profileTypes as profile}<option value={profile}>{profile}</option>{/each}</select></label><label><span class="label">Default branch or tag</span><select bind:value={pipelineForm.default_ref}>{#each refs as ref}<option value={ref.name}>{ref.name} · {ref.type}</option>{/each}</select></label></div>
-        {#if selectedWorkflow && Object.keys(selectedWorkflow.inputs ?? {}).length}<fieldset><legend class="label">Workflow inputs</legend><div class="space-y-3 rounded-xl border border-slate-200 p-4">{#each Object.entries(selectedWorkflow.inputs) as [name, definition]}<label><span class="mb-1 block text-xs font-semibold">{name}{#if definition.required}<span class="text-rose-500"> *</span>{/if}</span><input value={pipelineForm.input_defaults[name] ?? ''} on:input={(event) => pipelineForm.input_defaults = { ...pipelineForm.input_defaults, [name]: event.currentTarget.value }} placeholder={definition.description ?? ''} /></label>{/each}</div></fieldset>{/if}
+        <fieldset><legend class="label">Build status and logs</legend><div class="grid gap-3 sm:grid-cols-2">{#each reportingModes as mode}<label class="cursor-pointer rounded-xl border p-4 {pipelineForm.reporting_mode === mode ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200'}"><span class="flex items-center gap-2"><input type="radio" bind:group={pipelineForm.reporting_mode} value={mode} /><strong class="text-sm capitalize">{mode}</strong></span><span class="mt-2 block text-xs text-slate-500">{mode === 'automatic' ? 'App Manager polls GitHub Actions and downloads its logs.' : 'Your runner updates the build and appends logs through the App Manager API.'}</span></label>{/each}</div>{#if pipelineForm.errors.reporting_mode}<span class="error">{pipelineForm.errors.reporting_mode}</span>{/if}</fieldset>
+        {#if pipelineForm.reporting_mode === 'manual'}<label><span class="label">Build ID workflow input</span><select bind:value={pipelineForm.build_id_input} required><option value="" disabled>Select a string input</option>{#each manualBuildInputs as name}<option value={name}>{name}</option>{/each}</select><span class="mt-1 block text-xs text-slate-500">App Manager injects the build UUID into this workflow_dispatch input. Pass it to your runner as APP_MANAGER_BUILD_ID.</span>{#if pipelineForm.errors.build_id_input}<span class="error">{pipelineForm.errors.build_id_input}</span>{/if}</label>{/if}
+        {#if selectedWorkflow && Object.keys(selectedWorkflow.inputs ?? {}).length}<fieldset><legend class="label">Workflow inputs</legend><div class="space-y-3 rounded-xl border border-slate-200 p-4">{#each Object.entries(selectedWorkflow.inputs) as [name, definition]}{#if pipelineForm.reporting_mode !== 'manual' || name !== pipelineForm.build_id_input}<label><span class="mb-1 block text-xs font-semibold">{name}{#if definition.required}<span class="text-rose-500"> *</span>{/if}</span><input value={pipelineForm.input_defaults[name] ?? ''} on:input={(event) => pipelineForm.input_defaults = { ...pipelineForm.input_defaults, [name]: event.currentTarget.value }} placeholder={definition.description ?? ''} /></label>{/if}{/each}</div></fieldset>{/if}
     </div><div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4"><button type="button" class="secondary" on:click={() => showPipeline = false}>Cancel</button><button disabled={pipelineForm.processing || discovering || !workflows.length}>{pipelineForm.processing ? 'Saving…' : 'Save pipeline'}</button></div></form></div>
 {/if}
 

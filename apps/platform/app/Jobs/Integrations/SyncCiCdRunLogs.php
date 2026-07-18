@@ -2,8 +2,10 @@
 
 namespace App\Jobs\Integrations;
 
+use App\Enums\BuildReportingMode;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Models\CiCdRun;
+use App\Support\Builds\BuildLog;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -24,15 +26,18 @@ class SyncCiCdRunLogs implements ShouldBeUniqueUntilProcessing, ShouldQueue
         return $this->runId;
     }
 
-    public function handle(CiCdProviderRegistry $providers): void
+    public function handle(CiCdProviderRegistry $providers, BuildLog $logs): void
     {
-        $run = CiCdRun::query()->with(['integration', 'pipeline'])->findOrFail($this->runId);
+        $run = CiCdRun::query()->with(['integration', 'pipeline', 'buildRecord'])->findOrFail($this->runId);
 
-        if ($run->logs_synced_at !== null || $run->external_run_id === null) {
+        if ($run->reporting_mode !== BuildReportingMode::Automatic
+            || $run->buildRecord->logs_updated_at !== null
+            || $run->external_run_id === null) {
             return;
         }
 
         $output = $providers->for($run->integration->provider)->logs($run);
+        $logs->replace($run->buildRecord, $output);
 
         $run->update([
             'log_output' => $output,

@@ -59,6 +59,39 @@ module Fastlane
         }
       end
 
+      def create_build(request_uuid:, profile_type:, app_identifier_id: nil, context: {})
+        payload = {
+          request_uuid: request_uuid,
+          profile_type: profile_type,
+          context: context
+        }
+        payload[:app_identifier_id] = app_identifier_id if present?(app_identifier_id)
+        build_data(json_request(app_endpoint("builds"), method: :post, body: payload))
+      end
+
+      def build(build_id)
+        build_data(get_json(app_endpoint("builds", build_id)))
+      end
+
+      def update_build(build_id:, status:)
+        build_data(json_request(
+          app_endpoint("builds", build_id),
+          method: :patch,
+          body: { status: status }
+        ))
+      end
+
+      def append_build_log(build_id:, content:)
+        data = json_request(
+          app_endpoint("builds", build_id, "logs"),
+          method: :post,
+          body: { content: content }
+        )["data"]
+        raise Error, "App Manager returned an invalid build log response" unless data.is_a?(Hash)
+
+        data
+      end
+
       def download_asset(asset:, output_path:, overwrite: true)
         path = app_endpoint("assets", asset)
         download(path, output_path, overwrite: overwrite, mode: ASSET_FILE_MODE)
@@ -151,6 +184,16 @@ module Fastlane
         raise Error, "App Manager returned invalid JSON for #{path}"
       end
 
+      def json_request(path, method:, body:)
+        response = request(path, method: method, body: body)
+        parsed = JSON.parse(response.body)
+        raise Error, "App Manager returned invalid JSON for #{path}" unless parsed.is_a?(Hash)
+
+        parsed
+      rescue JSON::ParserError, TypeError
+        raise Error, "App Manager returned invalid JSON for #{path}"
+      end
+
       def download(path, output_path, overwrite:, mode:)
         destination = File.expand_path(output_path.to_s)
         raise Error, "output_path is required" if output_path.to_s.strip.empty?
@@ -161,12 +204,21 @@ module Fastlane
         destination
       end
 
-      def request(path)
+      def request(path, method: :get, body: nil)
         uri = URI.parse(path)
-        request = Net::HTTP::Get.new(uri)
+        request_class = {
+          get: Net::HTTP::Get,
+          post: Net::HTTP::Post,
+          patch: Net::HTTP::Patch
+        }.fetch(method)
+        request = request_class.new(uri)
         request["Authorization"] = "Bearer #{@configuration.api_key}"
         request["Accept"] = "application/json"
         request["User-Agent"] = "fastlane-plugin-app_manager/#{Fastlane::AppManager::VERSION}"
+        if body
+          request["Content-Type"] = "application/json"
+          request.body = JSON.generate(body)
+        end
 
         http = Net::HTTP.new(uri.host, uri.port)
         http.use_ssl = uri.scheme == "https"
@@ -251,6 +303,13 @@ module Fastlane
         raise Error, "App Manager returned an invalid #{resource_name} response" unless present?(value)
 
         value.to_s
+      end
+
+      def build_data(response)
+        build = response["data"]
+        raise Error, "App Manager returned an invalid build response" unless build.is_a?(Hash)
+
+        build
       end
 
       def write_atomically(destination, contents, mode)

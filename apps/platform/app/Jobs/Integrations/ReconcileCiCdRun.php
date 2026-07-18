@@ -3,6 +3,7 @@
 namespace App\Jobs\Integrations;
 
 use App\Actions\Integrations\SyncCiCdRunStatus;
+use App\Enums\BuildReportingMode;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Models\CiCdRun;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
@@ -29,12 +30,12 @@ class ReconcileCiCdRun implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         $run = CiCdRun::query()->with(['integration', 'pipeline', 'buildRecord'])->findOrFail($this->runId);
 
-        if ($run->external_run_id === null) {
+        if ($run->reporting_mode !== BuildReportingMode::Automatic || $run->external_run_id === null) {
             return;
         }
 
         if ($run->buildRecord->status->isTerminal()) {
-            if ($run->logs_synced_at === null) {
+            if ($run->buildRecord->logs_updated_at === null) {
                 SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations');
             }
 

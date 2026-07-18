@@ -54,6 +54,10 @@ APP_MANAGER_APP=customer-app
 | `app_manager_download_apns_key` | APNs authentication key (`.p8`) | iOS |
 | `app_manager_download_google_play_service_account` | Google Play service-account JSON | Android |
 | `app_manager_download_apple_api_key` | App Store Connect API key (`.p8`) | iOS |
+| `app_manager_create_build` | Create an API-managed build in `pending` | iOS, Android |
+| `app_manager_build_start` | Mark an API-managed build as `running` | iOS, Android |
+| `app_manager_build_log` | Append plain-text build output | iOS, Android |
+| `app_manager_build_finish` | Finish as `completed`, `failed`, or `cancelled` | iOS, Android |
 
 All download actions require:
 
@@ -229,6 +233,48 @@ end
 `app_manager_download_firebase_config` downloads the Firebase HTTP v1 service-account JSON stored as the Platform `firebase_config` credential. It is not the client-side `google-services.json` or `GoogleService-Info.plist` file.
 
 The current Platform API exposes APNs authentication keys (`.p8`) through `apns_key`. It does not yet expose a separate legacy APNs certificate (`.p12`) credential type.
+
+## Manual build reporting
+
+Use manual reporting when App Manager cannot or should not poll the CI provider. A self-hosted runner can create and own the complete build lifecycle:
+
+```ruby
+build = app_manager_create_build(
+  profile_type: "production",
+  context: { commit: ENV["GITHUB_SHA"], runner: "self-hosted" }
+)
+
+app_manager_build_start
+app_manager_build_log(message: "Resolving dependencies")
+
+begin
+  # Run the real build here.
+  app_manager_build_log(message: "Artifact created")
+  app_manager_build_finish(status: "completed")
+rescue StandardError => error
+  app_manager_build_log(message: "Build failed: #{error.message}")
+  app_manager_build_finish(status: "failed")
+  raise
+end
+```
+
+`app_manager_create_build` stores the returned UUID in `APP_MANAGER_BUILD_ID` lane context. The other actions use that value automatically. For a CI/CD pipeline configured with manual reporting, App Manager creates the build before dispatch and injects its UUID into the selected `workflow_dispatch` string input. Map that input to the runner environment:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      app_manager_build_id:
+        required: false
+        type: string
+
+jobs:
+  build:
+    env:
+      APP_MANAGER_BUILD_ID: ${{ inputs.app_manager_build_id }}
+```
+
+Each log request accepts a plain-text chunk up to 256 KiB; a build keeps up to 5 MB. Automatic pipelines continue to read status and logs directly from their CI provider and reject manual lifecycle writes.
 
 ## Return values and file handling
 

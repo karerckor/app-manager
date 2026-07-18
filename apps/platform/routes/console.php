@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Enums\WebhookDeliveryStatus;
@@ -20,6 +21,7 @@ Artisan::command('inspire', function () {
 
 Schedule::call(function () {
     CiCdRun::query()
+        ->where('reporting_mode', BuildReportingMode::Automatic->value)
         ->whereIn('dispatch_status', [CiCdDispatchStatus::Accepted->value, CiCdDispatchStatus::Unknown->value])
         ->whereNotNull('external_run_id')
         ->whereHas('buildRecord', fn ($query) => $query->whereNotIn('status', [
@@ -33,8 +35,9 @@ Schedule::call(function () {
 
 Schedule::call(function () {
     CiCdRun::query()
+        ->where('reporting_mode', BuildReportingMode::Automatic->value)
         ->whereNotNull('external_run_id')
-        ->whereNull('logs_synced_at')
+        ->whereHas('buildRecord', fn ($query) => $query->whereNull('logs_updated_at'))
         ->whereHas('buildRecord', fn ($query) => $query->whereIn('status', [
             BuildStatus::Completed->value,
             BuildStatus::Failed->value,

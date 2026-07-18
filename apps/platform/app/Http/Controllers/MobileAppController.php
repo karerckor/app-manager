@@ -153,6 +153,7 @@ class MobileAppController extends Controller
                     'workflow' => $pipeline->workflow_name,
                     'default_ref' => $pipeline->default_ref,
                     'profile_type' => $pipeline->profile_type->value,
+                    'reporting_mode' => $pipeline->reporting_mode->value,
                     'input_defaults' => $pipeline->input_defaults ?? [],
                     'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $pipeline->integration, $pipeline]),
                 ])
@@ -172,8 +173,11 @@ class MobileAppController extends Controller
                         'pipeline_name' => $run?->pipeline?->name,
                         'external_url' => $run?->external_run_url,
                         'provider_status' => $run?->provider_status,
-                        'logs' => $run?->log_output,
-                        'logs_pending' => $run?->external_run_id !== null && $run?->logs_synced_at === null,
+                        'reporting_mode' => $build->reporting_mode->value,
+                        'logs' => $build->log_output,
+                        'logs_pending' => $build->reporting_mode->value === 'automatic'
+                            && $run?->external_run_id !== null
+                            && $build->logs_updated_at === null,
                         'created_at' => $build->created_at,
                         'started_at' => $build->started_at,
                         'finished_at' => $build->finished_at,

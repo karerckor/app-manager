@@ -78,6 +78,57 @@ RSpec.describe "App Manager actions" do
     Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_APP_INFO] = nil
   end
 
+  it "creates a build and shares its id with lifecycle actions" do
+    build = { "id" => "build-1", "status" => "pending" }
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:create_build).and_return(build)
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:update_build)
+      .and_return(build.merge("status" => "running"))
+
+    result = Fastlane::Actions::AppManagerCreateBuildAction.run(
+      request_uuid: "request-1",
+      profile_type: "production",
+      app_identifier_id: nil,
+      context: { commit: "abc" }
+    )
+    Fastlane::Actions::AppManagerBuildStartAction.run(build_id: nil)
+
+    expect(result).to eq(build)
+    expect(Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_ID]).to eq("build-1")
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:update_build).with(
+      build_id: "build-1",
+      status: "running"
+    )
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_ID] = nil
+  end
+
+  it "appends a newline and reports a terminal build status" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:append_build_log).and_return("bytes" => 6)
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:update_build).and_return(
+      "id" => "build-1",
+      "status" => "failed"
+    )
+
+    Fastlane::Actions::AppManagerBuildLogAction.run(
+      build_id: "build-1",
+      message: "hello",
+      newline: true
+    )
+    Fastlane::Actions::AppManagerBuildFinishAction.run(
+      build_id: "build-1",
+      status: "failed"
+    )
+
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:append_build_log).with(
+      build_id: "build-1",
+      content: "hello\n"
+    )
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:update_build).with(
+      build_id: "build-1",
+      status: "failed"
+    )
+  end
+
   it "passes an iOS profile type to the typed credential downloader" do
     downloaded = {
       path: "/tmp/certificate.p12",
@@ -150,6 +201,10 @@ RSpec.describe "App Manager actions" do
     action_names = %i[
       app_manager_configure
       app_manager_app_info
+      app_manager_create_build
+      app_manager_build_start
+      app_manager_build_log
+      app_manager_build_finish
       app_manager_download_icon
       app_manager_download_splashscreen
       app_manager_download_ios_certificate

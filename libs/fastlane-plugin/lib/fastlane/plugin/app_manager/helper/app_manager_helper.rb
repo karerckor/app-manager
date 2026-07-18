@@ -23,6 +23,38 @@ module Fastlane
           UI.user_error!(e.message)
         end
 
+        def create_build(**options)
+          client.create_build(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def build(build_id)
+          client.build(build_id)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def update_build(**options)
+          client.update_build(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def append_build_log(**options)
+          client.append_build_log(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def resolve_build_id(value = nil)
+          build_id = value || Actions.lane_context[Actions::SharedValues::APP_MANAGER_BUILD_ID] || ENV["APP_MANAGER_BUILD_ID"]
+          normalized = build_id.to_s.strip
+          raise Fastlane::AppManager::Error, "App Manager build_id or APP_MANAGER_BUILD_ID is required" if normalized.empty?
+
+          normalized
+        end
+
         def download_credential(**options)
           client.download_credential(**options)
         rescue Fastlane::AppManager::Error => e

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -19,7 +20,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'request_uuid',
     'profile_type',
     'status',
+    'reporting_mode',
     'context_snapshot',
+    'log_output',
+    'logs_updated_at',
     'started_at',
     'cancel_requested_at',
     'finished_at',
@@ -27,6 +31,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class BuildRecord extends Model
 {
     use HasFactory, HasUuids;
+
+    protected $attributes = [
+        'reporting_mode' => 'manual',
+    ];
 
     public function team(): BelongsTo
     {
@@ -58,7 +66,9 @@ class BuildRecord extends Model
         return [
             'profile_type' => ProfileType::class,
             'status' => BuildStatus::class,
+            'reporting_mode' => BuildReportingMode::class,
             'context_snapshot' => 'array',
+            'logs_updated_at' => 'datetime',
             'started_at' => 'datetime',
             'cancel_requested_at' => 'datetime',
             'finished_at' => 'datetime',
