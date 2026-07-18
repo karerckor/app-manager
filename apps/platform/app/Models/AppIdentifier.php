@@ -26,6 +26,16 @@ class AppIdentifier extends Model
         return $this->hasMany(Profile::class);
     }
 
+    public function buildRecords(): HasMany
+    {
+        return $this->hasMany(BuildRecord::class);
+    }
+
+    public function ciCdPipelines(): HasMany
+    {
+        return $this->hasMany(CiCdPipeline::class);
+    }
+
     public function credentials(): MorphToMany
     {
         return $this->morphToMany(Credential::class, 'credentialable')->withTimestamps();

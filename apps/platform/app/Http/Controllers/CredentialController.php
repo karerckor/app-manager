@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
+use App\Enums\WebhookEventType;
+use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
 use App\Models\Credential;
 use App\Models\MobileApp;
@@ -21,6 +24,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CredentialController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
         $this->authorizeTeam($request, $team);
@@ -65,25 +70,35 @@ class CredentialController extends Controller
             ]);
         }
 
-        $credential = $mobileApp->team->credentials()->create([
-            ...Arr::only($data, ['name', 'type', 'expires_at']),
-            'payload' => $data['payload'] ?? null,
-        ]);
+        DB::transaction(function () use ($mobileApp, $team, $request, $data, $identifier, $profileType) {
+            $credential = $mobileApp->team->credentials()->create([
+                ...Arr::only($data, ['name', 'type', 'expires_at']),
+                'payload' => $data['payload'] ?? null,
+            ]);
 
-        if ($profileType) {
-            $profileDefinition = BuildProfileSchema::definition($profileType, $identifier->platform);
-            $profile = $identifier->profiles()->firstOrCreate(
-                ['type' => $profileType],
-                ['name' => $profileDefinition['label']],
+            if ($profileType) {
+                $profileDefinition = BuildProfileSchema::definition($profileType, $identifier->platform);
+                $profile = $identifier->profiles()->firstOrCreate(
+                    ['type' => $profileType],
+                    ['name' => $profileDefinition['label']],
+                );
+                $profile->credentials()->attach($credential);
+            } else {
+                $identifier->credentials()->attach($credential);
+            }
+
+            if ($request->hasFile('file')) {
+                $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            }
+
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialCreated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
             );
-            $profile->credentials()->attach($credential);
-        } else {
-            $identifier->credentials()->attach($credential);
-        }
-
-        if ($request->hasFile('file')) {
-            $credential->addMediaFromRequest('file')->toMediaCollection('file');
-        }
+        });
 
         return back()->with('status', 'Credential added.');
     }
@@ -160,7 +175,7 @@ class CredentialController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($credential, $data, $type, $mobileApp, $identifier, $profileType, $request) {
+        DB::transaction(function () use ($credential, $data, $type, $mobileApp, $identifier, $profileType, $request, $team) {
             $credential->update([
                 ...Arr::only($data, ['name', 'expires_at']),
                 'type' => $type,
@@ -183,6 +198,14 @@ class CredentialController extends Controller
             if ($request->hasFile('file')) {
                 $credential->addMediaFromRequest('file')->toMediaCollection('file');
             }
+
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialUpdated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
+            );
         });
 
         return back()->with('status', 'Credential updated.');
@@ -200,7 +223,16 @@ class CredentialController extends Controller
                 new ValidCredentialFile($credential->type, $credential->payload ?? []),
             ],
         ]);
-        $credential->addMediaFromRequest('file')->toMediaCollection('file');
+        DB::transaction(function () use ($credential, $team, $request) {
+            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialUpdated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
+            );
+        });
 
         return back()->with('status', 'Credential file updated.');
     }

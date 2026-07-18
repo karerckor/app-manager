@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TeamPermission;
+use App\Enums\WebhookEventType;
+use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -15,6 +20,8 @@ use Inertia\Response;
 
 class MobileAppController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function store(Request $request, Team $team): RedirectResponse
     {
         $this->authorizeTeam($request, $team);
@@ -39,11 +46,22 @@ class MobileAppController extends Controller
             $slug = $baseSlug.'-'.$suffix++;
         }
 
-        $app = $team->mobileApps()->create([
-            'name' => $data['name'],
-            'slug' => $slug,
-            'description' => $data['description'] ?? null,
-        ]);
+        $app = DB::transaction(function () use ($team, $request, $data, $slug) {
+            $app = $team->mobileApps()->create([
+                'name' => $data['name'],
+                'slug' => $slug,
+                'description' => $data['description'] ?? null,
+            ]);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::MobileAppCreated,
+                $app,
+                WebhookPayload::mobileApp($app),
+                $request->user(),
+            );
+
+            return $app;
+        });
 
         return redirect()->route('accounts.apps.show', ['team' => $team, 'mobileApp' => $app])->with('status', 'Application created.');
     }
@@ -51,6 +69,7 @@ class MobileAppController extends Controller
     public function show(Request $request, Team $team, MobileApp $mobileApp): Response
     {
         $this->authorizeTeam($request, $team);
+        $canRunPipelines = $team->allows($request->user(), TeamPermission::RunPipelines);
 
         $mobileApp->load([
             'appIdentifiers' => fn ($query) => $query
@@ -120,6 +139,41 @@ class MobileAppController extends Controller
             ]),
             'credentials' => $credentials,
             'credentialTypes' => CredentialSchema::definitions(),
+            'pipelines' => $canRunPipelines ? $mobileApp->ciCdPipelines()
+                ->with('integration')
+                ->where('enabled', true)
+                ->latest()
+                ->get()
+                ->filter(fn ($pipeline) => $pipeline->integration->status->canDispatch())
+                ->map(fn ($pipeline) => [
+                    'id' => $pipeline->id,
+                    'name' => $pipeline->name,
+                    'provider' => $pipeline->integration->provider->value,
+                    'repository' => $pipeline->repository_full_name,
+                    'workflow' => $pipeline->workflow_name,
+                    'default_ref' => $pipeline->default_ref,
+                    'profile_type' => $pipeline->profile_type->value,
+                    'input_defaults' => $pipeline->input_defaults ?? [],
+                    'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $pipeline->integration, $pipeline]),
+                ])
+                ->values() : collect(),
+            'builds' => $mobileApp->buildRecords()
+                ->with(['ciCdRun.pipeline'])
+                ->latest()
+                ->limit(30)
+                ->get()
+                ->map(fn ($build) => [
+                    'id' => $build->id,
+                    'status' => $build->status->value,
+                    'profile_type' => $build->profile_type->value,
+                    'pipeline_name' => $canRunPipelines ? $build->ciCdRun?->pipeline?->name : null,
+                    'external_url' => $canRunPipelines ? $build->ciCdRun?->external_run_url : null,
+                    'provider_status' => $canRunPipelines ? $build->ciCdRun?->provider_status : null,
+                    'created_at' => $build->created_at,
+                    'finished_at' => $build->finished_at,
+                    'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
+                    'cancel_url' => route('accounts.apps.builds.cancel', [$team, $mobileApp, $build]),
+                ]),
         ]);
     }
 
@@ -132,10 +186,19 @@ class MobileAppController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $mobileApp->update([
-            'name' => $data['name'],
-            'description' => $data['description'] ?? null,
-        ]);
+        DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+            $mobileApp->update([
+                'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+            ]);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::MobileAppUpdated,
+                $mobileApp,
+                WebhookPayload::mobileApp($mobileApp),
+                $request->user(),
+            );
+        });
 
         return redirect()
             ->route('accounts.apps.show', ['team' => $team, 'mobileApp' => $mobileApp])
@@ -146,7 +209,17 @@ class MobileAppController extends Controller
     {
         $this->authorizeTeam($request, $team);
 
-        $mobileApp->delete();
+        DB::transaction(function () use ($mobileApp, $team, $request) {
+            $payload = WebhookPayload::mobileApp($mobileApp);
+            $mobileApp->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::MobileAppDeleted,
+                $mobileApp,
+                $payload,
+                $request->user(),
+            );
+        });
 
         return redirect()
             ->route('accounts.apps.index', ['team' => $team])

@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
+use App\Enums\WebhookEventType;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\CredentialResource;
+use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
 use App\Models\Credential;
 use App\Models\MobileApp;
@@ -18,12 +21,15 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CredentialController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         $credentials = $team->credentials()
@@ -70,22 +76,32 @@ class CredentialController extends Controller
             : null;
         $this->ensureProfileIsSupported($profileType, $identifier);
 
-        $credential = $team->credentials()->create([
-            ...Arr::only($data, ['name', 'type', 'expires_at']),
-            'payload' => $data['payload'] ?? null,
-        ]);
-        if ($profileType) {
-            $profileDefinition = BuildProfileSchema::definition($profileType, $identifier->platform);
-            $profile = $identifier->profiles()->firstOrCreate(
-                ['type' => $profileType],
-                ['name' => $profileDefinition['label']],
+        $credential = DB::transaction(function () use ($team, $request, $data, $identifier, $profileType, $mobileApp) {
+            $credential = $team->credentials()->create([
+                ...Arr::only($data, ['name', 'type', 'expires_at']),
+                'payload' => $data['payload'] ?? null,
+            ]);
+            if ($profileType) {
+                $profileDefinition = BuildProfileSchema::definition($profileType, $identifier->platform);
+                $profile = $identifier->profiles()->firstOrCreate(
+                    ['type' => $profileType],
+                    ['name' => $profileDefinition['label']],
+                );
+                $profile->credentials()->attach($credential);
+            } else {
+                $identifier->credentials()->attach($credential);
+            }
+            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialCreated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
             );
-            $profile->credentials()->attach($credential);
-        } else {
-            $identifier->credentials()->attach($credential);
-        }
-        $credential->addMediaFromRequest('file')->toMediaCollection('file');
-        $credential->load($this->relationsFor($mobileApp));
+
+            return $credential->load($this->relationsFor($mobileApp));
+        });
 
         return (new CredentialResource($credential))
             ->response()
@@ -133,18 +149,39 @@ class CredentialController extends Controller
         }
 
         $data = $request->validate($rules);
-        $credential->update(Arr::only($data, ['name', 'expires_at', 'payload']));
+        DB::transaction(function () use ($credential, $data, $request, $team) {
+            $credential->update(Arr::only($data, ['name', 'expires_at', 'payload']));
 
-        if ($request->hasFile('file')) {
-            $credential->addMediaFromRequest('file')->toMediaCollection('file');
-        }
+            if ($request->hasFile('file')) {
+                $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            }
+
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialUpdated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
+            );
+        });
 
         return new CredentialResource($credential->refresh()->load($this->relationsFor($mobileApp)));
     }
 
-    public function destroy(Team $team, MobileApp $mobileApp, string $credential): Response
+    public function destroy(Request $request, Team $team, MobileApp $mobileApp, string $credential): Response
     {
-        $this->credential($team, $mobileApp, $credential)->delete();
+        $credential = $this->credential($team, $mobileApp, $credential);
+        DB::transaction(function () use ($credential, $team, $request) {
+            $payload = WebhookPayload::credential($credential);
+            $credential->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialDeleted,
+                $credential,
+                $payload,
+                $request->user(),
+            );
+        });
 
         return response()->noContent();
     }
@@ -175,16 +212,34 @@ class CredentialController extends Controller
                 new ValidCredentialFile($credential->type, $credential->payload ?? []),
             ],
         ]);
-        $credential->addMediaFromRequest('file')->toMediaCollection('file');
+        DB::transaction(function () use ($credential, $team, $request) {
+            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialUpdated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
+            );
+        });
 
         return new CredentialResource($credential->refresh()->load($this->relationsFor($mobileApp)));
     }
 
-    public function destroyFile(Team $team, MobileApp $mobileApp, string $credential): Response
+    public function destroyFile(Request $request, Team $team, MobileApp $mobileApp, string $credential): Response
     {
         $credential = $this->credential($team, $mobileApp, $credential);
         abort_unless($credential->getFirstMedia('file'), 404);
-        $credential->clearMediaCollection('file');
+        DB::transaction(function () use ($credential, $team, $request) {
+            $credential->clearMediaCollection('file');
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialUpdated,
+                $credential,
+                WebhookPayload::credential($credential),
+                $request->user(),
+            );
+        });
 
         return response()->noContent();
     }

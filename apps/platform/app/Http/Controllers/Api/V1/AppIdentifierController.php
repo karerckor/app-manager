@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
+use App\Enums\WebhookEventType;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\AppIdentifierResource;
+use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use App\Models\Team;
@@ -12,10 +15,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class AppIdentifierController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         return AppIdentifierResource::collection(
@@ -26,7 +32,18 @@ class AppIdentifierController extends Controller
     public function store(Request $request, Team $team, MobileApp $mobileApp): JsonResponse
     {
         $data = $request->validate($this->rules($request, $mobileApp));
-        $appIdentifier = $mobileApp->appIdentifiers()->create($data);
+        $appIdentifier = DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+            $appIdentifier = $mobileApp->appIdentifiers()->create($data);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierCreated,
+                $appIdentifier,
+                WebhookPayload::appIdentifier($appIdentifier),
+                $request->user(),
+            );
+
+            return $appIdentifier;
+        });
 
         return (new AppIdentifierResource($appIdentifier))
             ->response()
@@ -45,14 +62,37 @@ class AppIdentifierController extends Controller
         AppIdentifier $appIdentifier,
     ): AppIdentifierResource {
         $data = $request->validate($this->rules($request, $mobileApp, $appIdentifier));
-        $appIdentifier->update($data);
+        DB::transaction(function () use ($appIdentifier, $team, $request, $data) {
+            $appIdentifier->update($data);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierUpdated,
+                $appIdentifier,
+                WebhookPayload::appIdentifier($appIdentifier),
+                $request->user(),
+            );
+        });
 
         return new AppIdentifierResource($appIdentifier->refresh());
     }
 
-    public function destroy(Team $team, MobileApp $mobileApp, AppIdentifier $appIdentifier): Response
-    {
-        $appIdentifier->delete();
+    public function destroy(
+        Request $request,
+        Team $team,
+        MobileApp $mobileApp,
+        AppIdentifier $appIdentifier,
+    ): Response {
+        DB::transaction(function () use ($appIdentifier, $team, $request) {
+            $payload = WebhookPayload::appIdentifier($appIdentifier);
+            $appIdentifier->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierDeleted,
+                $appIdentifier,
+                $payload,
+                $request->user(),
+            );
+        });
 
         return response()->noContent();
     }

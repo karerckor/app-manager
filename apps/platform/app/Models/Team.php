@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\TeamPermission;
+use App\Enums\TeamRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -39,6 +41,63 @@ class Team extends Model
     public function apiKeys(): HasMany
     {
         return $this->hasMany(ApiKey::class);
+    }
+
+    public function buildRecords(): HasMany
+    {
+        return $this->hasMany(BuildRecord::class);
+    }
+
+    public function integrations(): HasMany
+    {
+        return $this->hasMany(Integration::class);
+    }
+
+    public function ciCdPipelines(): HasMany
+    {
+        return $this->hasMany(CiCdPipeline::class);
+    }
+
+    public function ciCdRuns(): HasMany
+    {
+        return $this->hasMany(CiCdRun::class);
+    }
+
+    public function webhookEndpoints(): HasMany
+    {
+        return $this->hasMany(WebhookEndpoint::class);
+    }
+
+    public function webhookEvents(): HasMany
+    {
+        return $this->hasMany(WebhookEvent::class);
+    }
+
+    public function roleFor(User $user): ?TeamRole
+    {
+        if ($this->owner_id === $user->id) {
+            return TeamRole::Owner;
+        }
+
+        $role = $this->users()
+            ->whereKey($user->id)
+            ->value('team_user.role');
+
+        return is_string($role) ? TeamRole::tryFrom($role) : null;
+    }
+
+    public function allows(User $user, TeamPermission $permission): bool
+    {
+        return $this->roleFor($user)?->allows($permission) ?? false;
+    }
+
+    public function addUser(User $user, TeamRole|string $role): void
+    {
+        $value = $role instanceof TeamRole ? $role->value : $role;
+
+        $this->users()->syncWithoutDetaching([
+            $user->id => ['role' => $value],
+        ]);
     }
 
     public function getRouteKeyName(): string

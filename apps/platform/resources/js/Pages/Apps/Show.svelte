@@ -8,6 +8,8 @@
     export let identifiers = [];
     export let credentials = [];
     export let credentialTypes = [];
+    export let pipelines = [];
+    export let builds = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
 
@@ -189,6 +191,10 @@
     const typeLabel = (type) => schemaFor(type)?.label ?? type.replaceAll('_', ' ');
     const formatBytes = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     const formatDate = (value) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) : 'No expiration';
+    const formatDateTime = (value) => value ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+    const buildStatusClass = (status) => ({ completed: 'bg-emerald-50 text-emerald-700', running: 'bg-sky-50 text-sky-700', pending: 'bg-indigo-50 text-indigo-700', cancel_requested: 'bg-amber-50 text-amber-700', failed: 'bg-rose-50 text-rose-700', cancelled: 'bg-slate-100 text-slate-600' }[status] ?? 'bg-slate-100 text-slate-600');
+    const runPipeline = (pipeline) => router.post(pipeline.run_url, { request_uuid: crypto.randomUUID(), ref: pipeline.default_ref, inputs: pipeline.input_defaults ?? {} }, { preserveScroll: true, onSuccess: () => tab = 'builds' });
+    const cancelBuild = (build) => router.post(build.cancel_url, {}, { preserveScroll: true });
     const isExpiring = (value) => value && new Date(value).getTime() < Date.now() + 1000 * 60 * 60 * 24 * 30;
 </script>
 
@@ -220,6 +226,7 @@
         <div class="mb-7 flex gap-1 border-b border-slate-200">
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'overview' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'overview'}>Overview</button>
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'credentials' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'credentials'}>Credentials <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{credentials.length}</span></button>
+            <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'builds' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'builds'}>Builds <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{builds.length}</span></button>
         </div>
 
         {#if tab === 'overview'}
@@ -273,7 +280,7 @@
                     </section>
                 </aside>
             </div>
-        {:else}
+        {:else if tab === 'credentials'}
             <section class="card overflow-hidden p-0">
                 <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">Signing & service credentials</h2><p class="mt-0.5 text-xs text-slate-500">Signing files are assigned to a build target and expected artifact.</p></div><button class="flex items-center gap-1.5 px-3 py-2 text-xs" disabled={!identifiers.length} on:click={openCreateCredential}><span class="text-base leading-none">+</span> Add credential</button></div>
                 {#if credentials.length}
@@ -301,6 +308,24 @@
                     <div class="px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span><h3 class="text-sm font-bold">No credentials yet</h3><p class="mt-2 text-sm text-slate-500">Add a signing key, service account, or platform configuration.</p><button class="mt-5" disabled={!identifiers.length} on:click={openCreateCredential}>Add credential</button></div>
                 {/if}
             </section>
+        {:else}
+            <div class="space-y-6">
+                {#if auth?.team?.permissions?.run_pipelines}
+                    <section class="card p-0">
+                        <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Run a pipeline</h2><p class="mt-1 text-xs text-slate-500">Start a configured CI/CD workflow with its default ref and inputs.</p></div>
+                        {#if pipelines.length}
+                            <div class="divide-y divide-slate-100">{#each pipelines as pipeline}<div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div><p class="text-sm font-semibold">{pipeline.name}</p><p class="mt-1 text-xs text-slate-500">{pipeline.provider} · {pipeline.repository} · {pipeline.workflow} · {pipeline.default_ref}</p></div><button class="px-3 py-2 text-xs" on:click={() => runPipeline(pipeline)}>Run build</button></div>{/each}</div>
+                        {:else}<div class="px-5 py-10 text-center"><p class="text-sm font-semibold">No active pipelines</p><p class="mt-1 text-xs text-slate-500">Configure one from Integrations first.</p></div>{/if}
+                    </section>
+                {/if}
+
+                <section class="card overflow-hidden p-0">
+                    <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Build history</h2><p class="mt-1 text-xs text-slate-500">Latest external pipeline runs for this application.</p></div>
+                    {#if builds.length}
+                        <div class="overflow-x-auto"><table class="w-full min-w-[760px] text-left text-xs"><thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">{#each builds as build}<tr><td class="px-5 py-4 font-semibold">{build.pipeline_name || 'External pipeline'}</td><td class="px-4 py-4 text-slate-500">{build.profile_type}</td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status}</span></td><td class="px-4 py-4 text-slate-500">{formatDateTime(build.created_at)}</td><td class="px-5 py-4"><div class="flex justify-end gap-2">{#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}{#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}</div></td></tr>{/each}</tbody></table></div>
+                    {:else}<div class="px-6 py-14 text-center"><p class="text-sm font-semibold">No builds yet</p><p class="mt-1 text-xs text-slate-500">Run a configured pipeline to create the first build.</p></div>{/if}
+                </section>
+            </div>
         {/if}
     </main>
 </AppShell>

@@ -1,0 +1,101 @@
+<?php
+
+namespace App\Actions\Integrations;
+
+use App\Integrations\CiCd\CiCdProviderRegistry;
+use App\Integrations\CiCd\Data\PipelineData;
+use App\Integrations\CiCd\WorkflowInputValidator;
+use App\Models\AppIdentifier;
+use App\Models\CiCdPipeline;
+use App\Models\Integration;
+use App\Models\MobileApp;
+use App\Models\Team;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class SaveCiCdPipeline
+{
+    public function __construct(
+        private readonly CiCdProviderRegistry $providers,
+        private readonly WorkflowInputValidator $inputValidator,
+    ) {}
+
+    /** @param array<string, mixed> $data */
+    public function handle(
+        Team $team,
+        Integration $integration,
+        User $user,
+        array $data,
+        ?CiCdPipeline $pipeline = null,
+    ): CiCdPipeline {
+        abort_unless($integration->team_id === $team->id && $integration->status->canDispatch(), 404);
+        $mobileApp = MobileApp::query()
+            ->whereKey($data['mobile_app_id'])
+            ->where('team_id', $team->id)
+            ->firstOrFail();
+        $identifier = isset($data['app_identifier_id'])
+            ? AppIdentifier::query()
+                ->whereKey($data['app_identifier_id'])
+                ->where('mobile_app_id', $mobileApp->id)
+                ->firstOrFail()
+            : null;
+        $provider = $this->providers->for($integration->provider);
+        $repository = collect($provider->repositories($integration))
+            ->first(fn ($item) => $item->fullName === $data['repository_full_name']);
+
+        if (! $repository) {
+            throw ValidationException::withMessages(['repository_full_name' => 'Repository is not accessible to this installation.']);
+        }
+
+        $workflow = collect($provider->pipelines($integration, $repository))
+            ->first(fn (PipelineData $item) => $item->id === (string) $data['workflow_id']);
+
+        if (! $workflow) {
+            throw ValidationException::withMessages(['workflow_id' => 'Workflow is unavailable or does not support workflow_dispatch.']);
+        }
+
+        $availableRef = collect($provider->refs($integration, $repository))
+            ->contains(fn ($item) => $item->name === $data['default_ref']);
+
+        if (! $availableRef) {
+            throw ValidationException::withMessages(['default_ref' => 'The selected branch or tag is unavailable.']);
+        }
+
+        $inputs = $data['input_defaults'] ?? [];
+        try {
+            $this->inputValidator->validate($workflow->inputs, $inputs);
+        } catch (ValidationException $exception) {
+            throw ValidationException::withMessages(collect($exception->errors())->mapWithKeys(fn ($messages, $key) => [
+                'input_defaults'.str($key)->after('inputs') => $messages,
+            ])->all());
+        }
+
+        return DB::transaction(function () use ($team, $integration, $user, $data, $pipeline, $mobileApp, $identifier, $repository, $workflow, $inputs) {
+            $pipeline ??= new CiCdPipeline([
+                'team_id' => $team->id,
+                'integration_id' => $integration->id,
+                'created_by_user_id' => $user->id,
+            ]);
+            $pipeline->fill([
+                'mobile_app_id' => $mobileApp->id,
+                'app_identifier_id' => $identifier?->id,
+                'name' => $data['name'],
+                'profile_type' => $data['profile_type'],
+                'enabled' => $data['enabled'] ?? true,
+                'repository_id' => $repository->id,
+                'repository_full_name' => $repository->fullName,
+                'workflow_id' => $workflow->id,
+                'workflow_name' => $workflow->name,
+                'workflow_path' => $workflow->path,
+                'default_ref' => $data['default_ref'],
+                'input_schema' => $workflow->inputs,
+                'input_defaults' => $inputs,
+                'updated_by_user_id' => $user->id,
+            ]);
+            $pipeline->save();
+
+            return $pipeline->refresh();
+        });
+    }
+}

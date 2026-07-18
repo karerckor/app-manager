@@ -3,22 +3,37 @@
 namespace App\Http\Controllers;
 
 use App\Enums\Platform;
+use App\Enums\WebhookEventType;
+use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class AppIdentifierController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
 
         $data = $request->validate($this->rules($request, $mobileApp));
 
-        $mobileApp->appIdentifiers()->create($data);
+        DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+            $identifier = $mobileApp->appIdentifiers()->create($data);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierCreated,
+                $identifier,
+                WebhookPayload::appIdentifier($identifier),
+                $request->user(),
+            );
+        });
 
         return back()->with('status', 'App identifier added.');
     }
@@ -31,7 +46,17 @@ class AppIdentifierController extends Controller
     ): RedirectResponse {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
 
-        $appIdentifier->update($request->validate($this->rules($request, $mobileApp, $appIdentifier)));
+        $data = $request->validate($this->rules($request, $mobileApp, $appIdentifier));
+        DB::transaction(function () use ($appIdentifier, $team, $request, $data) {
+            $appIdentifier->update($data);
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierUpdated,
+                $appIdentifier,
+                WebhookPayload::appIdentifier($appIdentifier),
+                $request->user(),
+            );
+        });
 
         return back()->with('status', 'App identifier updated.');
     }

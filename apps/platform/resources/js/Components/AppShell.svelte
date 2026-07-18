@@ -9,6 +9,7 @@
     $: appsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/apps` : '/dashboard';
     $: apiKeysUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/api-keys` : '/dashboard';
     $: canManageApiKeys = currentTeam?.owner_id === auth.user.id;
+    $: integrationsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/integrations` : '/dashboard';
     const switchTeam = (event) => router.put(`/accounts/${event.currentTarget.value}/switch`);
     const logout = () => router.post('/logout');
     const initials = (name = '') => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -39,6 +40,12 @@
                 <Link href={apiKeysUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'api-keys' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
                     <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg>
                     API keys
+                </Link>
+            {/if}
+            {#if auth?.team?.permissions?.manage_integrations}
+                <Link href={integrationsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'integrations' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                    <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12h8M12 8v8"/><path d="M7 3h3v4H7a5 5 0 0 0 0 10h3v4H7A9 9 0 0 1 7 3ZM17 3h-3v4h3a5 5 0 0 1 0 10h-3v4h3a9 9 0 0 0 0-18Z"/></svg>
+                    Integrations
                 </Link>
             {/if}
             <span class="flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500">
