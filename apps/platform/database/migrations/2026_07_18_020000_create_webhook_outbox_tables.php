@@ -46,7 +46,7 @@ return new class extends Migration
             $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('webhook_event_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('webhook_endpoint_id')->constrained()->cascadeOnDelete();
-            $table->foreignUuid('redelivery_of_id')->nullable()->constrained('webhook_deliveries')->nullOnDelete();
+            $table->uuid('redelivery_of_id')->nullable();
             $table->string('status')->default('pending');
             $table->unsignedSmallInteger('attempt_count')->default(0);
             $table->json('payload_snapshot');
@@ -62,6 +62,13 @@ return new class extends Migration
 
             $table->unique(['webhook_event_id', 'webhook_endpoint_id']);
             $table->index(['status', 'next_attempt_at']);
+        });
+
+        Schema::table('webhook_deliveries', function (Blueprint $table) {
+            $table->foreign('redelivery_of_id')
+                ->references('id')
+                ->on('webhook_deliveries')
+                ->nullOnDelete();
         });
     }
 
