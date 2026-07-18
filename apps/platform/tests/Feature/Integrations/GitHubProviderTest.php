@@ -17,6 +17,7 @@ use App\Models\MobileApp;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 use ZipArchive;
@@ -105,6 +106,43 @@ class GitHubProviderTest extends TestCase
             && $request['inputs'] === ['channel' => 'production']);
     }
 
+    public function test_cancel_force_stops_the_github_workflow_run(): void
+    {
+        $integration = $this->integration();
+        $this->configureGitHub();
+        $run = $this->ciCdRun($integration);
+        Http::fake([
+            'https://api.github.test/app/installations/42/access_tokens' => Http::response(['token' => 'installation-token']),
+            'https://api.github.test/repos/octo/mobile/actions/runs/9001/force-cancel' => Http::response(status: 202),
+        ]);
+
+        $result = app(GitHubProvider::class)->cancel($run->load(['integration', 'pipeline']));
+
+        $this->assertTrue($result->accepted);
+        $this->assertFalse($result->alreadyTerminal);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.test/repos/octo/mobile/actions/runs/9001/force-cancel'
+            && $request->method() === 'POST'
+            && $request->body() === ''
+            && $request->hasHeader('Authorization', 'Bearer installation-token'));
+    }
+
+    public function test_cancel_surfaces_a_github_rejection(): void
+    {
+        $integration = $this->integration();
+        $this->configureGitHub();
+        $run = $this->ciCdRun($integration);
+        Http::fake([
+            'https://api.github.test/app/installations/42/access_tokens' => Http::response(['token' => 'installation-token']),
+            'https://api.github.test/repos/octo/mobile/actions/runs/9001/force-cancel' => Http::response([
+                'message' => 'Resource not accessible by integration',
+            ], 403),
+        ]);
+
+        $this->expectException(RequestException::class);
+
+        app(GitHubProvider::class)->cancel($run->load(['integration', 'pipeline']));
+    }
+
     public function test_logs_download_and_extract_the_github_workflow_archive(): void
     {
         $integration = $this->integration();
@@ -167,6 +205,22 @@ class GitHubProviderTest extends TestCase
             && $request->hasHeader('Authorization', 'Bearer installation-token'));
     }
 
+    public function test_empty_github_workflow_log_archive_is_a_valid_result(): void
+    {
+        $integration = $this->integration();
+        $this->configureGitHub();
+        $run = $this->ciCdRun($integration);
+        $archive = "PK\x05\x06".str_repeat("\0", 18);
+        Http::fake([
+            'https://api.github.test/app/installations/42/access_tokens' => Http::response(['token' => 'installation-token']),
+            'https://api.github.test/repos/octo/mobile/actions/runs/9001/logs' => Http::response($archive, 200, ['Content-Type' => 'application/zip']),
+        ]);
+
+        $logs = app(GitHubProvider::class)->logs($run->load(['integration', 'pipeline']));
+
+        $this->assertSame('', $logs);
+    }
+
     private function integration(): Integration
     {
         $team = Team::factory()->create();
@@ -178,6 +232,44 @@ class GitHubProviderTest extends TestCase
             'name' => 'GitHub octo',
             'status' => IntegrationStatus::Active,
             'external_id' => '42',
+        ]);
+    }
+
+    private function ciCdRun(Integration $integration): CiCdRun
+    {
+        $app = MobileApp::factory()->create(['team_id' => $integration->team_id]);
+        $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
+        $pipeline = CiCdPipeline::create([
+            'team_id' => $integration->team_id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'name' => 'Release',
+            'profile_type' => ProfileType::Production,
+            'repository_id' => '100',
+            'repository_full_name' => 'octo/mobile',
+            'workflow_id' => '200',
+            'workflow_name' => 'Release',
+            'workflow_path' => '.github/workflows/release.yml',
+            'default_ref' => 'main',
+            'input_schema' => [],
+            'input_defaults' => [],
+        ]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $integration->team_id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+        ]);
+
+        return CiCdRun::create([
+            'team_id' => $integration->team_id,
+            'build_record_id' => $build->id,
+            'pipeline_id' => $pipeline->id,
+            'integration_id' => $integration->id,
+            'dispatch_status' => CiCdDispatchStatus::Accepted,
+            'external_run_id' => '9001',
+            'external_run_url' => 'https://github.test/runs/9001',
+            'request_snapshot' => ['ref' => 'main', 'inputs' => []],
         ]);
     }
 

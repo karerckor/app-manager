@@ -1,10 +1,10 @@
 <?php
 
 return [
-    'enabled' => env('INTEGRATIONS_ENABLED', false),
+    'enabled' => env('INTEGRATIONS_ENABLED', true),
 
     'github' => [
-        'enabled' => env('GITHUB_INTEGRATION_ENABLED', false),
+        'enabled' => env('GITHUB_INTEGRATION_ENABLED', true),
         'app_id' => env('GITHUB_APP_ID'),
         'client_id' => env('GITHUB_APP_CLIENT_ID'),
         'client_secret' => env('GITHUB_APP_CLIENT_SECRET'),
@@ -18,6 +18,6 @@ return [
     ],
 
     'webhooks' => [
-        'enabled' => env('OUTBOUND_WEBHOOKS_ENABLED', false),
+        'enabled' => env('OUTBOUND_WEBHOOKS_ENABLED', true),
     ],
 ];

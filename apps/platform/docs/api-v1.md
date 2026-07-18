@@ -167,9 +167,12 @@ BUILD_RESPONSE=$(curl -sS -X POST \
     "request_uuid":"598a349f-b526-40ba-8e54-247772bce160",
     "profile_type":"production",
     "app_identifier_id":"019f...",
-    "context":{"commit":"abc123","runner":"self-hosted"}
+    "context":{"commit":"abc123","runner":"self-hosted"},
+    "parameters":{"channel":"internal","minify":true}
   }')
 ```
+
+`parameters` — произвольный JSON object размером до 64 KiB. App Manager сохраняет его с build, возвращает в build API и добавляет во все webhook payloads этого build. `context` остаётся техническим snapshot runner-а и не заменяет параметры запуска.
 
 Runner использует `data.id` из ответа для последующих запросов:
 
@@ -193,6 +196,6 @@ curl -X PATCH http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_I
   -d '{"status":"completed"}'
 ```
 
-Один log chunk ограничен 256 KiB, полный журнал — 5 MB. Переводы статуса идемпотентны; попытка изменить уже завершённый build на другой terminal status возвращает `409`. Запрос отмены из UI переводит manual build в `cancel_requested`, после чего runner подтверждает `cancelled` либо сообщает фактический `completed`/`failed`.
+Один log chunk ограничен 256 KiB, полный журнал — 5 MB. Переводы статуса идемпотентны; попытка изменить уже завершённый build на другой terminal status возвращает `409`. Запрос отмены из UI переводит manual build в `cancel_requested`, после чего runner подтверждает `cancelled` либо сообщает фактический `completed`/`failed`. Если runner больше не отвечает, пользователь с правом запуска сборок может выбрать **Force status** в истории и принудительно завершить manual build как `completed`, `failed` или `cancelled`.
 
 Для manual GitHub pipeline App Manager создаёт build до dispatch и передаёт его UUID через выбранный string input `workflow_dispatch`. Runner должен экспортировать это значение как `APP_MANAGER_BUILD_ID` или явно передать в actions fastlane-плагина. Полный пример находится в [`libs/fastlane-plugin/README.md`](../../../libs/fastlane-plugin/README.md).

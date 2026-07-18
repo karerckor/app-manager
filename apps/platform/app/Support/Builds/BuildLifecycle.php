@@ -8,6 +8,7 @@ use App\Exceptions\InvalidBuildTransition;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\BuildRecord;
+use App\Models\User;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -67,13 +68,17 @@ class BuildLifecycle
         });
     }
 
-    public function finish(BuildRecord $build, BuildStatus $status, ?DateTimeInterface $finishedAt = null): BuildRecord
-    {
+    public function finish(
+        BuildRecord $build,
+        BuildStatus $status,
+        ?DateTimeInterface $finishedAt = null,
+        ?User $actor = null,
+    ): BuildRecord {
         if (! $status->isTerminal()) {
             throw InvalidBuildTransition::from($build->status, $status);
         }
 
-        return DB::transaction(function () use ($build, $status, $finishedAt) {
+        return DB::transaction(function () use ($build, $status, $finishedAt, $actor) {
             $current = $this->lock($build);
 
             if ($current->status === $status) {
@@ -94,7 +99,7 @@ class BuildLifecycle
                 WebhookEventType::BuildCompleted,
                 $current,
                 WebhookPayload::build($current),
-                $current->requestedBy,
+                $actor ?? $current->requestedBy,
             );
 
             return $current->refresh();

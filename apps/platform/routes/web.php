@@ -4,12 +4,14 @@ use App\Http\Controllers\AppAssetController;
 use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ForceBuildStatusController;
 use App\Http\Controllers\Integrations\CiCdPipelineController;
 use App\Http\Controllers\Integrations\GitHubConnectionController;
 use App\Http\Controllers\Integrations\GitHubDiscoveryController;
 use App\Http\Controllers\Integrations\IntegrationIndexController;
 use App\Http\Controllers\Integrations\PipelineBuildController;
 use App\Http\Controllers\Integrations\WebhookEndpointController;
+use App\Http\Controllers\ManualBuildController;
 use App\Http\Controllers\MobileAppController;
 use App\Http\Controllers\TeamApiKeyController;
 use App\Http\Controllers\TeamController;
@@ -76,8 +78,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
+        Route::post('/apps/{mobileApp:slug}/builds', [ManualBuildController::class, 'store'])
+            ->name('apps.builds.store');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [PipelineBuildController::class, 'cancel'])
             ->name('apps.builds.cancel');
+        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/status', [ForceBuildStatusController::class, 'update'])
+            ->name('apps.builds.status.update');
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
         Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');

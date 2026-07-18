@@ -30,9 +30,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: demo-ios-${{ github.ref }}
+  group: demo-ios-${{ inputs.app_manager_build_id || github.run_id }}
   cancel-in-progress: false
-  queue: max
 
 jobs:
   smoke-build:

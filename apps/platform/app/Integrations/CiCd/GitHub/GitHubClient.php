@@ -169,11 +169,19 @@ class GitHubClient
             ->json();
     }
 
-    public function cancelWorkflowRun(string $installationId, string $repository, string $runId): int
+    public function forceCancelWorkflowRun(string $installationId, string $repository, string $runId): int
     {
-        return $this->installationRequest($installationId)
-            ->post('/repos/'.$repository.'/actions/runs/'.rawurlencode($runId).'/cancel')
-            ->status();
+        $response = $this->installationRequest($installationId)
+            ->send('POST', '/repos/'.$repository.'/actions/runs/'.rawurlencode($runId).'/force-cancel');
+        $status = $response->status();
+
+        if (! in_array($status, [202, 409], true)) {
+            $response->throw();
+
+            throw new RuntimeException('GitHub returned an unexpected workflow cancellation response.');
+        }
+
+        return $status;
     }
 
     /** @return array<string, mixed> */

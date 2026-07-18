@@ -28,6 +28,8 @@ class CreateManualBuild
         ProfileType $profileType,
         ?AppIdentifier $appIdentifier = null,
         array $context = [],
+        array $parameters = [],
+        string $source = 'api',
     ): BuildRecord {
         $existing = BuildRecord::query()
             ->where('team_id', $team->id)
@@ -54,6 +56,8 @@ class CreateManualBuild
             $profileType,
             $appIdentifier,
             $context,
+            $parameters,
+            $source,
         ) {
             $build = BuildRecord::create([
                 'team_id' => $team->id,
@@ -64,9 +68,10 @@ class CreateManualBuild
                 'profile_type' => $profileType,
                 'status' => BuildStatus::Pending,
                 'reporting_mode' => BuildReportingMode::Manual,
+                'parameters' => $parameters,
                 'context_snapshot' => [
                     'schema_version' => 1,
-                    'source' => 'api',
+                    'source' => $source,
                     'app' => [
                         'id' => $mobileApp->id,
                         'slug' => $mobileApp->slug,

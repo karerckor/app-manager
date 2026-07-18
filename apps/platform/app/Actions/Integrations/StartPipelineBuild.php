@@ -101,6 +101,7 @@ class StartPipelineBuild
                 'profile_type' => $pipeline->profile_type,
                 'status' => BuildStatus::Pending,
                 'reporting_mode' => $pipeline->reporting_mode,
+                'parameters' => $inputs,
                 'context_snapshot' => [
                     'schema_version' => 1,
                     'source' => 'ci_cd',

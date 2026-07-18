@@ -7,6 +7,7 @@ use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Models\CiCdRun;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use RuntimeException;
 
 class CancelCiCdRun implements ShouldQueue
 {
@@ -29,6 +30,10 @@ class CancelCiCdRun implements ShouldQueue
 
         $provider = $providers->for($run->integration->provider);
         $result = $provider->cancel($run);
+
+        if (! $result->accepted && ! $result->alreadyTerminal) {
+            throw new RuntimeException('The CI/CD provider rejected the cancellation request.');
+        }
 
         if ($result->alreadyTerminal) {
             $sync->handle($run, $provider->status($run));

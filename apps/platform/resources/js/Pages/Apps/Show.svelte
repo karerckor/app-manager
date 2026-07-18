@@ -9,6 +9,7 @@
     export let identifiers = [];
     export let credentials = [];
     export let credentialTypes = [];
+    export let buildProfiles = [];
     export let pipelines = [];
     export let builds = [];
     export let navigationTeams = [];
@@ -23,6 +24,13 @@
     let confirmingDelete = false;
     let deleting = false;
     let expandedBuildId = null;
+    let showManualBuild = false;
+    let launchingPipeline = null;
+    let forcingBuild = null;
+    let manualParametersText = '{}';
+    let manualParametersError = '';
+    let pipelineParametersText = '{}';
+    let pipelineParametersError = '';
 
     const editForm = useForm({ name: app.name, description: app.description ?? '' });
 
@@ -57,6 +65,22 @@
         payload: payloadFor(initialType),
         file: null,
     });
+    const profilesForIdentifier = (identifierId) => {
+        const identifier = identifiers.find((item) => String(item.id) === String(identifierId));
+
+        if (identifier) return buildProfiles.filter((profile) => profile.platform === identifier.platform);
+
+        return buildProfiles.filter((profile, index, items) => items.findIndex((item) => item.value === profile.value) === index);
+    };
+    const initialManualProfiles = profilesForIdentifier(initialIdentifier?.id ?? '');
+    const manualBuildForm = useForm({
+        request_uuid: '',
+        app_identifier_id: initialIdentifier?.id ?? '',
+        profile_type: initialManualProfiles[0]?.value ?? '',
+        parameters: {},
+    });
+    const pipelineBuildForm = useForm({ request_uuid: '', ref: '', inputs: {} });
+    const forceStatusForm = useForm({ status: 'cancelled' });
 
     $: selectedIdentifier = identifiers.find((identifier) => String(identifier.id) === String(credentialForm.app_identifier_id));
     $: availableCredentialTypes = credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform));
@@ -65,6 +89,7 @@
     $: selectedProfile = availableProfiles.find((profile) => profile.value === credentialForm.profile_type);
     $: credentialTypeChanged = editingCredential && credentialForm.type !== editingCredential.type;
     $: credentialFileRequired = !editingCredential || credentialTypeChanged || !editingCredential.file;
+    $: manualProfileOptions = profilesForIdentifier(manualBuildForm.app_identifier_id);
 
     const closeIdentifier = () => {
         showIdentifier = false;
@@ -194,10 +219,102 @@
     const formatBytes = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     const formatDate = (value) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) : 'No expiration';
     const formatDateTime = (value) => value ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+    const formatParameters = (value) => JSON.stringify(value ?? {}, null, 2);
     const buildStatusClass = (status) => ({ completed: 'bg-emerald-50 text-emerald-700', running: 'bg-sky-50 text-sky-700', pending: 'bg-indigo-50 text-indigo-700', cancel_requested: 'bg-amber-50 text-amber-700', failed: 'bg-rose-50 text-rose-700', cancelled: 'bg-slate-100 text-slate-600' }[status] ?? 'bg-slate-100 text-slate-600');
-    const runPipeline = (pipeline) => router.post(pipeline.run_url, { request_uuid: crypto.randomUUID(), ref: pipeline.default_ref, inputs: pipeline.input_defaults ?? {} }, { preserveScroll: true, onSuccess: () => tab = 'builds' });
+    const firstFormError = (form, prefix) => Object.entries(form.errors ?? {}).find(([key]) => key === prefix || key.startsWith(`${prefix}.`))?.[1];
+    const parseParameters = (value, setError) => {
+        try {
+            const parsed = JSON.parse(value);
+
+            if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
+                setError('Parameters must be a JSON object.');
+
+                return null;
+            }
+
+            setError('');
+
+            return parsed;
+        } catch (error) {
+            setError(`Invalid JSON: ${error.message}`);
+
+            return null;
+        }
+    };
+    const openManualBuild = () => {
+        manualBuildForm.request_uuid = crypto.randomUUID();
+        manualBuildForm.app_identifier_id = identifiers[0]?.id ?? '';
+        manualBuildForm.profile_type = profilesForIdentifier(manualBuildForm.app_identifier_id)[0]?.value ?? '';
+        manualBuildForm.parameters = {};
+        manualBuildForm.clearErrors();
+        manualParametersText = '{}';
+        manualParametersError = '';
+        showManualBuild = true;
+    };
+    const closeManualBuild = () => {
+        showManualBuild = false;
+        manualBuildForm.clearErrors();
+        manualParametersError = '';
+    };
+    const changeManualIdentifier = (event) => {
+        manualBuildForm.app_identifier_id = event.currentTarget.value;
+        const profiles = profilesForIdentifier(manualBuildForm.app_identifier_id);
+
+        if (!profiles.some((profile) => profile.value === manualBuildForm.profile_type)) {
+            manualBuildForm.profile_type = profiles[0]?.value ?? '';
+        }
+    };
+    const createManualBuild = () => {
+        const parameters = parseParameters(manualParametersText, (message) => manualParametersError = message);
+
+        if (parameters === null) return;
+
+        manualBuildForm.parameters = parameters;
+        manualBuildForm.post(app.urls.manual_builds, {
+            preserveScroll: true,
+            onSuccess: () => { closeManualBuild(); tab = 'builds'; },
+        });
+    };
+    const openPipelineBuild = (pipeline) => {
+        launchingPipeline = pipeline;
+        pipelineBuildForm.request_uuid = crypto.randomUUID();
+        pipelineBuildForm.ref = pipeline.default_ref;
+        pipelineBuildForm.inputs = pipeline.input_defaults ?? {};
+        pipelineBuildForm.clearErrors();
+        pipelineParametersText = formatParameters(pipeline.input_defaults);
+        pipelineParametersError = '';
+    };
+    const closePipelineBuild = () => {
+        launchingPipeline = null;
+        pipelineBuildForm.clearErrors();
+        pipelineParametersError = '';
+    };
+    const runPipeline = () => {
+        const inputs = parseParameters(pipelineParametersText, (message) => pipelineParametersError = message);
+
+        if (inputs === null) return;
+
+        pipelineBuildForm.inputs = inputs;
+        pipelineBuildForm.post(launchingPipeline.run_url, {
+            preserveScroll: true,
+            onSuccess: () => { closePipelineBuild(); tab = 'builds'; },
+        });
+    };
     const cancelBuild = (build) => router.post(build.cancel_url, {}, { preserveScroll: true });
-    const toggleBuildLogs = (build) => expandedBuildId = expandedBuildId === build.id ? null : build.id;
+    const openForceStatus = (build) => {
+        forcingBuild = build;
+        forceStatusForm.status = build.status === 'cancel_requested' ? 'cancelled' : 'failed';
+        forceStatusForm.clearErrors();
+    };
+    const closeForceStatus = () => {
+        forcingBuild = null;
+        forceStatusForm.clearErrors();
+    };
+    const forceBuildStatus = () => forceStatusForm.patch(forcingBuild.force_status_url, {
+        preserveScroll: true,
+        onSuccess: closeForceStatus,
+    });
+    const toggleBuildDetails = (build) => expandedBuildId = expandedBuildId === build.id ? null : build.id;
     const isExpiring = (value) => value && new Date(value).getTime() < Date.now() + 1000 * 60 * 60 * 24 * 30;
 
     onMount(() => {
@@ -326,10 +443,15 @@
         {:else}
             <div class="space-y-6">
                 {#if auth?.team?.permissions?.run_pipelines}
+                    <section class="card flex flex-wrap items-center justify-between gap-4">
+                        <div><h2 class="text-sm font-bold">Manual build</h2><p class="mt-1 text-xs text-slate-500">Create a build record without starting GitHub Actions. Its JSON parameters are sent to build webhooks.</p></div>
+                        <button class="px-3 py-2 text-xs" on:click={openManualBuild}>Create manual build</button>
+                    </section>
+
                     <section class="card p-0">
-                        <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Run a pipeline</h2><p class="mt-1 text-xs text-slate-500">Start a configured CI/CD workflow with its default ref and inputs.</p></div>
+                        <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Run a pipeline</h2><p class="mt-1 text-xs text-slate-500">Review the ref and JSON inputs before starting a configured CI/CD workflow.</p></div>
                         {#if pipelines.length}
-                            <div class="divide-y divide-slate-100">{#each pipelines as pipeline}<div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span></div><p class="mt-1 text-xs text-slate-500">{pipeline.provider} · {pipeline.repository} · {pipeline.workflow} · {pipeline.default_ref}</p></div><button class="px-3 py-2 text-xs" on:click={() => runPipeline(pipeline)}>Run build</button></div>{/each}</div>
+                            <div class="divide-y divide-slate-100">{#each pipelines as pipeline}<div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span></div><p class="mt-1 text-xs text-slate-500">{pipeline.provider} · {pipeline.repository} · {pipeline.workflow} · {pipeline.default_ref}</p></div><button class="px-3 py-2 text-xs" on:click={() => openPipelineBuild(pipeline)}>Run build</button></div>{/each}</div>
                         {:else}<div class="px-5 py-10 text-center"><p class="text-sm font-semibold">No active pipelines</p><p class="mt-1 text-xs text-slate-500">Configure one from Integrations first.</p></div>{/if}
                     </section>
                 {/if}
@@ -343,22 +465,27 @@
                                 <tbody class="divide-y divide-slate-100">
                                     {#each builds as build}
                                         <tr>
-                                            <td class="px-5 py-4"><div class="flex items-center gap-2"><span class="font-semibold">{build.pipeline_name || 'API build'}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">{build.reporting_mode}</span></div></td>
+                                            <td class="px-5 py-4"><div class="flex items-center gap-2"><span class="font-semibold">{build.pipeline_name || 'Manual build'}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">{build.reporting_mode}</span></div></td>
                                             <td class="px-4 py-4 text-slate-500">{build.profile_type}</td>
                                             <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status}</span></td>
                                             <td class="px-4 py-4 text-slate-500">{formatDateTime(build.started_at || build.created_at)}</td>
                                             <td class="px-5 py-4">
                                                 <div class="flex justify-end gap-2">
-                                                    {#if build.logs}<button class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => toggleBuildLogs(build)}>{expandedBuildId === build.id ? 'Hide logs' : 'Logs'}</button>{:else if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-slate-400">Syncing logs…</span>{/if}
+                                                    <button class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => toggleBuildDetails(build)}>{expandedBuildId === build.id ? 'Hide details' : 'Details'}</button>
+                                                    {#if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-slate-400">Syncing logs…</span>{/if}
                                                     {#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}
                                                     {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
+                                                    {#if build.can_force_status}<button class="ghost px-2.5 py-1.5 text-[10px] text-amber-700" on:click={() => openForceStatus(build)}>Force status</button>{/if}
                                                 </div>
                                             </td>
                                         </tr>
-                                        {#if expandedBuildId === build.id && build.logs}
+                                        {#if expandedBuildId === build.id}
                                             <tr>
-                                                <td colspan="5" class="bg-slate-950 p-0">
-                                                    <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-5 text-slate-200">{build.logs}</pre>
+                                                <td colspan="5" class="bg-slate-50 px-5 py-4">
+                                                    <div class="grid gap-4 {build.logs ? 'lg:grid-cols-2' : ''}">
+                                                        <div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Launch parameters</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{formatParameters(build.parameters)}</pre></div>
+                                                        {#if build.logs}<div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Logs</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{build.logs}</pre></div>{/if}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         {/if}
@@ -372,6 +499,49 @@
         {/if}
     </main>
 </AppShell>
+
+{#if showManualBuild}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeManualBuild()}>
+        <form class="modal" on:submit|preventDefault={createManualBuild}>
+            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Create manual build</h2><p class="mt-1 text-sm text-slate-500">This creates a build directly in App Manager and does not start GitHub Actions.</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closeManualBuild}>✕</button></div>
+            <div class="space-y-5 p-6">
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label><span class="label">App identifier <span class="font-normal text-slate-400">(optional)</span></span><select value={manualBuildForm.app_identifier_id} on:change={changeManualIdentifier}><option value="">No app identifier</option>{#each identifiers as identifier}<option value={identifier.id}>{identifier.platform.toUpperCase()} · {identifier.identifier}</option>{/each}</select>{#if manualBuildForm.errors.app_identifier_id}<span class="error">{manualBuildForm.errors.app_identifier_id}</span>{/if}</label>
+                    <label><span class="label">Build profile</span><select bind:value={manualBuildForm.profile_type} required>{#each manualProfileOptions as profile}<option value={profile.value}>{profile.label}{manualBuildForm.app_identifier_id ? '' : ` · ${profile.platform}`}</option>{/each}</select>{#if manualBuildForm.errors.profile_type}<span class="error">{manualBuildForm.errors.profile_type}</span>{/if}</label>
+                </div>
+                <label><span class="label">Parameters (JSON)</span><textarea class="min-h-48 font-mono text-xs leading-5" bind:value={manualParametersText} spellcheck="false" placeholder={'{\n  "channel": "internal"\n}'}></textarea><span class="mt-1 block text-[10px] text-slate-400">These values are saved with the build and included in its webhook payloads.</span>{#if manualParametersError || manualBuildForm.errors.parameters}<span class="error">{manualParametersError || manualBuildForm.errors.parameters}</span>{/if}</label>
+            </div>
+            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeManualBuild}>Cancel</button><button disabled={manualBuildForm.processing || !manualBuildForm.profile_type}>{manualBuildForm.processing ? 'Creating…' : 'Create build'}</button></div>
+        </form>
+    </div>
+{/if}
+
+{#if launchingPipeline}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closePipelineBuild()}>
+        <form class="modal" on:submit|preventDefault={runPipeline}>
+            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Run {launchingPipeline.name}</h2><p class="mt-1 text-sm text-slate-500">{launchingPipeline.repository} · {launchingPipeline.workflow}</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closePipelineBuild}>✕</button></div>
+            <div class="space-y-5 p-6">
+                <label><span class="label">Branch or tag</span><input bind:value={pipelineBuildForm.ref} required />{#if pipelineBuildForm.errors.ref}<span class="error">{pipelineBuildForm.errors.ref}</span>{/if}</label>
+                <label><span class="label">Workflow inputs (JSON)</span><textarea class="min-h-52 font-mono text-xs leading-5" bind:value={pipelineParametersText} spellcheck="false" placeholder={'{}'}></textarea><span class="mt-1 block text-[10px] text-slate-400">Only inputs declared by the GitHub Actions workflow are accepted. Resolved values are saved with the build and included in webhooks.</span>{#if pipelineParametersError || firstFormError(pipelineBuildForm, 'inputs')}<span class="error">{pipelineParametersError || firstFormError(pipelineBuildForm, 'inputs')}</span>{/if}</label>
+                {#if Object.keys(launchingPipeline.input_schema ?? {}).length}<div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><p class="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Declared inputs</p><div class="mt-2 flex flex-wrap gap-2">{#each Object.entries(launchingPipeline.input_schema) as [name, definition]}<span class="rounded-md bg-white px-2 py-1 font-mono text-[10px] text-slate-600 ring-1 ring-slate-200">{name}: {definition.type || 'string'}{definition.required ? ' · required' : ''}</span>{/each}</div></div>{/if}
+            </div>
+            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closePipelineBuild}>Cancel</button><button disabled={pipelineBuildForm.processing}>{pipelineBuildForm.processing ? 'Starting…' : 'Run build'}</button></div>
+        </form>
+    </div>
+{/if}
+
+{#if forcingBuild}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeForceStatus()}>
+        <form class="modal max-w-lg" on:submit|preventDefault={forceBuildStatus}>
+            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Force set build status</h2><p class="mt-1 text-sm text-slate-500">Use this when the manual runner will not report a final status.</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closeForceStatus}>✕</button></div>
+            <div class="space-y-5 p-6">
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">This bypasses runner confirmation and finishes the build immediately. A build completion webhook will be sent.</div>
+                <label><span class="label">Final status</span><select bind:value={forceStatusForm.status}><option value="completed">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select>{#if forceStatusForm.errors.status}<span class="error">{forceStatusForm.errors.status}</span>{/if}</label>
+            </div>
+            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeForceStatus}>Keep waiting</button><button class="bg-amber-600 hover:bg-amber-700" disabled={forceStatusForm.processing}>{forceStatusForm.processing ? 'Updating…' : 'Force status'}</button></div>
+        </form>
+    </div>
+{/if}
 
 {#if showIdentifier}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeIdentifier()}>

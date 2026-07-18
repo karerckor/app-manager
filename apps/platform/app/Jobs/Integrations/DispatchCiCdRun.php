@@ -90,6 +90,12 @@ class DispatchCiCdRun implements ShouldQueue
             'dispatched_at' => now(),
         ]);
 
+        if ($run->buildRecord()->where('status', BuildStatus::CancelRequested)->exists()) {
+            CancelCiCdRun::dispatch($run->id)->onQueue('integrations');
+
+            return;
+        }
+
         if ($run->reporting_mode === BuildReportingMode::Automatic) {
             ReconcileCiCdRun::dispatch($run->id)
                 ->delay(now()->addSeconds(5))

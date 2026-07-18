@@ -128,7 +128,7 @@ class GitHubProvider implements CiCdProvider
 
     public function cancel(CiCdRun $run): CancelResult
     {
-        $status = $this->client->cancelWorkflowRun(
+        $status = $this->client->forceCancelWorkflowRun(
             $this->installationId($run->integration),
             $run->pipeline->repository_full_name,
             (string) $run->external_run_id,
@@ -262,7 +262,7 @@ class GitHubProvider implements CiCdProvider
             $output = trim(implode("\n\n", $logs));
 
             if ($output === '') {
-                throw new RuntimeException('GitHub workflow log archive is empty.');
+                return '';
             }
 
             $output = preg_replace('/\x1B(?:[@-_]|\[[0-?]*[ -\/]*[@-~])/', '', $output) ?? $output;

@@ -17,6 +17,7 @@ class BuildRecordResource extends JsonResource
             'profile_type' => $this->profile_type->value,
             'status' => $this->status->value,
             'reporting_mode' => $this->reporting_mode->value,
+            'parameters' => $this->parameters ?? [],
             'context' => $this->context_snapshot,
             'started_at' => $this->started_at,
             'cancel_requested_at' => $this->cancel_requested_at,

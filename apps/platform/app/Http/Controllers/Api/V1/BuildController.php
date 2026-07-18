@@ -42,6 +42,15 @@ class BuildController extends Controller
             'profile_type' => ['required', Rule::enum(ProfileType::class)],
             'app_identifier_id' => ['nullable', 'uuid'],
             'context' => ['sometimes', 'array'],
+            'parameters' => [
+                'sometimes',
+                'array',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (strlen(json_encode($value, JSON_THROW_ON_ERROR)) > 65535) {
+                        $fail('Build parameters may not exceed 64 KB.');
+                    }
+                },
+            ],
         ]);
         $identifier = isset($data['app_identifier_id'])
             ? AppIdentifier::query()
@@ -57,6 +66,7 @@ class BuildController extends Controller
             ProfileType::from($data['profile_type']),
             $identifier,
             $data['context'] ?? [],
+            $data['parameters'] ?? [],
         );
 
         return (new BuildRecordResource($build))->response()->setStatusCode(201);

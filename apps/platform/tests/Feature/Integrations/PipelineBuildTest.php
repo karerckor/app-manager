@@ -35,6 +35,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Support\Builds\BuildLifecycle;
 use App\Support\Builds\BuildLog;
+use Closure;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
@@ -174,6 +175,31 @@ class PipelineBuildTest extends TestCase
         $this->assertNotNull($run->logs_synced_at);
     }
 
+    public function test_empty_provider_logs_finish_log_synchronization(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        $provider = $this->provider(logOutput: '');
+        $registry = $this->bindProvider($provider);
+        Queue::fake();
+        $build = app(StartPipelineBuild::class)->handle(
+            $team,
+            $integration,
+            $pipeline,
+            $owner,
+            (string) Str::uuid(),
+        );
+        $run = $build->ciCdRun;
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new ReconcileCiCdRun($run->id))->handle($registry, app(SyncCiCdRunStatus::class));
+
+        (new SyncCiCdRunLogs($run->id))->handle($registry, app(BuildLog::class));
+
+        $this->assertSame('', $build->refresh()->log_output);
+        $this->assertNotNull($build->logs_updated_at);
+        $this->assertSame('', $run->refresh()->log_output);
+        $this->assertNotNull($run->logs_synced_at);
+    }
+
     public function test_ambiguous_dispatch_is_not_automatically_repeated(): void
     {
         [$owner, $team, $integration, $pipeline] = $this->context();
@@ -292,6 +318,34 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(BuildStatus::Cancelled, $build->refresh()->status);
     }
 
+    public function test_cancellation_during_dispatch_is_sent_after_the_external_run_is_known(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        Queue::fake();
+        $build = null;
+        $provider = $this->provider(duringDispatch: function () use (&$build): void {
+            app(RequestPipelineBuildCancellation::class)->handle(
+                BuildRecord::query()->findOrFail($build->id),
+            );
+        });
+        $registry = $this->bindProvider($provider);
+        $build = app(StartPipelineBuild::class)->handle(
+            $team,
+            $integration,
+            $pipeline,
+            $owner,
+            (string) Str::uuid(),
+        );
+        $run = $build->ciCdRun;
+
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+
+        $this->assertSame(BuildStatus::CancelRequested, $build->refresh()->status);
+        $this->assertSame('9001', $run->refresh()->external_run_id);
+        Queue::assertPushed(CancelCiCdRun::class, fn (CancelCiCdRun $job) => $job->runId === $run->id);
+        Queue::assertNotPushed(ReconcileCiCdRun::class);
+    }
+
     public function test_contributor_cannot_start_a_pipeline(): void
     {
         [, $team, $integration, $pipeline] = $this->context();
@@ -355,13 +409,20 @@ class PipelineBuildTest extends TestCase
         return $registry;
     }
 
-    private function provider(bool $failDispatch = false): CiCdProvider
-    {
-        return new class($failDispatch) implements CiCdProvider
+    private function provider(
+        bool $failDispatch = false,
+        ?Closure $duringDispatch = null,
+        string $logOutput = "App Manager demo build started\nApp Manager demo build completed successfully",
+    ): CiCdProvider {
+        return new class($failDispatch, $duringDispatch, $logOutput) implements CiCdProvider
         {
             public int $dispatchCalls = 0;
 
-            public function __construct(private readonly bool $failDispatch) {}
+            public function __construct(
+                private readonly bool $failDispatch,
+                private readonly ?Closure $duringDispatch,
+                private readonly string $logOutput,
+            ) {}
 
             public function provider(): IntegrationProvider
             {
@@ -391,6 +452,10 @@ class PipelineBuildTest extends TestCase
                     throw new RuntimeException('Connection dropped after request write.');
                 }
 
+                if ($this->duringDispatch !== null) {
+                    ($this->duringDispatch)();
+                }
+
                 return new DispatchResult('9001', 'https://api.github.test/runs/9001', 'https://github.test/runs/9001');
             }
 
@@ -406,7 +471,7 @@ class PipelineBuildTest extends TestCase
 
             public function logs(CiCdRun $run): string
             {
-                return "App Manager demo build started\nApp Manager demo build completed successfully";
+                return $this->logOutput;
             }
         };
     }

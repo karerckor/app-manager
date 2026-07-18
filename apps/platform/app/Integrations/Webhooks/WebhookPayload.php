@@ -62,6 +62,7 @@ class WebhookPayload
             'profile_type' => $build->profile_type->value,
             'status' => $build->status->value,
             'reporting_mode' => $build->reporting_mode->value,
+            'parameters' => $build->parameters ?? [],
             'started_at' => $build->started_at?->toISOString(),
             'cancel_requested_at' => $build->cancel_requested_at?->toISOString(),
             'finished_at' => $build->finished_at?->toISOString(),

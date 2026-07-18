@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
@@ -115,6 +116,7 @@ class MobileAppController extends Controller
                     'identifiers' => route('accounts.apps.identifiers.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'credentials' => route('accounts.apps.credentials.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'assets' => route('accounts.apps.assets.upload', ['team' => $team, 'mobileApp' => $mobileApp, 'collection' => '__collection__']),
+                    'manual_builds' => route('accounts.apps.builds.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                 ],
             ],
             'identifiers' => $mobileApp->appIdentifiers->map(fn ($identifier) => [
@@ -139,6 +141,7 @@ class MobileAppController extends Controller
             ]),
             'credentials' => $credentials,
             'credentialTypes' => CredentialSchema::definitions(),
+            'buildProfiles' => BuildProfileSchema::definitions(),
             'pipelines' => $canRunPipelines ? $mobileApp->ciCdPipelines()
                 ->with('integration')
                 ->where('enabled', true)
@@ -154,6 +157,7 @@ class MobileAppController extends Controller
                     'default_ref' => $pipeline->default_ref,
                     'profile_type' => $pipeline->profile_type->value,
                     'reporting_mode' => $pipeline->reporting_mode->value,
+                    'input_schema' => $pipeline->input_schema ?? [],
                     'input_defaults' => $pipeline->input_defaults ?? [],
                     'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $pipeline->integration, $pipeline]),
                 ])
@@ -174,6 +178,7 @@ class MobileAppController extends Controller
                         'external_url' => $run?->external_run_url,
                         'provider_status' => $run?->provider_status,
                         'reporting_mode' => $build->reporting_mode->value,
+                        'parameters' => $build->parameters ?? [],
                         'logs' => $build->log_output,
                         'logs_pending' => $build->reporting_mode->value === 'automatic'
                             && $run?->external_run_id !== null
@@ -183,6 +188,10 @@ class MobileAppController extends Controller
                         'finished_at' => $build->finished_at,
                         'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
                         'cancel_url' => route('accounts.apps.builds.cancel', [$team, $mobileApp, $build]),
+                        'can_force_status' => $canRunPipelines
+                            && $build->reporting_mode === BuildReportingMode::Manual
+                            && ! $build->status->isTerminal(),
+                        'force_status_url' => route('accounts.apps.builds.status.update', [$team, $mobileApp, $build]),
                     ];
                 }),
         ]);
