@@ -125,6 +125,19 @@ class GitHubConnectionTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_connection_fails_before_installation_when_client_secret_is_missing(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        config()->set('integrations.github.client_secret', '');
+
+        $this->withoutExceptionHandling();
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('GitHub App client ID and client secret must be configured.');
+
+        $this->actingAs($owner)
+            ->get(route('accounts.integrations.github.connect', $team));
+    }
+
     private function member(TeamRole $role): array
     {
         $user = User::factory()->create();

@@ -13,9 +13,15 @@ class GitHubClient
     public function installationUrl(string $state): string
     {
         $slug = (string) config('integrations.github.slug');
+        $clientId = (string) config('integrations.github.client_id');
+        $clientSecret = (string) config('integrations.github.client_secret');
 
         if ($slug === '') {
             throw new RuntimeException('GitHub App slug must be configured.');
+        }
+
+        if ($clientId === '' || $clientSecret === '') {
+            throw new RuntimeException('GitHub App client ID and client secret must be configured.');
         }
 
         return rtrim((string) config('integrations.github.web_url'), '/')
@@ -37,7 +43,11 @@ class GitHubClient
         $token = $response->json('access_token');
 
         if (! is_string($token) || $token === '') {
-            throw new RuntimeException('GitHub did not return a user access token.');
+            $error = $response->json('error_description') ?: $response->json('error');
+
+            throw new RuntimeException(is_string($error) && $error !== ''
+                ? 'GitHub user authorization failed: '.$error
+                : 'GitHub did not return a user access token.');
         }
 
         return $token;
