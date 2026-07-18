@@ -105,3 +105,23 @@ Apple root) берёт из системного keychain. CocoaPods поста�
 
 Демо-credentials самоподписанные — реальные сторы их отклонят. Деплой предназначен
 для использования с настоящими store-ключами, загруженными в Platform.
+
+## CI demo fastlane-плагина
+
+Workflow `Demo Android · App Manager Fastlane` и `Demo iOS · App Manager Fastlane`
+запускают lane `plugin_demo`. Lane использует локальную версию
+`libs/fastlane-plugin`: настраивает App Manager client, получает приложение и его
+identifiers, скачивает icon asset, затем печатает этапы demo-сборки в GitHub Actions
+log. Параметр `simulate_failure` позволяет проверить неуспешное завершение.
+
+GitHub-hosted runner не может обратиться к Platform на локальном
+`http://localhost:8000`, поэтому без дополнительной настройки workflow поднимает
+изолированный mock API внутри job. HTTP-запросы выполняет настоящий клиент плагина;
+постоянные credentials или GitHub secrets для этого smoke-сценария не нужны.
+
+Для проверки против живой Platform задайте repository secrets
+`APP_MANAGER_DEMO_BASE_URL` и `APP_MANAGER_DEMO_API_KEY`. Team и app по умолчанию —
+`demo-users-team` и `example-app`; их можно переопределить repository variables
+`APP_MANAGER_DEMO_TEAM` и `APP_MANAGER_DEMO_APP`. Если URL опубликован через ngrok,
+держите tunnel запущенным до завершения workflow и используйте отдельный
+минимально привилегированный API key.

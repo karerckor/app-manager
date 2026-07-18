@@ -1,4 +1,4 @@
-name: Demo Android smoke build
+name: Demo Android · App Manager Fastlane
 
 on:
   workflow_dispatch:
@@ -31,9 +31,14 @@ concurrency:
 
 jobs:
   smoke-build:
-    name: Android ${{ inputs.configuration }} smoke build
+    name: Android ${{ inputs.configuration }} Fastlane demo
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      APP_MANAGER_API_KEY: ${{ secrets.APP_MANAGER_DEMO_API_KEY || 'demo-fastlane-api-key' }}
+      APP_MANAGER_BASE_URL: ${{ secrets.APP_MANAGER_DEMO_BASE_URL || 'http://127.0.0.1:4567' }}
+      APP_MANAGER_TEAM: ${{ vars.APP_MANAGER_DEMO_TEAM || 'demo-users-team' }}
+      APP_MANAGER_APP: ${{ vars.APP_MANAGER_DEMO_APP || 'example-app' }}
     defaults:
       run:
         working-directory: demos/expo-hello-world
@@ -49,23 +54,47 @@ jobs:
           cache: npm
           cache-dependency-path: demos/expo-hello-world/package-lock.json
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Install Fastlane and the local App Manager plugin
+        run: bundle install --jobs 4 --retry 3
+
       - name: Install demo dependencies
         run: npm ci --ignore-scripts
 
-      - name: Show App Manager inputs
-        env:
-          BUILD_CONFIGURATION: ${{ inputs.configuration }}
-          VERSION_NAME: ${{ inputs.version_name }}
+      - name: Start demo App Manager API
+        if: ${{ env.APP_MANAGER_BASE_URL == 'http://127.0.0.1:4567' }}
         run: |
-          echo "Platform: Android"
-          echo "Configuration: ${BUILD_CONFIGURATION}"
-          echo "Version: ${VERSION_NAME}"
+          node scripts/mock-app-manager-api.mjs > "${RUNNER_TEMP}/mock-app-manager.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/mock-app-manager.pid"
+          for attempt in {1..20}; do
+            curl --fail --silent http://127.0.0.1:4567/health && break
+            sleep 0.25
+          done
+          curl --fail --silent http://127.0.0.1:4567/health
 
       - name: Run demo preparation tests
         run: npm test
 
-      - name: Simulate requested failure
-        if: ${{ inputs.simulate_failure }}
+      - name: Run App Manager Fastlane demo build
+        env:
+          BUILD_CONFIGURATION: ${{ inputs.configuration }}
+          VERSION_NAME: ${{ inputs.version_name }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: >-
+          bundle exec fastlane plugin_demo
+          platform:android
+          configuration:"${BUILD_CONFIGURATION}"
+          version_name:"${VERSION_NAME}"
+          simulate_failure:"${SIMULATE_FAILURE}"
+
+      - name: Show App Manager API requests
+        if: ${{ always() && env.APP_MANAGER_BASE_URL == 'http://127.0.0.1:4567' }}
         run: |
-          echo "Failure requested through workflow_dispatch input."
-          exit 1
+          cat "${RUNNER_TEMP}/mock-app-manager.log"
+          if test -f "${RUNNER_TEMP}/mock-app-manager.pid"; then
+            kill "$(cat "${RUNNER_TEMP}/mock-app-manager.pid")" || true
+          fi
