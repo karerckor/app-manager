@@ -1,0 +1,71 @@
+name: Demo Android smoke build
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Android build configuration
+        required: true
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
+      version_name:
+        description: Version shown in the App Manager run snapshot
+        required: true
+        default: 1.0.0
+        type: string
+      simulate_failure:
+        description: Finish the demo pipeline with a failure
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke-build:
+    name: Android ${{ inputs.configuration }} smoke build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: demos/expo-hello-world
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: demos/expo-hello-world/package-lock.json
+
+      - name: Install demo dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Show App Manager inputs
+        env:
+          BUILD_CONFIGURATION: ${{ inputs.configuration }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          echo "Platform: Android"
+          echo "Configuration: ${BUILD_CONFIGURATION}"
+          echo "Version: ${VERSION_NAME}"
+
+      - name: Run demo preparation tests
+        run: npm test
+
+      - name: Simulate requested failure
+        if: ${{ inputs.simulate_failure }}
+        run: |
+          echo "Failure requested through workflow_dispatch input."
+          exit 1

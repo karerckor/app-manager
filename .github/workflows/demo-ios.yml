@@ -1,0 +1,71 @@
+name: Demo iOS smoke build
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: iOS build configuration
+        required: true
+        default: Debug
+        type: choice
+        options:
+          - Debug
+          - Release
+      version_name:
+        description: Version shown in the App Manager run snapshot
+        required: true
+        default: 1.0.0
+        type: string
+      simulate_failure:
+        description: Finish the demo pipeline with a failure
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-ios-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke-build:
+    name: iOS ${{ inputs.configuration }} smoke build
+    runs-on: macos-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: demos/expo-hello-world
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: demos/expo-hello-world/package-lock.json
+
+      - name: Install demo dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Show App Manager inputs
+        env:
+          BUILD_CONFIGURATION: ${{ inputs.configuration }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          echo "Platform: iOS"
+          echo "Configuration: ${BUILD_CONFIGURATION}"
+          echo "Version: ${VERSION_NAME}"
+
+      - name: Run demo preparation tests
+        run: npm test
+
+      - name: Simulate requested failure
+        if: ${{ inputs.simulate_failure }}
+        run: |
+          echo "Failure requested through workflow_dispatch input."
+          exit 1
