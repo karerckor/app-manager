@@ -7,6 +7,7 @@ use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
 use App\Exceptions\InvalidBuildTransition;
+use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\BuildRecordResource;
 use App\Models\AppIdentifier;
@@ -21,12 +22,14 @@ use Illuminate\Validation\Rule;
 
 class BuildController extends Controller
 {
-    public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
+    use ResolvesPageSize;
+
+    public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         $this->assertApp($team, $mobileApp);
 
         return BuildRecordResource::collection(
-            $mobileApp->buildRecords()->latest()->paginate(50),
+            $mobileApp->buildRecords()->latest()->paginate($this->perPage($request, default: 50)),
         );
     }
 

@@ -15,47 +15,47 @@ Route::prefix('v1/{team:slug}')
     ->name('api.v1.')
     ->group(function () {
         Route::get('/credential-types', CredentialTypeController::class)
-            ->middleware('abilities:credentials:read')
+            ->middleware(['abilities:credentials:read', 'team.permission:view'])
             ->name('credential-types.index');
 
-        Route::get('/apps', [MobileAppController::class, 'index'])->middleware('abilities:apps:read')->name('apps.index');
+        Route::get('/apps', [MobileAppController::class, 'index'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.index');
         Route::post('/apps', [MobileAppController::class, 'store'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.store');
-        Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware('abilities:apps:read')->name('apps.show');
-        Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware('abilities:apps:write')->name('apps.update');
-        Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware('abilities:apps:write')->name('apps.destroy');
+        Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.show');
+        Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.update');
+        Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.destroy');
 
         Route::get('/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'show'])
-            ->middleware('abilities:assets:read')
+            ->middleware(['abilities:assets:read', 'team.permission:view'])
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.show');
         Route::match(['post', 'put'], '/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'store'])
-            ->middleware('abilities:assets:write')
+            ->middleware(['abilities:assets:write', 'team.permission:manage_applications'])
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.store');
         Route::delete('/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'destroy'])
-            ->middleware('abilities:assets:write')
+            ->middleware(['abilities:assets:write', 'team.permission:manage_applications'])
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.destroy');
 
-        Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'index'])->middleware('abilities:identifiers:read')->name('apps.identifiers.index');
-        Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->middleware('abilities:identifiers:write')->name('apps.identifiers.store');
-        Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'show'])->middleware('abilities:identifiers:read')->name('apps.identifiers.show');
-        Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->middleware('abilities:identifiers:write')->name('apps.identifiers.update');
-        Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->middleware('abilities:identifiers:write')->name('apps.identifiers.destroy');
+        Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'index'])->middleware(['abilities:identifiers:read', 'team.permission:view'])->name('apps.identifiers.index');
+        Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->middleware(['abilities:identifiers:write', 'team.permission:manage_applications'])->name('apps.identifiers.store');
+        Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'show'])->middleware(['abilities:identifiers:read', 'team.permission:view'])->name('apps.identifiers.show');
+        Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->middleware(['abilities:identifiers:write', 'team.permission:manage_applications'])->name('apps.identifiers.update');
+        Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->middleware(['abilities:identifiers:write', 'team.permission:manage_applications'])->name('apps.identifiers.destroy');
 
-        Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->middleware('abilities:credentials:read')->name('apps.credentials.index');
-        Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->middleware('abilities:credentials:write')->name('apps.credentials.store');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->middleware('abilities:credentials:read')->name('apps.credentials.show');
-        Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware('abilities:credentials:write')->name('apps.credentials.update');
-        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware('abilities:credentials:write')->name('apps.credentials.destroy');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware('abilities:credentials:read')->name('apps.credentials.file.show');
-        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware('abilities:credentials:write')->name('apps.credentials.file.store');
-        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware('abilities:credentials:write')->name('apps.credentials.file.destroy');
+        Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.index');
+        Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.store');
+        Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.show');
+        Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.update');
+        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.destroy');
+        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.file.show');
+        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.store');
+        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.destroy');
 
-        Route::get('/apps/{mobileApp:slug}/builds', [BuildController::class, 'index'])->middleware('abilities:builds:read')->name('apps.builds.index');
-        Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware('abilities:builds:write')->name('apps.builds.store');
-        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'show'])->middleware('abilities:builds:read')->name('apps.builds.show');
-        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'update'])->middleware('abilities:builds:write')->name('apps.builds.update');
-        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware('abilities:logs:read')->name('apps.builds.logs.show');
-        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware('abilities:logs:write')->name('apps.builds.logs.store');
+        Route::get('/apps/{mobileApp:slug}/builds', [BuildController::class, 'index'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.index');
+        Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.store');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'show'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.show');
+        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'update'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.update');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.show');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware(['abilities:logs:write', 'team.permission:manage_applications'])->name('apps.builds.logs.store');
     });
