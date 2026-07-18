@@ -16,7 +16,7 @@ module Fastlane
           credential_id: params[:credential_id],
           credential_name: params[:credential_name],
           output_path: params[:output_path],
-          overwrite: params.fetch(:overwrite, true)
+          overwrite: overwrite_value(params)
         )
         UI.success("Downloaded #{type} to #{result[:path]}")
         result
@@ -78,6 +78,11 @@ module Fastlane
       end
 
       private
+
+      def overwrite_value(params)
+        value = params[:overwrite]
+        value.nil? ? true : value
+      end
 
       def string_option(key, description, optional: false)
         FastlaneCore::ConfigItem.new(

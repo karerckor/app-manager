@@ -34,6 +34,28 @@ RSpec.describe "App Manager actions" do
     )
   end
 
+  it "reads overwrite from Fastlane configuration without Hash-only fetch arguments" do
+    params = instance_double(FastlaneCore::Configuration)
+    allow(params).to receive(:[]).with(:output_path).and_return("/tmp/icon.png")
+    allow(params).to receive(:[]).with(:overwrite).and_return(true)
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:download_asset).and_return("/tmp/icon.png")
+
+    Fastlane::Actions::AppManagerDownloadIconAction.run(params)
+
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:download_asset).with(
+      asset: "icon",
+      output_path: "/tmp/icon.png",
+      overwrite: true
+    )
+  end
+
+  it "exposes action files to Fastlane's plugin loader" do
+    action_files = Fastlane::AppManager.all_classes.select { |path| File.dirname(path).end_with?("/actions") }
+
+    expect(action_files).to include(a_string_ending_with("app_manager_app_info_action.rb"))
+    expect(action_files).to include(a_string_ending_with("app_manager_download_icon_action.rb"))
+  end
+
   it "returns app info and exposes it through lane context" do
     info = {
       name: "Customer App",

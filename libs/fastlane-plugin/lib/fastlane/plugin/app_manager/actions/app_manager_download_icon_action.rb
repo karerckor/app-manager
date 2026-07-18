@@ -7,7 +7,7 @@ module Fastlane
         path = Helper::AppManagerHelper.download_asset(
           asset: "icon",
           output_path: params[:output_path],
-          overwrite: params.fetch(:overwrite, true)
+          overwrite: params[:overwrite].nil? ? true : params[:overwrite]
         )
         UI.success("Downloaded app icon to #{path}")
         path
