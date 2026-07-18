@@ -13,19 +13,25 @@ class GitHubClient
     public function installationUrl(string $state): string
     {
         $slug = (string) config('integrations.github.slug');
-        $clientId = (string) config('integrations.github.client_id');
-        $clientSecret = (string) config('integrations.github.client_secret');
+        $this->assertUserAuthorizationConfigured();
 
         if ($slug === '') {
             throw new RuntimeException('GitHub App slug must be configured.');
         }
 
-        if ($clientId === '' || $clientSecret === '') {
-            throw new RuntimeException('GitHub App client ID and client secret must be configured.');
-        }
-
         return rtrim((string) config('integrations.github.web_url'), '/')
             .'/apps/'.rawurlencode($slug).'/installations/new?'.http_build_query(['state' => $state]);
+    }
+
+    public function authorizationUrl(string $state): string
+    {
+        $this->assertUserAuthorizationConfigured();
+
+        return rtrim((string) config('integrations.github.web_url'), '/')
+            .'/login/oauth/authorize?'.http_build_query([
+                'client_id' => config('integrations.github.client_id'),
+                'state' => $state,
+            ]);
     }
 
     public function exchangeUserCode(string $code): string
@@ -197,5 +203,15 @@ class GitHubClient
             ->withToken($token)
             ->timeout(15)
             ->connectTimeout(3);
+    }
+
+    private function assertUserAuthorizationConfigured(): void
+    {
+        $clientId = (string) config('integrations.github.client_id');
+        $clientSecret = (string) config('integrations.github.client_secret');
+
+        if ($clientId === '' || $clientSecret === '') {
+            throw new RuntimeException('GitHub App client ID and client secret must be configured.');
+        }
     }
 }

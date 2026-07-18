@@ -27,7 +27,7 @@ class GitHubConnectionController extends Controller
 
         $state = $states->issue($request->user(), $team);
 
-        return redirect()->away($github->installationUrl($state));
+        return redirect()->away($github->authorizationUrl($state));
     }
 
     public function callback(
@@ -39,7 +39,7 @@ class GitHubConnectionController extends Controller
         $data = $request->validate([
             'state' => ['required', 'string', 'max:255'],
             'code' => ['required', 'string', 'max:1000'],
-            'installation_id' => ['required', 'integer', 'min:1'],
+            'installation_id' => ['nullable', 'integer', 'min:1'],
         ]);
         $context = $states->consume($data['state']);
 
@@ -48,12 +48,32 @@ class GitHubConnectionController extends Controller
         $team = Team::query()->findOrFail($context['team_id']);
         Gate::forUser($request->user())->authorize('manageIntegrations', $team);
 
-        $installationId = (string) $data['installation_id'];
         $userToken = $github->exchangeUserCode($data['code']);
-        $accessible = collect($github->userInstallations($userToken))
-            ->contains(fn (array $installation) => (string) ($installation['id'] ?? '') === $installationId);
+        $accessibleInstallations = collect($github->userInstallations($userToken))
+            ->filter(fn (array $installation) => isset($installation['id']))
+            ->values();
 
-        abort_unless($accessible, 403, 'The GitHub installation is not accessible to the current GitHub user.');
+        if (! isset($data['installation_id'])) {
+            if ($accessibleInstallations->isEmpty()) {
+                $installationState = $states->issue($request->user(), $team);
+
+                return redirect()->away($github->installationUrl($installationState));
+            }
+
+            abort_if(
+                $accessibleInstallations->count() > 1,
+                409,
+                'Multiple GitHub App installations are accessible. Select an account during installation.',
+            );
+
+            $installationId = (string) $accessibleInstallations->first()['id'];
+        } else {
+            $installationId = (string) $data['installation_id'];
+            $accessible = $accessibleInstallations
+                ->contains(fn (array $installation) => (string) $installation['id'] === $installationId);
+
+            abort_unless($accessible, 403, 'The GitHub installation is not accessible to the current GitHub user.');
+        }
 
         $installation = $github->installation($installationId);
         $account = is_array($installation['account'] ?? null) ? $installation['account'] : [];

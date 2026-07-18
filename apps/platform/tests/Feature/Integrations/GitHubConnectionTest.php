@@ -50,7 +50,7 @@ class GitHubConnectionTest extends TestCase
         ]);
 
         $connect = $this->actingAs($owner)->get(route('accounts.integrations.github.connect', $team));
-        $connect->assertRedirectContains('https://github.test/apps/app-manager-test/installations/new?');
+        $connect->assertRedirectContains('https://github.test/login/oauth/authorize?');
         parse_str((string) parse_url($connect->headers->get('Location'), PHP_URL_QUERY), $query);
 
         $this->get(route('integrations.github.callback', [
@@ -106,7 +106,7 @@ class GitHubConnectionTest extends TestCase
 
         $this->actingAs($admin)
             ->get(route('accounts.integrations.github.connect', $team))
-            ->assertRedirectContains('https://github.test/apps/app-manager-test/installations/new?');
+            ->assertRedirectContains('https://github.test/login/oauth/authorize?');
         $this->actingAs($contributor)
             ->get(route('accounts.integrations.github.connect', $team))
             ->assertForbidden();
@@ -123,6 +123,57 @@ class GitHubConnectionTest extends TestCase
         $this->actingAs($owner)
             ->get(route('accounts.integrations.github.connect', $team))
             ->assertNotFound();
+    }
+
+    public function test_existing_single_installation_is_connected_after_oauth_callback(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        Http::fake([
+            'https://github.test/login/oauth/access_token' => Http::response(['access_token' => 'user-token']),
+            'https://api.github.test/user/installations*' => Http::response([
+                'total_count' => 1,
+                'installations' => [['id' => 42]],
+            ]),
+            'https://api.github.test/app/installations/42' => Http::response($this->installation()),
+        ]);
+
+        $connect = $this->actingAs($owner)->get(route('accounts.integrations.github.connect', $team));
+        parse_str((string) parse_url($connect->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $this->get(route('integrations.github.callback', [
+            'state' => $query['state'],
+            'code' => 'github-code',
+        ]))->assertRedirect(route('accounts.integrations.index', $team))
+            ->assertSessionHas('status', 'GitHub connected.');
+
+        $this->assertDatabaseHas('integrations', [
+            'team_id' => $team->id,
+            'provider' => 'github',
+            'external_id' => '42',
+        ]);
+    }
+
+    public function test_user_without_installations_is_redirected_to_install_the_app(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        Http::fake([
+            'https://github.test/login/oauth/access_token' => Http::response(['access_token' => 'user-token']),
+            'https://api.github.test/user/installations*' => Http::response([
+                'total_count' => 0,
+                'installations' => [],
+            ]),
+        ]);
+
+        $connect = $this->actingAs($owner)->get(route('accounts.integrations.github.connect', $team));
+        parse_str((string) parse_url($connect->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $callback = $this->get(route('integrations.github.callback', [
+            'state' => $query['state'],
+            'code' => 'github-code',
+        ]));
+
+        $callback->assertRedirectContains('https://github.test/apps/app-manager-test/installations/new?');
+        $this->assertDatabaseCount('integrations', 0);
     }
 
     public function test_connection_fails_before_installation_when_client_secret_is_missing(): void
