@@ -32,6 +32,7 @@ permissions:
 concurrency:
   group: demo-android-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   smoke-build:
