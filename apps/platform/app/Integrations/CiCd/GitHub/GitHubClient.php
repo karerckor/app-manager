@@ -185,6 +185,14 @@ class GitHubClient
             ->json();
     }
 
+    public function workflowRunLogs(string $installationId, string $repository, string $runId): string
+    {
+        return $this->installationRequest($installationId)
+            ->get('/repos/'.$repository.'/actions/runs/'.rawurlencode($runId).'/logs')
+            ->throw()
+            ->body();
+    }
+
     private function appRequest(): PendingRequest
     {
         return $this->request($this->jwtFactory->make());

@@ -32,14 +32,18 @@ class SyncCiCdRunStatus
             }
 
             if ($status->status === 'in_progress') {
-                $this->lifecycle->start($build);
+                $this->lifecycle->start($build, $status->startedAt);
             } elseif ($status->status === 'completed') {
+                if ($build->status === BuildStatus::Pending && $status->startedAt !== null) {
+                    $build = $this->lifecycle->start($build, $status->startedAt);
+                }
+
                 $terminal = match ($status->conclusion) {
                     'success', 'neutral' => BuildStatus::Completed,
                     'cancelled' => BuildStatus::Cancelled,
                     default => BuildStatus::Failed,
                 };
-                $this->lifecycle->finish($build, $terminal);
+                $this->lifecycle->finish($build, $terminal, $status->completedAt);
             }
 
             return $run->refresh();

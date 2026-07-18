@@ -5,10 +5,11 @@ namespace App\Jobs\Integrations;
 use App\Actions\Integrations\SyncCiCdRunStatus;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Models\CiCdRun;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
-class ReconcileCiCdRun implements ShouldQueue
+class ReconcileCiCdRun implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
 
@@ -19,15 +20,38 @@ class ReconcileCiCdRun implements ShouldQueue
 
     public function __construct(public readonly string $runId) {}
 
+    public function uniqueId(): string
+    {
+        return $this->runId;
+    }
+
     public function handle(CiCdProviderRegistry $providers, SyncCiCdRunStatus $sync): void
     {
         $run = CiCdRun::query()->with(['integration', 'pipeline', 'buildRecord'])->findOrFail($this->runId);
 
-        if ($run->buildRecord->status->isTerminal() || $run->external_run_id === null) {
+        if ($run->external_run_id === null) {
+            return;
+        }
+
+        if ($run->buildRecord->status->isTerminal()) {
+            if ($run->logs_synced_at === null) {
+                SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations');
+            }
+
             return;
         }
 
         $status = $providers->for($run->integration->provider)->status($run);
         $sync->handle($run, $status);
+
+        if ($status->status === 'completed') {
+            SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations');
+
+            return;
+        }
+
+        self::dispatch($run->id)
+            ->delay(now()->addSeconds(10))
+            ->onQueue('integrations');
     }
 }

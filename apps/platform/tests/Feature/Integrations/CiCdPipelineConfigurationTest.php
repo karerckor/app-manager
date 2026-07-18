@@ -203,6 +203,11 @@ class CiCdPipelineConfigurationTest extends TestCase
             {
                 return new ProviderRunStatus('1', 'completed', 'success', 'https://github.test/runs/1');
             }
+
+            public function logs(CiCdRun $run): string
+            {
+                return 'run logs';
+            }
         };
 
         $this->app->instance(CiCdProviderRegistry::class, new CiCdProviderRegistry([$provider]));

@@ -22,6 +22,8 @@ use App\Integrations\CiCd\Data\RefData;
 use App\Integrations\CiCd\Data\RepositoryData;
 use App\Jobs\Integrations\CancelCiCdRun;
 use App\Jobs\Integrations\DispatchCiCdRun;
+use App\Jobs\Integrations\ReconcileCiCdRun;
+use App\Jobs\Integrations\SyncCiCdRunLogs;
 use App\Models\AppIdentifier;
 use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
@@ -31,6 +33,7 @@ use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\Builds\BuildLifecycle;
+use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -85,6 +88,7 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(CiCdDispatchStatus::Accepted, $run->refresh()->dispatch_status);
         $this->assertSame('9001', $run->external_run_id);
         $this->assertSame(BuildStatus::Pending, $build->refresh()->status);
+        Queue::assertPushed(ReconcileCiCdRun::class, fn (ReconcileCiCdRun $job) => $job->runId === $run->id);
 
         $sync = app(SyncCiCdRunStatus::class);
         $sync->handle($run, new ProviderRunStatus('9001', 'in_progress', null, 'https://github.test/runs/9001'));
@@ -98,6 +102,73 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(BuildStatus::Completed, $build->refresh()->status);
         $this->assertSame($startedAt?->toISOString(), $build->started_at?->toISOString());
         $this->assertNotNull($build->finished_at);
+    }
+
+    public function test_completed_first_status_preserves_provider_start_and_finish_times(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $pipeline->mobile_app_id,
+            'app_identifier_id' => $pipeline->app_identifier_id,
+            'requested_by_user_id' => $owner->id,
+        ]);
+        $run = CiCdRun::create([
+            'team_id' => $team->id,
+            'build_record_id' => $build->id,
+            'pipeline_id' => $pipeline->id,
+            'integration_id' => $integration->id,
+            'requested_by_user_id' => $owner->id,
+            'dispatch_status' => CiCdDispatchStatus::Accepted,
+            'external_run_id' => '9001',
+            'external_run_url' => 'https://github.test/runs/9001',
+            'request_snapshot' => ['ref' => 'main', 'inputs' => []],
+        ]);
+        $startedAt = new DateTimeImmutable('2026-07-18T17:00:01Z');
+        $completedAt = new DateTimeImmutable('2026-07-18T17:01:23Z');
+
+        app(SyncCiCdRunStatus::class)->handle(
+            $run,
+            new ProviderRunStatus(
+                '9001',
+                'completed',
+                'success',
+                'https://github.test/runs/9001',
+                $startedAt,
+                $completedAt,
+            ),
+        );
+
+        $this->assertSame(BuildStatus::Completed, $build->refresh()->status);
+        $this->assertSame($startedAt->format('Y-m-d H:i:s'), $build->started_at?->format('Y-m-d H:i:s'));
+        $this->assertSame($completedAt->format('Y-m-d H:i:s'), $build->finished_at?->format('Y-m-d H:i:s'));
+    }
+
+    public function test_reconcile_finishes_build_and_synchronizes_provider_logs(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        $provider = $this->provider();
+        $registry = $this->bindProvider($provider);
+        Queue::fake();
+        $build = app(StartPipelineBuild::class)->handle(
+            $team,
+            $integration,
+            $pipeline,
+            $owner,
+            (string) Str::uuid(),
+        );
+        $run = $build->ciCdRun;
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+
+        (new ReconcileCiCdRun($run->id))->handle($registry, app(SyncCiCdRunStatus::class));
+
+        $this->assertSame(BuildStatus::Completed, $build->refresh()->status);
+        Queue::assertPushed(SyncCiCdRunLogs::class, fn (SyncCiCdRunLogs $job) => $job->runId === $run->id);
+
+        (new SyncCiCdRunLogs($run->id))->handle($registry);
+
+        $this->assertStringContainsString('demo build started', $run->refresh()->log_output);
+        $this->assertNotNull($run->logs_synced_at);
     }
 
     public function test_ambiguous_dispatch_is_not_automatically_repeated(): void
@@ -291,6 +362,11 @@ class PipelineBuildTest extends TestCase
             public function status(CiCdRun $run): ProviderRunStatus
             {
                 return new ProviderRunStatus('9001', 'completed', 'success', 'https://github.test/runs/9001');
+            }
+
+            public function logs(CiCdRun $run): string
+            {
+                return "App Manager demo build started\nApp Manager demo build completed successfully";
             }
         };
     }

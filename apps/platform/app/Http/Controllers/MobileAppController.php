@@ -162,18 +162,25 @@ class MobileAppController extends Controller
                 ->latest()
                 ->limit(30)
                 ->get()
-                ->map(fn ($build) => [
-                    'id' => $build->id,
-                    'status' => $build->status->value,
-                    'profile_type' => $build->profile_type->value,
-                    'pipeline_name' => $canRunPipelines ? $build->ciCdRun?->pipeline?->name : null,
-                    'external_url' => $canRunPipelines ? $build->ciCdRun?->external_run_url : null,
-                    'provider_status' => $canRunPipelines ? $build->ciCdRun?->provider_status : null,
-                    'created_at' => $build->created_at,
-                    'finished_at' => $build->finished_at,
-                    'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
-                    'cancel_url' => route('accounts.apps.builds.cancel', [$team, $mobileApp, $build]),
-                ]),
+                ->map(function ($build) use ($canRunPipelines, $team, $mobileApp) {
+                    $run = $canRunPipelines ? $build->ciCdRun : null;
+
+                    return [
+                        'id' => $build->id,
+                        'status' => $build->status->value,
+                        'profile_type' => $build->profile_type->value,
+                        'pipeline_name' => $run?->pipeline?->name,
+                        'external_url' => $run?->external_run_url,
+                        'provider_status' => $run?->provider_status,
+                        'logs' => $run?->log_output,
+                        'logs_pending' => $run?->external_run_id !== null && $run?->logs_synced_at === null,
+                        'created_at' => $build->created_at,
+                        'started_at' => $build->started_at,
+                        'finished_at' => $build->finished_at,
+                        'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
+                        'cancel_url' => route('accounts.apps.builds.cancel', [$team, $mobileApp, $build]),
+                    ];
+                }),
         ]);
     }
 

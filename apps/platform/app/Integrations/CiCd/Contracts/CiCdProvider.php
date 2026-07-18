@@ -32,4 +32,6 @@ interface CiCdProvider
     public function cancel(CiCdRun $run): CancelResult;
 
     public function status(CiCdRun $run): ProviderRunStatus;
+
+    public function logs(CiCdRun $run): string;
 }

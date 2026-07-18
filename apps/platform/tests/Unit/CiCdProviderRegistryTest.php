@@ -55,6 +55,11 @@ class CiCdProviderRegistryTest extends TestCase
             {
                 return new ProviderRunStatus('1', 'completed', 'success', 'https://example/runs/1');
             }
+
+            public function logs(CiCdRun $run): string
+            {
+                return 'run logs';
+            }
         };
         $registry = new CiCdProviderRegistry([$provider]);
 

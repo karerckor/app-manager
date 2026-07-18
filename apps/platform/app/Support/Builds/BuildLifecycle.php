@@ -8,15 +8,16 @@ use App\Exceptions\InvalidBuildTransition;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\BuildRecord;
+use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 
 class BuildLifecycle
 {
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
-    public function start(BuildRecord $build): BuildRecord
+    public function start(BuildRecord $build, ?DateTimeInterface $startedAt = null): BuildRecord
     {
-        return DB::transaction(function () use ($build) {
+        return DB::transaction(function () use ($build, $startedAt) {
             $current = $this->lock($build);
 
             if ($current->status === BuildStatus::Running || $current->status !== BuildStatus::Pending) {
@@ -25,7 +26,7 @@ class BuildLifecycle
 
             $current->update([
                 'status' => BuildStatus::Running,
-                'started_at' => $current->started_at ?? now(),
+                'started_at' => $current->started_at ?? $startedAt ?? now(),
             ]);
 
             $this->webhookEvents->record(
@@ -66,13 +67,13 @@ class BuildLifecycle
         });
     }
 
-    public function finish(BuildRecord $build, BuildStatus $status): BuildRecord
+    public function finish(BuildRecord $build, BuildStatus $status, ?DateTimeInterface $finishedAt = null): BuildRecord
     {
         if (! $status->isTerminal()) {
             throw InvalidBuildTransition::from($build->status, $status);
         }
 
-        return DB::transaction(function () use ($build, $status) {
+        return DB::transaction(function () use ($build, $status, $finishedAt) {
             $current = $this->lock($build);
 
             if ($current->status === $status) {
@@ -85,7 +86,7 @@ class BuildLifecycle
 
             $current->update([
                 'status' => $status,
-                'finished_at' => $current->finished_at ?? now(),
+                'finished_at' => $current->finished_at ?? $finishedAt ?? now(),
             ]);
 
             $this->webhookEvents->record(

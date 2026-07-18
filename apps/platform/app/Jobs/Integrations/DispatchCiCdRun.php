@@ -88,5 +88,9 @@ class DispatchCiCdRun implements ShouldQueue
             'external_run_url' => $result->htmlUrl,
             'dispatched_at' => now(),
         ]);
+
+        ReconcileCiCdRun::dispatch($run->id)
+            ->delay(now()->addSeconds(5))
+            ->onQueue('integrations');
     }
 }

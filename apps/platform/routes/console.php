@@ -4,6 +4,7 @@ use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Enums\WebhookDeliveryStatus;
 use App\Jobs\Integrations\ReconcileCiCdRun;
+use App\Jobs\Integrations\SyncCiCdRunLogs;
 use App\Jobs\Webhooks\DeliverWebhook;
 use App\Jobs\Webhooks\PublishWebhookEvent;
 use App\Models\CiCdRun;
@@ -29,6 +30,20 @@ Schedule::call(function () {
         ->pluck('id')
         ->each(fn (string $id) => ReconcileCiCdRun::dispatch($id)->onQueue('integrations'));
 })->everyFiveMinutes()->name('reconcile-ci-cd-runs')->withoutOverlapping();
+
+Schedule::call(function () {
+    CiCdRun::query()
+        ->whereNotNull('external_run_id')
+        ->whereNull('logs_synced_at')
+        ->whereHas('buildRecord', fn ($query) => $query->whereIn('status', [
+            BuildStatus::Completed->value,
+            BuildStatus::Failed->value,
+            BuildStatus::Cancelled->value,
+        ]))
+        ->limit(100)
+        ->pluck('id')
+        ->each(fn (string $id) => SyncCiCdRunLogs::dispatch($id)->onQueue('integrations'));
+})->everyFiveMinutes()->name('sync-ci-cd-run-logs')->withoutOverlapping();
 
 Schedule::call(function () {
     WebhookEvent::query()

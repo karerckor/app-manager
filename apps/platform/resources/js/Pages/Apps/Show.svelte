@@ -1,5 +1,6 @@
 <script>
     import { Link, router, useForm } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import AppShell from '../../Components/AppShell.svelte';
 
     export let auth;
@@ -21,6 +22,7 @@
     let showEdit = false;
     let confirmingDelete = false;
     let deleting = false;
+    let expandedBuildId = null;
 
     const editForm = useForm({ name: app.name, description: app.description ?? '' });
 
@@ -195,7 +197,20 @@
     const buildStatusClass = (status) => ({ completed: 'bg-emerald-50 text-emerald-700', running: 'bg-sky-50 text-sky-700', pending: 'bg-indigo-50 text-indigo-700', cancel_requested: 'bg-amber-50 text-amber-700', failed: 'bg-rose-50 text-rose-700', cancelled: 'bg-slate-100 text-slate-600' }[status] ?? 'bg-slate-100 text-slate-600');
     const runPipeline = (pipeline) => router.post(pipeline.run_url, { request_uuid: crypto.randomUUID(), ref: pipeline.default_ref, inputs: pipeline.input_defaults ?? {} }, { preserveScroll: true, onSuccess: () => tab = 'builds' });
     const cancelBuild = (build) => router.post(build.cancel_url, {}, { preserveScroll: true });
+    const toggleBuildLogs = (build) => expandedBuildId = expandedBuildId === build.id ? null : build.id;
     const isExpiring = (value) => value && new Date(value).getTime() < Date.now() + 1000 * 60 * 60 * 24 * 30;
+
+    onMount(() => {
+        const timer = setInterval(() => {
+            const waiting = builds.some((build) => !['completed', 'failed', 'cancelled'].includes(build.status) || build.logs_pending);
+
+            if (waiting) {
+                router.reload({ only: ['builds'], preserveScroll: true, preserveState: true });
+            }
+        }, 5000);
+
+        return () => clearInterval(timer);
+    });
 </script>
 
 <svelte:head><title>{app.name} · App Manager</title></svelte:head>
@@ -322,7 +337,35 @@
                 <section class="card overflow-hidden p-0">
                     <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Build history</h2><p class="mt-1 text-xs text-slate-500">Latest external pipeline runs for this application.</p></div>
                     {#if builds.length}
-                        <div class="overflow-x-auto"><table class="w-full min-w-[760px] text-left text-xs"><thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">{#each builds as build}<tr><td class="px-5 py-4 font-semibold">{build.pipeline_name || 'External pipeline'}</td><td class="px-4 py-4 text-slate-500">{build.profile_type}</td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status}</span></td><td class="px-4 py-4 text-slate-500">{formatDateTime(build.created_at)}</td><td class="px-5 py-4"><div class="flex justify-end gap-2">{#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}{#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}</div></td></tr>{/each}</tbody></table></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full min-w-[860px] text-left text-xs">
+                                <thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Started</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    {#each builds as build}
+                                        <tr>
+                                            <td class="px-5 py-4 font-semibold">{build.pipeline_name || 'External pipeline'}</td>
+                                            <td class="px-4 py-4 text-slate-500">{build.profile_type}</td>
+                                            <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status}</span></td>
+                                            <td class="px-4 py-4 text-slate-500">{formatDateTime(build.started_at || build.created_at)}</td>
+                                            <td class="px-5 py-4">
+                                                <div class="flex justify-end gap-2">
+                                                    {#if build.logs}<button class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => toggleBuildLogs(build)}>{expandedBuildId === build.id ? 'Hide logs' : 'Logs'}</button>{:else if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-slate-400">Syncing logs…</span>{/if}
+                                                    {#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}
+                                                    {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {#if expandedBuildId === build.id && build.logs}
+                                            <tr>
+                                                <td colspan="5" class="bg-slate-950 p-0">
+                                                    <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-5 text-slate-200">{build.logs}</pre>
+                                                </td>
+                                            </tr>
+                                        {/if}
+                                    {/each}
+                                </tbody>
+                            </table>
+                        </div>
                     {:else}<div class="px-6 py-14 text-center"><p class="text-sm font-semibold">No builds yet</p><p class="mt-1 text-xs text-slate-500">Run a configured pipeline to create the first build.</p></div>{/if}
                 </section>
             </div>

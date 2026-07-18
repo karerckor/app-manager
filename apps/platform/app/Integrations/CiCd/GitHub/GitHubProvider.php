@@ -16,9 +16,14 @@ use App\Models\Integration;
 use DateTimeImmutable;
 use Illuminate\Http\Client\RequestException;
 use RuntimeException;
+use ZipArchive;
 
 class GitHubProvider implements CiCdProvider
 {
+    private const MAX_LOG_BYTES = 500_000;
+
+    private const MAX_ARCHIVE_BYTES = 5_000_000;
+
     public function __construct(
         private readonly GitHubClient $client,
         private readonly GitHubWorkflowDefinition $workflowDefinition,
@@ -152,6 +157,21 @@ class GitHubProvider implements CiCdProvider
         );
     }
 
+    public function logs(CiCdRun $run): string
+    {
+        if ($run->external_run_id === null) {
+            throw new RuntimeException('GitHub workflow run has no external run ID.');
+        }
+
+        $archive = $this->client->workflowRunLogs(
+            $this->installationId($run->integration),
+            $run->pipeline->repository_full_name,
+            (string) $run->external_run_id,
+        );
+
+        return $this->extractLogs($archive);
+    }
+
     private function installationId(Integration $integration): string
     {
         if (! is_string($integration->external_id) || $integration->external_id === '') {
@@ -164,5 +184,80 @@ class GitHubProvider implements CiCdProvider
     private function date(mixed $value): ?DateTimeImmutable
     {
         return is_string($value) && $value !== '' ? new DateTimeImmutable($value) : null;
+    }
+
+    private function extractLogs(string $archive): string
+    {
+        if (! class_exists(ZipArchive::class)) {
+            throw new RuntimeException('The PHP zip extension is required to read GitHub Actions logs.');
+        }
+
+        if (strlen($archive) > self::MAX_ARCHIVE_BYTES) {
+            throw new RuntimeException('GitHub workflow log archive exceeds the supported size.');
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'github-run-logs-');
+
+        if ($path === false || file_put_contents($path, $archive) === false) {
+            throw new RuntimeException('Could not create a temporary GitHub Actions log archive.');
+        }
+
+        $zip = new ZipArchive;
+        $opened = false;
+
+        try {
+            if ($zip->open($path) !== true) {
+                throw new RuntimeException('GitHub returned an invalid workflow log archive.');
+            }
+
+            $opened = true;
+
+            $logs = [];
+            $totalBytes = 0;
+
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $stat = $zip->statIndex($index);
+
+                if (! is_array($stat) || str_ends_with((string) ($stat['name'] ?? ''), '/')) {
+                    continue;
+                }
+
+                $size = (int) ($stat['size'] ?? 0);
+
+                if ($size < 0 || $size > self::MAX_ARCHIVE_BYTES || $totalBytes + $size > self::MAX_ARCHIVE_BYTES) {
+                    break;
+                }
+
+                $contents = $zip->getFromIndex($index);
+
+                if (! is_string($contents)) {
+                    continue;
+                }
+
+                $totalBytes += strlen($contents);
+                $logs[] = '===== '.($stat['name'] ?? 'job.log')." =====\n".$contents;
+            }
+
+            $output = trim(implode("\n\n", $logs));
+
+            if ($output === '') {
+                throw new RuntimeException('GitHub workflow log archive is empty.');
+            }
+
+            $output = preg_replace('/\x1B(?:[@-_]|\[[0-?]*[ -\/]*[@-~])/', '', $output) ?? $output;
+            $utf8 = iconv('UTF-8', 'UTF-8//IGNORE', $output);
+            $output = is_string($utf8) ? $utf8 : $output;
+
+            if (strlen($output) > self::MAX_LOG_BYTES) {
+                $output = "[Earlier GitHub Actions log output truncated]\n".substr($output, -self::MAX_LOG_BYTES);
+            }
+
+            return $output;
+        } finally {
+            if ($opened) {
+                $zip->close();
+            }
+            @unlink($path);
+        }
     }
 }

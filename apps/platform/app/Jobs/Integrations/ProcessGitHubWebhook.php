@@ -130,6 +130,10 @@ class ProcessGitHubWebhook implements ShouldQueue
                 ? $this->date($workflowRun['updated_at'] ?? null)
                 : null,
         ));
+
+        if (($workflowRun['status'] ?? null) === 'completed') {
+            SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations')->afterCommit();
+        }
     }
 
     private function date(mixed $value): ?DateTimeImmutable

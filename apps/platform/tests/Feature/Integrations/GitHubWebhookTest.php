@@ -8,6 +8,7 @@ use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\ProfileType;
+use App\Jobs\Integrations\SyncCiCdRunLogs;
 use App\Models\AppIdentifier;
 use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
@@ -16,6 +17,7 @@ use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class GitHubWebhookTest extends TestCase
@@ -91,6 +93,7 @@ class GitHubWebhookTest extends TestCase
 
     public function test_workflow_run_updates_only_matching_installation_repository_and_run(): void
     {
+        Queue::fake([SyncCiCdRunLogs::class]);
         $integration = $this->integration();
         $app = MobileApp::factory()->create(['team_id' => $integration->team_id]);
         $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
@@ -145,6 +148,7 @@ class GitHubWebhookTest extends TestCase
         $event['repository']['full_name'] = 'octo/mobile';
         $this->deliver('workflow-matching', 'workflow_run', $event)->assertAccepted();
         $this->assertSame(BuildStatus::Completed, $build->refresh()->status);
+        Queue::assertPushed(SyncCiCdRunLogs::class);
     }
 
     private function deliver(string $deliveryId, string $event, array $payload)

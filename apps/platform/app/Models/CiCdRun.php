@@ -21,6 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'external_run_url',
     'provider_status',
     'provider_conclusion',
+    'log_output',
+    'logs_synced_at',
     'request_snapshot',
     'dispatched_at',
     'last_synced_at',
@@ -61,6 +63,7 @@ class CiCdRun extends Model
             'request_snapshot' => 'encrypted:array',
             'dispatched_at' => 'datetime',
             'last_synced_at' => 'datetime',
+            'logs_synced_at' => 'datetime',
         ];
     }
 

@@ -2,13 +2,16 @@
 
 namespace Tests\Feature\Integrations;
 
+use App\Enums\CiCdDispatchStatus;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\ProfileType;
 use App\Integrations\CiCd\GitHub\GitHubProvider;
 use App\Models\AppIdentifier;
+use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
+use App\Models\CiCdRun;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
@@ -16,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
+use ZipArchive;
 
 class GitHubProviderTest extends TestCase
 {
@@ -99,6 +103,64 @@ class GitHubProviderTest extends TestCase
             && $request->hasHeader('X-GitHub-Api-Version', '2026-03-10')
             && $request['ref'] === 'main'
             && $request['inputs'] === ['channel' => 'production']);
+    }
+
+    public function test_logs_download_and_extract_the_github_workflow_archive(): void
+    {
+        $integration = $this->integration();
+        $this->configureGitHub();
+        $app = MobileApp::factory()->create(['team_id' => $integration->team_id]);
+        $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
+        $pipeline = CiCdPipeline::create([
+            'team_id' => $integration->team_id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'name' => 'Release',
+            'profile_type' => ProfileType::Production,
+            'repository_id' => '100',
+            'repository_full_name' => 'octo/mobile',
+            'workflow_id' => '200',
+            'workflow_name' => 'Release',
+            'workflow_path' => '.github/workflows/release.yml',
+            'default_ref' => 'main',
+            'input_schema' => [],
+            'input_defaults' => [],
+        ]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $integration->team_id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+        ]);
+        $run = CiCdRun::create([
+            'team_id' => $integration->team_id,
+            'build_record_id' => $build->id,
+            'pipeline_id' => $pipeline->id,
+            'integration_id' => $integration->id,
+            'dispatch_status' => CiCdDispatchStatus::Accepted,
+            'external_run_id' => '9001',
+            'external_run_url' => 'https://github.test/runs/9001',
+            'request_snapshot' => ['ref' => 'main', 'inputs' => []],
+        ]);
+        $path = tempnam(sys_get_temp_dir(), 'github-provider-test-');
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('Android demo/1_Run build.txt', "\e[32mApp Manager demo build started\e[0m\ncompile: sources\n");
+        $zip->close();
+        $archive = file_get_contents($path);
+        unlink($path);
+        Http::fake([
+            'https://api.github.test/app/installations/42/access_tokens' => Http::response(['token' => 'installation-token']),
+            'https://api.github.test/repos/octo/mobile/actions/runs/9001/logs' => Http::response($archive, 200, ['Content-Type' => 'application/zip']),
+        ]);
+
+        $logs = app(GitHubProvider::class)->logs($run->load(['integration', 'pipeline']));
+
+        $this->assertStringContainsString('===== Android demo/1_Run build.txt =====', $logs);
+        $this->assertStringContainsString('App Manager demo build started', $logs);
+        $this->assertStringNotContainsString("\e[32m", $logs);
+        Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.test/repos/octo/mobile/actions/runs/9001/logs'
+            && $request->hasHeader('Authorization', 'Bearer installation-token'));
     }
 
     private function integration(): Integration
