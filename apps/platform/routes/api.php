@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\CredentialTypeController;
 use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
+use App\Http\Controllers\Api\V1\PipelineBuildController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/{team:slug}')
@@ -34,6 +35,7 @@ Route::prefix('v1/{team:slug}')
         Route::post('/integrations/{integration}/pipelines', [CiCdPipelineController::class, 'store'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.store');
         Route::patch('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'update'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.update');
         Route::delete('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'destroy'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.destroy');
+        Route::post('/integrations/{integration}/pipelines/{pipeline}/runs', [PipelineBuildController::class, 'store'])->middleware(['abilities:pipelines:run', 'team.permission:run_pipelines'])->name('integrations.pipelines.runs.store');
 
         Route::get('/apps', [MobileAppController::class, 'index'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.index');
         Route::post('/apps', [MobileAppController::class, 'store'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.store');
