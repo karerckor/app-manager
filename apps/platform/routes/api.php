@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CredentialController;
 use App\Http\Controllers\Api\V1\CredentialTypeController;
 use App\Http\Controllers\Api\V1\IntegrationController;
+use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,10 @@ Route::prefix('v1/{team:slug}')
 
         Route::get('/integrations', [IntegrationController::class, 'index'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.index');
         Route::get('/integrations/{integration}', [IntegrationController::class, 'show'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.show');
+
+        Route::get('/integrations/{integration}/repositories', [IntegrationDiscoveryController::class, 'repositories'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.repositories.index');
+        Route::get('/integrations/{integration}/workflows', [IntegrationDiscoveryController::class, 'workflows'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.workflows.index');
+        Route::get('/integrations/{integration}/refs', [IntegrationDiscoveryController::class, 'refs'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.refs.index');
 
         Route::get('/apps', [MobileAppController::class, 'index'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.index');
         Route::post('/apps', [MobileAppController::class, 'store'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.store');
