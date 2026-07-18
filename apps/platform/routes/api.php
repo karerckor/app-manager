@@ -30,6 +30,9 @@ Route::prefix('v1/{team:slug}')
 
         Route::get('/integrations/{integration}/pipelines', [CiCdPipelineController::class, 'index'])->middleware(['abilities:pipelines:read', 'team.permission:manage_integrations'])->name('integrations.pipelines.index');
         Route::get('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'show'])->middleware(['abilities:pipelines:read', 'team.permission:manage_integrations'])->name('integrations.pipelines.show');
+        Route::post('/integrations/{integration}/pipelines', [CiCdPipelineController::class, 'store'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.store');
+        Route::patch('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'update'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.update');
+        Route::delete('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'destroy'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.destroy');
 
         Route::get('/apps', [MobileAppController::class, 'index'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.index');
         Route::post('/apps', [MobileAppController::class, 'store'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.store');
