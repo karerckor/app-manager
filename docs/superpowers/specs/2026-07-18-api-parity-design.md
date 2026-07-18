@@ -175,14 +175,23 @@ credentials, integrations, pipelines, webhook endpoints, API keys. Response via
 API Resource collection: `data[]`, `links`, `meta{current_page, last_page,
 per_page, total}`. Query: `?page=<n>&per_page=<n>`.
 
-**Cursor-based** (`->cursorPaginate()`), for high-volume append-only streams:
-build logs and webhook deliveries. Response: `data[]`, `meta{per_page,
-next_cursor, prev_cursor}` (no `total`). Query: `?cursor=<opaque>&per_page=<n>`.
+**Cursor-based** (`->cursorPaginate()`), for high-volume append-only row
+streams: webhook deliveries. Response: `data[]`, `meta{per_page, next_cursor,
+prev_cursor}` (no `total`). Query: `?cursor=<opaque>&per_page=<n>`.
+
+**Byte-offset for build logs.** Build logs are stored as a single `log_output`
+text column on `BuildRecord` (capped at 5 MB by `BuildLog::MAX_TOTAL_BYTES`), not
+as log-entry rows, so neither page nor cursor pagination applies. Instead the log
+endpoint supports byte-range chunking: `?offset=<byte>&limit=<bytes>` returns the
+`content` slice plus `meta{offset, next_offset, returned_bytes, total_bytes}`.
+`limit` defaults to 262144 (`BuildLog::MAX_CHUNK_BYTES`) and is clamped to it;
+`next_offset` is null when the end is reached. The existing single-shot response
+shape is preserved when no `offset`/`limit` is supplied.
 
 **Normalization:** endpoints currently returning `->get()` (e.g.
 `MobileAppController@index`) move to `->paginate()`. `BuildController@index`
-stays page-based with configurable `per_page`. `BuildLogController@show` moves to
-cursor pagination.
+stays page-based with configurable `per_page`. `BuildLogController@show` gains
+byte-offset chunking.
 
 Discovery endpoints are not wrapped in our pagination: they return the
 provider-normalized list in a `{data:[…]}` envelope, since GitHub pagination is
@@ -235,7 +244,7 @@ schema for the pipeline's default ref (or `?ref=` override), from
 ```
 POST /integrations/{integration}/pipelines/{pipeline}/runs   pipelines:run · RunPipelines   (body: request_uuid, ref?, inputs?)
 POST /apps/{mobileApp}/builds/{buildRecord}/cancel           pipelines:run · RunPipelines
-GET  /apps/{mobileApp}/builds/{buildRecord}/logs             logs:read     · View            (cursor)
+GET  /apps/{mobileApp}/builds/{buildRecord}/logs             logs:read     · View            (byte-offset)
 ```
 
 Reuse `StartPipelineBuild` and `RequestPipelineBuildCancellation`. `request_uuid`
@@ -258,10 +267,22 @@ GET    /webhooks/{webhookEndpoint}/deliveries/{delivery}   deliveries:read · Ma
 POST   /webhooks/{webhookEndpoint}/deliveries/{delivery}/redeliver  webhooks:write · ManageIntegrations
 ```
 
-Reuse the existing webhook domain services. `WebhookUrlGuard` validates the URL
-against SSRF at create/update. The signing secret is returned only from create
-and rotate-secret; list/show expose only `secret_hint`. Redeliver creates a new
-delivery linked via `redelivery_of_id` and reuses the original event body.
+Reuse the existing webhook domain services. `WebhookUrlGuard` (via the
+`PublicWebhookUrl` rule) validates the URL against SSRF at create/update. The
+signing secret is returned only from create and rotate-secret; list/show expose
+only `secret_hint`. A new `RedeliverWebhook` action creates a new
+`WebhookDelivery` (fresh UUID) linked via `redelivery_of_id`, copies the source
+delivery's `payload_snapshot`, sets `status = Pending`, and dispatches
+`DeliverWebhook` on the `webhooks` queue (no existing redeliver action; web only
+supported this indirectly). `test` reuses `WebhookEventRecorder::record` with
+`WebhookEventType::WebhookTest`. All webhook endpoints respect the
+`integrations.enabled` and `integrations.webhooks.enabled` config flags (404 when
+disabled), matching the web `ensureEnabled()` guard.
+
+Note on endpoint state: `WebhookEndpoint` has no `enabled`/`failure_count`
+columns of its own — its enabled state derives from
+`integration->status === Active`, its display name from `integration->name`, and
+its health from `consecutive_failures` and `last_delivered_at`.
 
 ### API keys
 
@@ -286,12 +307,16 @@ fields only:
   input_defaults, mobile_app_id, app_identifier_id, created_at, updated_at`.
 - **`WorkflowInputResource`** (for `/inputs`) — `name, type, required, default,
   options[], description`, from `GitHubWorkflowDefinition`.
-- **`WebhookEndpointResource`** — `id, url, secret_hint, subscribed_events,
-  enabled, failure_count, last_success_at, last_failure_at, created_at,
-  updated_at`. A separate `secret` field appears only in create/rotate responses.
-- **`WebhookDeliveryResource`** — `id, event_type, state, attempt_count,
-  last_http_status, duration_ms, error_category, redelivery_of_id, delivered_at,
-  response_preview (truncated), created_at, updated_at`. No signatures/secrets.
+- **`WebhookEndpointResource`** — `id, name` (from `integration->name`), `url,
+  secret_hint, subscribed_events`, `enabled` (derived from
+  `integration->status === Active`), `consecutive_failures, last_delivered_at,
+  created_at, updated_at`. A separate `secret` field appears only in create/rotate
+  responses.
+- **`WebhookDeliveryResource`** — `id, event_type` (from `event->event_type`),
+  `status, attempt_count, response_status, duration_ms, last_error,
+  redelivery_of_id, next_attempt_at, delivered_at, response_preview` (truncated
+  `response_body`), `created_at, updated_at`. No signatures/secrets/payload
+  snapshot.
 - **`ApiKeyResource`** — `id, name, scopes, created_by{id,name,email},
   last_used_at, created_at`. A `token` field appears only in the create response.
 - **`BuildRecordResource`** (extended) — add `dispatch_status`,
