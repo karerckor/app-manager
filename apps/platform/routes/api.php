@@ -12,36 +12,41 @@ Route::prefix('v1/{team:slug}')
     ->scopeBindings()
     ->name('api.v1.')
     ->group(function () {
-        Route::get('/credential-types', CredentialTypeController::class)->name('credential-types.index');
+        Route::get('/credential-types', CredentialTypeController::class)
+            ->middleware('abilities:credentials:read')
+            ->name('credential-types.index');
 
-        Route::get('/apps', [MobileAppController::class, 'index'])->name('apps.index');
-        Route::post('/apps', [MobileAppController::class, 'store'])->name('apps.store');
-        Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->name('apps.show');
-        Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->name('apps.update');
-        Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
+        Route::get('/apps', [MobileAppController::class, 'index'])->middleware('abilities:apps:read')->name('apps.index');
+        Route::post('/apps', [MobileAppController::class, 'store'])->middleware('abilities:apps:write')->name('apps.store');
+        Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware('abilities:apps:read')->name('apps.show');
+        Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware('abilities:apps:write')->name('apps.update');
+        Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware('abilities:apps:write')->name('apps.destroy');
 
         Route::get('/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'show'])
+            ->middleware('abilities:assets:read')
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.show');
         Route::match(['post', 'put'], '/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'store'])
+            ->middleware('abilities:assets:write')
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.store');
         Route::delete('/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'destroy'])
+            ->middleware('abilities:assets:write')
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.destroy');
 
-        Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'index'])->name('apps.identifiers.index');
-        Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
-        Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'show'])->name('apps.identifiers.show');
-        Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
-        Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->name('apps.identifiers.destroy');
+        Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'index'])->middleware('abilities:identifiers:read')->name('apps.identifiers.index');
+        Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->middleware('abilities:identifiers:write')->name('apps.identifiers.store');
+        Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'show'])->middleware('abilities:identifiers:read')->name('apps.identifiers.show');
+        Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->middleware('abilities:identifiers:write')->name('apps.identifiers.update');
+        Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->middleware('abilities:identifiers:write')->name('apps.identifiers.destroy');
 
-        Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->name('apps.credentials.index');
-        Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->name('apps.credentials.show');
-        Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->name('apps.credentials.update');
-        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->name('apps.credentials.destroy');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->name('apps.credentials.file.show');
-        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->name('apps.credentials.file.store');
-        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->name('apps.credentials.file.destroy');
+        Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->middleware('abilities:credentials:read')->name('apps.credentials.index');
+        Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->middleware('abilities:credentials:write')->name('apps.credentials.store');
+        Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->middleware('abilities:credentials:read')->name('apps.credentials.show');
+        Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware('abilities:credentials:write')->name('apps.credentials.update');
+        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware('abilities:credentials:write')->name('apps.credentials.destroy');
+        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware('abilities:credentials:read')->name('apps.credentials.file.show');
+        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware('abilities:credentials:write')->name('apps.credentials.file.store');
+        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware('abilities:credentials:write')->name('apps.credentials.file.destroy');
     });

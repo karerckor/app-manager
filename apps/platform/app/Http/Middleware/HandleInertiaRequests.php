@@ -24,7 +24,7 @@ class HandleInertiaRequests extends Middleware
             'navigationTeams' => fn () => $user?->teams()
                 ->select('teams.id', 'teams.name', 'teams.slug', 'teams.owner_id')
                 ->get() ?? [],
-            'navigationTeam' => fn () => $navigationTeam?->only('id', 'name', 'slug'),
+            'navigationTeam' => fn () => $navigationTeam?->only('id', 'name', 'slug', 'owner_id'),
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
                 'token' => fn () => $request->session()->get('token'),

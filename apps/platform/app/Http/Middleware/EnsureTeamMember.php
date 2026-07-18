@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ApiKey;
 use App\Models\Team;
 use Closure;
 use Illuminate\Http\Request;
@@ -12,10 +13,13 @@ class EnsureTeamMember
     public function handle(Request $request, Closure $next): Response
     {
         $team = $request->route('team');
+        $user = $request->user();
+        $apiKey = $user?->currentAccessToken();
 
         abort_unless(
             $team instanceof Team
-            && $request->user()?->teams()->whereKey($team->id)->exists(),
+            && $user?->teams()->whereKey($team->id)->exists()
+            && (! $apiKey instanceof ApiKey || $apiKey->team_id === $team->id),
             403,
         );
 

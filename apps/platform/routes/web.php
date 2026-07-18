@@ -1,11 +1,11 @@
 <?php
 
-use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\AppAssetController;
 use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\MobileAppController;
+use App\Http\Controllers\TeamApiKeyController;
 use App\Http\Controllers\TeamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +26,9 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('/accounts/{team:slug}')->scopeBindings()->name('accounts.')->group(function () {
         Route::get('/apps', DashboardController::class)->name('apps.index');
+        Route::get('/api-keys', [TeamApiKeyController::class, 'index'])->name('api-keys.index');
+        Route::post('/api-keys', [TeamApiKeyController::class, 'store'])->name('api-keys.store');
+        Route::delete('/api-keys/{apiKey}', [TeamApiKeyController::class, 'destroy'])->name('api-keys.destroy');
         Route::post('/apps', [MobileAppController::class, 'store'])->name('apps.store');
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->name('apps.update');
@@ -42,6 +45,4 @@ Route::middleware('auth')->group(function () {
         Route::put('/switch', [TeamController::class, 'switch'])->name('switch');
     });
 
-    Route::post('/api-tokens', [ApiTokenController::class, 'store'])->name('api-tokens.store');
-    Route::delete('/api-tokens/{token}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
 });

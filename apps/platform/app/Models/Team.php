@@ -36,6 +36,11 @@ class Team extends Model
         return $this->hasMany(Credential::class);
     }
 
+    public function apiKeys(): HasMany
+    {
+        return $this->hasMany(ApiKey::class);
+    }
+
     public function getRouteKeyName(): string
     {
         return 'slug';

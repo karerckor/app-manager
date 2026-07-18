@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ApiKeyScope;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,10 +35,19 @@ class AccountFeaturesTest extends TestCase
     public function test_user_can_create_and_revoke_an_api_key(): void
     {
         $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->users()->attach($user, ['role' => 'owner']);
+        $user->update(['current_team_id' => $team->id]);
 
-        $this->actingAs($user)->post('/api-tokens', ['name' => 'CI'])->assertSessionHas('token');
+        $this->actingAs($user)->post(route('accounts.api-keys.store', $team), [
+            'name' => 'CI',
+            'scopes' => [ApiKeyScope::AppsRead->value],
+        ])->assertSessionHas('token');
         $token = $user->tokens()->firstOrFail();
-        $this->actingAs($user)->delete("/api-tokens/{$token->id}")->assertRedirect();
+        $this->assertSame($team->id, $token->team_id);
+        $this->actingAs($user)
+            ->delete(route('accounts.api-keys.destroy', [$team, $token]))
+            ->assertRedirect();
         $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->id]);
     }
 

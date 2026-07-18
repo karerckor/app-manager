@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ApiKeyScope;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -37,7 +38,8 @@ class DemoSeederTest extends TestCase
         // Stable Sanctum API key, stored only as a hash and usable immediately.
         $token = $user->tokens()->where('name', 'Demo API Key')->firstOrFail();
         $this->assertSame(hash('sha256', DemoSeeder::API_KEY), $token->token);
-        $this->assertSame(['*'], $token->abilities);
+        $this->assertSame($team->id, $token->team_id);
+        $this->assertSame(ApiKeyScope::values(), $token->abilities);
         $this->withToken(DemoSeeder::API_KEY)
             ->getJson("/api/v1/{$team->slug}/apps")
             ->assertOk();

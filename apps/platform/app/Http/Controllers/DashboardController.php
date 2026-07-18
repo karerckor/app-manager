@@ -45,7 +45,6 @@ class DashboardController extends Controller
                 'identifiers' => $apps->sum('identifiers_count'),
                 'credentials' => $team?->credentials()->count() ?? 0,
             ],
-            'tokens' => $user->tokens()->latest()->get(['id', 'name', 'abilities', 'last_used_at', 'created_at']),
             'twoFactorEnabled' => ! is_null($user->two_factor_confirmed_at),
             'twoFactorPending' => ! is_null($user->two_factor_secret) && is_null($user->two_factor_confirmed_at),
             'twoFactorQrCode' => $passwordConfirmed && $user->two_factor_secret ? $user->twoFactorQrCodeSvg() : null,

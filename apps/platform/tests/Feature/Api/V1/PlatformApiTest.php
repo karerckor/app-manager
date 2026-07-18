@@ -29,9 +29,11 @@ class PlatformApiTest extends TestCase
     public function test_api_key_cannot_access_a_team_the_user_does_not_belong_to(): void
     {
         $user = User::factory()->create();
+        $ownTeam = Team::factory()->create(['owner_id' => $user->id]);
+        $ownTeam->users()->attach($user, ['role' => 'owner']);
         $team = Team::factory()->create();
 
-        $this->withToken($user->createToken('CI')->plainTextToken)
+        $this->withToken($user->createTeamApiKey($ownTeam, 'CI', ['*'])->plainTextToken)
             ->getJson("/api/v1/{$team->slug}/apps")
             ->assertForbidden();
     }
@@ -40,7 +42,7 @@ class PlatformApiTest extends TestCase
     {
         [$user, $team] = $this->teamMember();
         $foreignApp = MobileApp::factory()->create();
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $created = $this->postJson("/api/v1/{$team->slug}/apps", [
             'name' => 'Customer App',
@@ -74,7 +76,7 @@ class PlatformApiTest extends TestCase
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $foreignIdentifier = AppIdentifier::factory()->create();
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $created = $this->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/identifiers", [
             'platform' => Platform::Ios->value,
@@ -100,7 +102,7 @@ class PlatformApiTest extends TestCase
     {
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
         $url = "/api/v1/{$team->slug}/apps/{$app->slug}/identifiers";
 
         $created = $this->postJson($url, [
@@ -132,7 +134,7 @@ class PlatformApiTest extends TestCase
         Storage::fake('public');
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $url = "/api/v1/{$team->slug}/apps/{$app->slug}/assets/icon";
         $this->post($url, [
@@ -159,7 +161,7 @@ class PlatformApiTest extends TestCase
             'mobile_app_id' => $app->id,
             'platform' => Platform::Android,
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $url = "/api/v1/{$team->slug}/apps/{$app->slug}/credentials";
         $created = $this->post($url, [
@@ -206,7 +208,7 @@ class PlatformApiTest extends TestCase
     public function test_credential_types_expose_the_validation_contract(): void
     {
         [$user, $team] = $this->teamMember();
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson("/api/v1/{$team->slug}/credential-types")
             ->assertOk()
@@ -229,7 +231,7 @@ class PlatformApiTest extends TestCase
             'platform' => Platform::Android,
             'identifier' => 'com.example.app',
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $valid = json_encode([
             'project_info' => ['project_id' => 'demo'],
@@ -269,9 +271,9 @@ class PlatformApiTest extends TestCase
         return [$user, $team];
     }
 
-    private function authenticate(User $user): void
+    private function authenticate(User $user, Team $team): void
     {
-        $this->token = $user->createToken('CI')->plainTextToken;
+        $this->token = $user->createTeamApiKey($team, 'CI', ['*'])->plainTextToken;
         $this->withToken($this->token);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\ApiKeyScope;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -58,7 +59,11 @@ class DemoSeeder extends Seeder
         // while storing only its SHA-256 hash in the database.
         $user->tokens()->updateOrCreate(
             ['name' => 'Demo API Key'],
-            ['token' => hash('sha256', self::API_KEY), 'abilities' => ['*']],
+            [
+                'team_id' => $team->id,
+                'token' => hash('sha256', self::API_KEY),
+                'abilities' => ApiKeyScope::values(),
+            ],
         );
 
         // Example App.
