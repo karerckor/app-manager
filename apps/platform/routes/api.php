@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
 use App\Http\Controllers\Api\V1\PipelineBuildController;
+use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/{team:slug}')
@@ -78,4 +79,7 @@ Route::prefix('v1/{team:slug}')
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [BuildController::class, 'cancel'])->middleware(['abilities:pipelines:run', 'team.permission:run_pipelines'])->name('apps.builds.cancel');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.show');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware(['abilities:logs:write', 'team.permission:manage_applications'])->name('apps.builds.logs.store');
+
+        Route::get('/webhooks', [WebhookEndpointController::class, 'index'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.index');
+        Route::get('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'show'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.show');
     });
