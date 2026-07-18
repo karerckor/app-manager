@@ -212,13 +212,34 @@ class GitHubProvider implements CiCdProvider
 
             $opened = true;
 
-            $logs = [];
-            $totalBytes = 0;
+            $fileIndexes = [];
+            $combinedLogIndexes = [];
 
             for ($index = 0; $index < $zip->numFiles; $index++) {
                 $stat = $zip->statIndex($index);
 
                 if (! is_array($stat) || str_ends_with((string) ($stat['name'] ?? ''), '/')) {
+                    continue;
+                }
+
+                $fileIndexes[] = $index;
+
+                if (preg_match('/^\d+_.+\.txt$/i', (string) ($stat['name'] ?? '')) === 1) {
+                    $combinedLogIndexes[] = $index;
+                }
+            }
+
+            // GitHub currently includes both a combined file per job (for example,
+            // 0_Build.txt) and the same output split into files under Build/. Reading
+            // both representations duplicates every line in the resulting build log.
+            $selectedIndexes = $combinedLogIndexes !== [] ? $combinedLogIndexes : $fileIndexes;
+            $logs = [];
+            $totalBytes = 0;
+
+            foreach ($selectedIndexes as $index) {
+                $stat = $zip->statIndex($index);
+
+                if (! is_array($stat)) {
                     continue;
                 }
 

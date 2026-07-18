@@ -145,7 +145,9 @@ class GitHubProviderTest extends TestCase
         $path = tempnam(sys_get_temp_dir(), 'github-provider-test-');
         $zip = new ZipArchive;
         $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-        $zip->addFromString('Android demo/1_Run build.txt', "\e[32mApp Manager demo build started\e[0m\ncompile: sources\n");
+        $zip->addFromString('0_Android demo.txt', "set up job\n\e[32mApp Manager demo build started\e[0m\ncompile: sources\n");
+        $zip->addFromString('Android demo/1_Set up job.txt', "set up job\n");
+        $zip->addFromString('Android demo/2_Run build.txt', "\e[32mApp Manager demo build started\e[0m\ncompile: sources\n");
         $zip->close();
         $archive = file_get_contents($path);
         unlink($path);
@@ -156,8 +158,10 @@ class GitHubProviderTest extends TestCase
 
         $logs = app(GitHubProvider::class)->logs($run->load(['integration', 'pipeline']));
 
-        $this->assertStringContainsString('===== Android demo/1_Run build.txt =====', $logs);
+        $this->assertStringContainsString('===== 0_Android demo.txt =====', $logs);
+        $this->assertStringNotContainsString('===== Android demo/2_Run build.txt =====', $logs);
         $this->assertStringContainsString('App Manager demo build started', $logs);
+        $this->assertSame(1, substr_count($logs, 'App Manager demo build started'));
         $this->assertStringNotContainsString("\e[32m", $logs);
         Http::assertSent(fn (Request $request) => $request->url() === 'https://api.github.test/repos/octo/mobile/actions/runs/9001/logs'
             && $request->hasHeader('Authorization', 'Bearer installation-token'));
