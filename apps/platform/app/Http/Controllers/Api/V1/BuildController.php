@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Builds\CreateManualBuild;
+use App\Actions\Integrations\RequestPipelineBuildCancellation;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
@@ -29,7 +30,7 @@ class BuildController extends Controller
         $this->assertApp($team, $mobileApp);
 
         return BuildRecordResource::collection(
-            $mobileApp->buildRecords()->latest()->paginate($this->perPage($request, default: 50)),
+            $mobileApp->buildRecords()->with('ciCdRun')->latest()->paginate($this->perPage($request, default: 50)),
         );
     }
 
@@ -116,6 +117,18 @@ class BuildController extends Controller
         }
 
         return new BuildRecordResource($build);
+    }
+
+    public function cancel(
+        Team $team,
+        MobileApp $mobileApp,
+        BuildRecord $buildRecord,
+        RequestPipelineBuildCancellation $cancel,
+    ): BuildRecordResource {
+        $this->assertBuild($team, $mobileApp, $buildRecord);
+        $build = $cancel->handle($buildRecord);
+
+        return new BuildRecordResource($build->load('ciCdRun'));
     }
 
     private function assertApp(Team $team, MobileApp $mobileApp): void

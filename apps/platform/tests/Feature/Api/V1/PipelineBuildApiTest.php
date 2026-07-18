@@ -63,6 +63,23 @@ class PipelineBuildApiTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_cancel_requests_cancellation(): void
+    {
+        [$user, $team, $integration, $pipeline] = $this->ctx();
+        $this->bindProvider();
+        Queue::fake();
+        $build = app(\App\Actions\Integrations\StartPipelineBuild::class)
+            ->handle($team, $integration, $pipeline, $user, (string) Str::uuid());
+        $token = $user->createTeamApiKey($team, 'k', [ApiKeyScope::PipelinesRun->value])->plainTextToken;
+        $app = $pipeline->mobileApp;
+
+        $this->withToken($token)
+            ->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/builds/{$build->id}/cancel")
+            ->assertOk();
+
+        $this->assertDatabaseHas('build_records', ['id' => $build->id, 'status' => 'cancelled']);
+    }
+
     /** @return array{User, Team, Integration, CiCdPipeline} */
     private function ctx(TeamRole $role = TeamRole::Owner): array
     {

@@ -75,6 +75,7 @@ Route::prefix('v1/{team:slug}')
         Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.store');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'show'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.show');
         Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'update'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.update');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [BuildController::class, 'cancel'])->middleware(['abilities:pipelines:run', 'team.permission:run_pipelines'])->name('apps.builds.cancel');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.show');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware(['abilities:logs:write', 'team.permission:manage_applications'])->name('apps.builds.logs.store');
     });
