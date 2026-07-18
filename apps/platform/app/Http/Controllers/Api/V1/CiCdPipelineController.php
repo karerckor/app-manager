@@ -8,6 +8,7 @@ use App\Enums\ProfileType;
 use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\CiCdPipelineResource;
+use App\Http\Resources\Api\V1\WorkflowInputResource;
 use App\Models\CiCdPipeline;
 use App\Models\Integration;
 use App\Models\Team;
@@ -35,6 +36,17 @@ class CiCdPipelineController extends Controller
         $this->assertPipeline($team, $integration, $pipeline);
 
         return new CiCdPipelineResource($pipeline);
+    }
+
+    public function inputs(Team $team, Integration $integration, CiCdPipeline $pipeline): AnonymousResourceCollection
+    {
+        $this->assertPipeline($team, $integration, $pipeline);
+
+        $schema = collect($pipeline->input_schema ?? [])
+            ->map(fn (array $definition, string $name) => ['name' => $name, 'definition' => $definition])
+            ->values();
+
+        return WorkflowInputResource::collection($schema);
     }
 
     public function store(Request $request, Team $team, Integration $integration, SaveCiCdPipeline $save): JsonResponse

@@ -37,6 +37,20 @@ class CiCdPipelineApiTest extends TestCase
             ->assertJsonPath('data.workflow_name', 'Release');
     }
 
+    public function test_returns_input_schema(): void
+    {
+        [$user, $team, $integration, $pipeline] = $this->ctx();
+        $token = $user->createTeamApiKey($team, 'k', [ApiKeyScope::PipelinesRead->value])->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson("/api/v1/{$team->slug}/integrations/{$integration->id}/pipelines/{$pipeline->id}/inputs")
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'channel')
+            ->assertJsonPath('data.0.type', 'choice')
+            ->assertJsonPath('data.0.required', true)
+            ->assertJsonPath('data.0.options', ['internal', 'production']);
+    }
+
     /** @return array{User, Team, Integration, CiCdPipeline} */
     private function ctx(): array
     {

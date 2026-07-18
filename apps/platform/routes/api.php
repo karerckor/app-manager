@@ -29,6 +29,7 @@ Route::prefix('v1/{team:slug}')
         Route::get('/integrations/{integration}/refs', [IntegrationDiscoveryController::class, 'refs'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.refs.index');
 
         Route::get('/integrations/{integration}/pipelines', [CiCdPipelineController::class, 'index'])->middleware(['abilities:pipelines:read', 'team.permission:manage_integrations'])->name('integrations.pipelines.index');
+        Route::get('/integrations/{integration}/pipelines/{pipeline}/inputs', [CiCdPipelineController::class, 'inputs'])->middleware(['abilities:pipelines:read', 'team.permission:manage_integrations'])->name('integrations.pipelines.inputs.index');
         Route::get('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'show'])->middleware(['abilities:pipelines:read', 'team.permission:manage_integrations'])->name('integrations.pipelines.show');
         Route::post('/integrations/{integration}/pipelines', [CiCdPipelineController::class, 'store'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.store');
         Route::patch('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'update'])->middleware(['abilities:pipelines:write', 'team.permission:manage_integrations'])->name('integrations.pipelines.update');
