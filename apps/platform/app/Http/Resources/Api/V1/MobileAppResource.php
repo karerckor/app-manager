@@ -13,6 +13,7 @@ class MobileAppResource extends JsonResource
             'id' => $this->id,
             'slug' => $this->slug,
             'name' => $this->name,
+            'tags' => $this->tags ?? [],
             'description' => $this->description,
             'assets' => [
                 'icon' => $this->asset('icon', 'app_icon'),

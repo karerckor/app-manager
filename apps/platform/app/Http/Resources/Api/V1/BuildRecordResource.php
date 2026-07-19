@@ -26,6 +26,7 @@ class BuildRecordResource extends JsonResource
             'cancel_requested_at' => $this->cancel_requested_at,
             'finished_at' => $this->finished_at,
             'logs_updated_at' => $this->logs_updated_at,
+            'tags' => $this->tags ?? [],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

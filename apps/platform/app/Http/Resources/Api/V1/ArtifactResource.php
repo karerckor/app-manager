@@ -14,6 +14,7 @@ class ArtifactResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'tags' => $this->tags ?? [],
             'metadata' => $this->metadata,
             'build_record_id' => $this->build_record_id,
             'file' => $media ? [

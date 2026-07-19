@@ -98,6 +98,7 @@ class MobileAppController extends Controller
                 'name' => $mobileApp->name,
                 'slug' => $mobileApp->slug,
                 'description' => $mobileApp->description,
+                'tags' => $mobileApp->tags ?? [],
                 'created_at' => $mobileApp->created_at,
                 'updated_at' => $mobileApp->updated_at,
                 'assets' => collect(['app_icon', 'splash_icon'])->mapWithKeys(function ($collection) use ($team, $mobileApp) {
@@ -113,6 +114,7 @@ class MobileAppController extends Controller
                 'urls' => [
                     'index' => route('accounts.apps.index', ['team' => $team]),
                     'update' => route('accounts.apps.update', ['team' => $team, 'mobileApp' => $mobileApp]),
+                    'tags' => route('accounts.apps.tags.update', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'destroy' => route('accounts.apps.destroy', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'identifiers' => route('accounts.apps.identifiers.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                     'credentials' => route('accounts.apps.credentials.store', ['team' => $team, 'mobileApp' => $mobileApp]),
@@ -185,6 +187,8 @@ class MobileAppController extends Controller
                             && $run?->external_run_id !== null
                             && $build->logs_updated_at === null,
                         'created_at' => $build->created_at,
+                        'tags' => $build->tags ?? [],
+                        'tags_url' => route('accounts.apps.builds.tags.update', [$team, $mobileApp, $build]),
                         'started_at' => $build->started_at,
                         'finished_at' => $build->finished_at,
                         'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
@@ -204,6 +208,8 @@ class MobileAppController extends Controller
                                 'size' => $media?->size,
                                 'mime' => $media?->mime_type,
                                 'metadata' => $artifact->metadata,
+                                'tags' => $artifact->tags ?? [],
+                                'tags_url' => route('accounts.apps.builds.artifacts.tags.update', [$team, $mobileApp, $build, $artifact]),
                                 'created_at' => $artifact->created_at,
                                 'download_url' => route('accounts.apps.builds.artifacts.download', [$team, $mobileApp, $build, $artifact]),
                                 'delete_url' => route('accounts.apps.builds.artifacts.destroy', [$team, $mobileApp, $build, $artifact]),
@@ -273,6 +279,8 @@ class MobileAppController extends Controller
             'id' => $credential->id,
             'app_identifier_id' => $identifier->id,
             'name' => $credential->name,
+            'tags' => $credential->tags ?? [],
+            'tags_url' => route('accounts.credentials.tags.update', ['team' => $team, 'credential' => $credential]),
             'type' => $credential->type->value,
             'expires_at' => $credential->expires_at,
             'updated_at' => $credential->updated_at,
