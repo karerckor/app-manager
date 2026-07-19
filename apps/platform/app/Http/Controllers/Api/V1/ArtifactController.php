@@ -16,6 +16,7 @@ use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -82,6 +83,25 @@ class ArtifactController extends Controller
         });
 
         return (new ArtifactResource($artifact))->response()->setStatusCode(201);
+    }
+
+    public function destroy(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): Response
+    {
+        $artifact = $this->artifact($team, $mobileApp, $buildRecord, $artifact);
+
+        DB::transaction(function () use ($artifact, $team, $request) {
+            $payload = WebhookPayload::artifact($artifact);
+            $artifact->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::ArtifactDeleted,
+                $artifact,
+                $payload,
+                $request->user(),
+            );
+        });
+
+        return response()->noContent();
     }
 
     protected function assertBuildBelongs(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): void

@@ -97,6 +97,30 @@ class ArtifactApiTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_destroy_removes_artifact_and_records_deleted_event(): void
+    {
+        [$user, $team, $app, $build] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::ArtifactsWrite]);
+        $artifact = $this->makeArtifact($team, $build, 'release.apk');
+
+        $this->deleteJson($this->url($team, $app, $build).'/'.$artifact->id)->assertNoContent();
+
+        $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
+        $this->assertDatabaseHas('webhook_events', [
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::ArtifactDeleted->value,
+            'aggregate_id' => $artifact->id,
+        ]);
+    }
+
+    public function test_destroy_requires_the_write_scope(): void
+    {
+        [$user, $team, $app, $build] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::ArtifactsRead]);
+        $artifact = $this->makeArtifact($team, $build, 'release.apk');
+        $this->deleteJson($this->url($team, $app, $build).'/'.$artifact->id)->assertForbidden();
+    }
+
     private function makeArtifact(Team $team, BuildRecord $build, string $name): Artifact
     {
         Storage::fake(config('filesystems.default'));
