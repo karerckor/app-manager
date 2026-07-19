@@ -31,6 +31,7 @@ class BuildPresenter
             'tags_url' => route('accounts.apps.builds.tags.update', [$team, $app, $build]),
             'started_at' => $build->started_at,
             'finished_at' => $build->finished_at,
+            'show_url' => route('accounts.apps.builds.show', [$team, $app, $build]),
             'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
             'cancel_url' => route('accounts.apps.builds.cancel', [$team, $app, $build]),
             'can_force_status' => $canRunPipelines
