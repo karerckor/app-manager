@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
 use App\Enums\WebhookEventType;
+use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\CredentialResource;
 use App\Integrations\Webhooks\WebhookEventRecorder;
@@ -28,9 +29,11 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CredentialController extends Controller
 {
+    use ResolvesPageSize;
+
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
-    public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
+    public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         $credentials = $team->credentials()
             ->where(fn ($query) => $query
@@ -38,7 +41,7 @@ class CredentialController extends Controller
                 ->orWhereHas('profiles.appIdentifier', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id)))
             ->with($this->relationsFor($mobileApp))
             ->latest()
-            ->get();
+            ->paginate($this->perPage($request));
 
         return CredentialResource::collection($credentials);
     }

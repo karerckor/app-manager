@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\Platform;
 use App\Enums\WebhookEventType;
+use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\AppIdentifierResource;
 use App\Integrations\Webhooks\WebhookEventRecorder;
@@ -20,12 +21,14 @@ use Illuminate\Validation\Rule;
 
 class AppIdentifierController extends Controller
 {
+    use ResolvesPageSize;
+
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
-    public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
+    public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         return AppIdentifierResource::collection(
-            $mobileApp->appIdentifiers()->orderBy('platform')->orderBy('name')->get(),
+            $mobileApp->appIdentifiers()->orderBy('platform')->orderBy('name')->paginate($this->perPage($request)),
         );
     }
 
