@@ -125,6 +125,11 @@ class MobileAppController extends Controller
                     'mobileApp' => $mobileApp,
                     'appIdentifier' => $identifier,
                 ]),
+                'delete_url' => route('accounts.apps.identifiers.destroy', [
+                    'team' => $team,
+                    'mobileApp' => $mobileApp,
+                    'appIdentifier' => $identifier,
+                ]),
                 'credentials_count' => $identifier->credentials->count()
                     + $identifier->profiles->sum(fn ($profile) => $profile->credentials->count()),
                 'services' => $identifier->credentials
@@ -296,6 +301,7 @@ class MobileAppController extends Controller
                     : ($payload[$field['name']] ?? ''),
             ]),
             'update_url' => route('accounts.credentials.update', ['team' => $team, 'credential' => $credential]),
+            'delete_url' => route('accounts.credentials.destroy', ['team' => $team, 'credential' => $credential]),
             'upload_url' => route('accounts.credentials.upload', ['team' => $team, 'credential' => $credential]),
             'file' => $media ? [
                 'name' => $media->file_name,
