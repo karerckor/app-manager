@@ -39,11 +39,14 @@
         }
         const next = [...working, [value, useColor ? color : null]];
         text = '';
+        working = next;
         submit(next);
     }
 
     function removeTag(index) {
-        submit(working.filter((_, i) => i !== index));
+        const next = working.filter((_, i) => i !== index);
+        working = next;
+        submit(next);
     }
 </script>
 
@@ -55,7 +58,7 @@
         >
             {tag[0]}
             {#if !disabled}
-                <button type="button" class="leading-none opacity-70 hover:opacity-100" aria-label="Remove tag" on:click={() => removeTag(i)}>×</button>
+                <button type="button" class="leading-none opacity-70 hover:opacity-100" aria-label="Remove tag" disabled={saving} on:click={() => removeTag(i)}>×</button>
             {/if}
         </span>
     {/each}
