@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppContext;
+use App\Support\Apps\IdentifierPresenter;
+use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -38,6 +41,21 @@ class AppIdentifierPageController extends Controller
                 'update_url' => route('accounts.apps.identifiers.update', [$team, $mobileApp, $identifier]),
                 'delete_url' => route('accounts.apps.identifiers.destroy', [$team, $mobileApp, $identifier]),
             ])->values(),
+        ]);
+    }
+
+    public function show(Request $request, Team $team, MobileApp $mobileApp, AppIdentifier $appIdentifier): Response
+    {
+        $this->authorizeTeam($request, $team);
+
+        $appIdentifier->load(['credentials.media', 'profiles.credentials.media']);
+
+        return Inertia::render('Apps/Identifiers/Show', [
+            ...AppContext::for($request, $team, $mobileApp),
+            'active' => 'identifiers',
+            'credentialTypes' => CredentialSchema::definitions(),
+            'buildProfiles' => BuildProfileSchema::definitions(),
+            'identifier' => IdentifierPresenter::present($team, $mobileApp, $appIdentifier),
         ]);
     }
 

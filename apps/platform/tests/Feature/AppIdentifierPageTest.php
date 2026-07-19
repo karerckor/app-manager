@@ -54,4 +54,39 @@ class AppIdentifierPageTest extends TestCase
             ->get(route('accounts.apps.identifiers.index', [$foreignApp->team, $foreignApp]))
             ->assertForbidden();
     }
+
+    public function test_show_returns_identifier_with_credentials(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = $app->appIdentifiers()->create([
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.atlas',
+            'name' => 'Atlas iOS',
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Apps/Identifiers/Show')
+                ->where('identifier.id', $identifier->id)
+                ->where('identifier.identifier', 'com.example.atlas')
+                ->has('identifier.services')
+                ->has('identifier.build_targets')
+                ->has('credentialTypes'));
+    }
+
+    public function test_show_404_when_identifier_belongs_to_another_app(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = $otherApp->appIdentifiers()->create([
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.other',
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
+            ->assertNotFound();
+    }
 }
