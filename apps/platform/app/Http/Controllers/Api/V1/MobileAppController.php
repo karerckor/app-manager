@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Enums\WebhookEventType;
+use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\MobileAppResource;
 use App\Integrations\Webhooks\WebhookEventRecorder;
@@ -19,11 +20,15 @@ use Illuminate\Validation\Rule;
 
 class MobileAppController extends Controller
 {
+    use ResolvesPageSize;
+
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
-    public function index(Team $team): AnonymousResourceCollection
+    public function index(Request $request, Team $team): AnonymousResourceCollection
     {
-        return MobileAppResource::collection($team->mobileApps()->latest()->get());
+        return MobileAppResource::collection(
+            $team->mobileApps()->latest()->paginate($this->perPage($request)),
+        );
     }
 
     public function store(Request $request, Team $team): JsonResponse

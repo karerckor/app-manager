@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'abilities' => CheckAbilities::class,
             'team.member' => EnsureTeamMember::class,
+            'team.permission' => \App\Http\Middleware\EnsureTeamPermission::class,
         ]);
 
         $middleware->web(append: [

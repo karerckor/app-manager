@@ -13,14 +13,36 @@ use Illuminate\Http\Request;
 
 class BuildLogController extends Controller
 {
-    public function show(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse
+    public function show(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse
     {
         $this->assertBuild($team, $mobileApp, $buildRecord);
+        $output = $buildRecord->log_output ?? '';
+
+        if (! $request->has('offset') && ! $request->has('limit')) {
+            return response()->json(['data' => [
+                'build_id' => $buildRecord->id,
+                'content' => $output,
+                'updated_at' => $buildRecord->logs_updated_at,
+            ]]);
+        }
+
+        $total = strlen($output);
+        $offset = max(0, $request->integer('offset', 0));
+        $limit = $request->integer('limit', BuildLog::MAX_CHUNK_BYTES);
+        $limit = $limit < 1 ? BuildLog::MAX_CHUNK_BYTES : min($limit, BuildLog::MAX_CHUNK_BYTES);
+        $slice = $offset >= $total ? '' : substr($output, $offset, $limit);
+        $nextOffset = $offset + strlen($slice);
 
         return response()->json(['data' => [
             'build_id' => $buildRecord->id,
-            'content' => $buildRecord->log_output ?? '',
+            'content' => $slice,
             'updated_at' => $buildRecord->logs_updated_at,
+            'meta' => [
+                'offset' => $offset,
+                'next_offset' => $nextOffset < $total ? $nextOffset : null,
+                'returned_bytes' => strlen($slice),
+                'total_bytes' => $total,
+            ],
         ]]);
     }
 

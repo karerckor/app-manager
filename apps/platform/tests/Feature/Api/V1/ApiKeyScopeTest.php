@@ -31,6 +31,15 @@ class ApiKeyScopeTest extends TestCase
             'builds:write',
             'logs:read',
             'logs:write',
+            'integrations:read',
+            'pipelines:read',
+            'pipelines:write',
+            'pipelines:run',
+            'webhooks:read',
+            'webhooks:write',
+            'deliveries:read',
+            'api-keys:read',
+            'api-keys:write',
         ], ApiKeyScope::values());
     }
 

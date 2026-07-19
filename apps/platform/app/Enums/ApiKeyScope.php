@@ -16,6 +16,15 @@ enum ApiKeyScope: string
     case BuildsWrite = 'builds:write';
     case LogsRead = 'logs:read';
     case LogsWrite = 'logs:write';
+    case IntegrationsRead = 'integrations:read';
+    case PipelinesRead = 'pipelines:read';
+    case PipelinesWrite = 'pipelines:write';
+    case PipelinesRun = 'pipelines:run';
+    case WebhooksRead = 'webhooks:read';
+    case WebhooksWrite = 'webhooks:write';
+    case DeliveriesRead = 'deliveries:read';
+    case ApiKeysRead = 'api-keys:read';
+    case ApiKeysWrite = 'api-keys:write';
 
     /**
      * @return list<string>
@@ -52,6 +61,24 @@ enum ApiKeyScope: string
         return array_values($groups);
     }
 
+    public function requiredPermission(): ?TeamPermission
+    {
+        return match ($this) {
+            self::AppsRead, self::IdentifiersRead, self::AssetsRead,
+            self::CredentialsRead, self::BuildsRead, self::LogsRead => TeamPermission::View,
+            self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
+            self::BuildsWrite, self::LogsWrite => TeamPermission::ManageApplications,
+            self::CredentialsWrite => TeamPermission::ManageCredentials,
+            self::IntegrationsRead,
+            self::PipelinesRead, self::PipelinesWrite,
+            self::WebhooksRead, self::WebhooksWrite,
+            self::DeliveriesRead => TeamPermission::ManageIntegrations,
+            self::PipelinesRun => TeamPermission::RunPipelines,
+            self::ApiKeysRead => TeamPermission::ManageTeam,
+            self::ApiKeysWrite => null,
+        };
+    }
+
     public function resource(): string
     {
         return explode(':', $this->value, 2)[0];
@@ -66,6 +93,11 @@ enum ApiKeyScope: string
             'credentials' => 'Credentials',
             'builds' => 'Builds',
             'logs' => 'Build logs',
+            'integrations' => 'Integrations',
+            'pipelines' => 'Pipelines',
+            'webhooks' => 'Webhooks',
+            'deliveries' => 'Webhook deliveries',
+            'api-keys' => 'API keys',
         };
     }
 
@@ -89,6 +121,15 @@ enum ApiKeyScope: string
             self::BuildsWrite => 'Create, start, update and cancel builds.',
             self::LogsRead => 'Read build log entries.',
             self::LogsWrite => 'Append build log entries.',
+            self::IntegrationsRead => 'List integrations and discover repositories, workflows and refs.',
+            self::PipelinesRead => 'View pipeline configurations and their inputs.',
+            self::PipelinesWrite => 'Create, update and delete pipeline configurations.',
+            self::PipelinesRun => 'Dispatch and cancel automated builds.',
+            self::WebhooksRead => 'View webhook endpoints.',
+            self::WebhooksWrite => 'Create, update, rotate, test and delete webhook endpoints.',
+            self::DeliveriesRead => 'View webhook delivery history.',
+            self::ApiKeysRead => 'List team API keys.',
+            self::ApiKeysWrite => 'Create and revoke team API keys.',
         };
     }
 }
