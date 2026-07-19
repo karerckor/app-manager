@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Enums\ApiKeyScope;
+use App\Enums\WebhookEventType;
 use App\Models\AppIdentifier;
 use App\Models\Artifact;
 use App\Models\BuildRecord;
@@ -61,6 +62,39 @@ class ArtifactApiTest extends TestCase
         $this->authenticate($user, $team, [ApiKeyScope::ArtifactsRead]);
 
         $this->getJson($this->url($team, $app, $build).'/'.$foreign->id)->assertNotFound();
+    }
+
+    public function test_store_uploads_a_file_and_records_created_event(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        [$user, $team, $app, $build] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::ArtifactsWrite]);
+
+        $response = $this->post($this->url($team, $app, $build), [
+            'name' => 'release.apk',
+            'metadata' => json_encode(['git_sha' => 'abc123']),
+            'file' => UploadedFile::fake()->create('release.apk', 20),
+        ])->assertCreated()
+            ->assertJsonPath('data.name', 'release.apk')
+            ->assertJsonPath('data.metadata.git_sha', 'abc123');
+
+        $artifactId = $response->json('data.id');
+        $this->assertNotNull(Artifact::find($artifactId)?->getFirstMedia('file'));
+        $this->assertDatabaseHas('webhook_events', [
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::ArtifactCreated->value,
+            'aggregate_id' => $artifactId,
+        ]);
+    }
+
+    public function test_store_requires_the_write_scope(): void
+    {
+        [$user, $team, $app, $build] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::ArtifactsRead]);
+        $this->post($this->url($team, $app, $build), [
+            'name' => 'x.apk',
+            'file' => UploadedFile::fake()->create('x.apk', 1),
+        ])->assertForbidden();
     }
 
     private function makeArtifact(Team $team, BuildRecord $build, string $name): Artifact

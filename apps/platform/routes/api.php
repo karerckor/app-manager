@@ -91,6 +91,7 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [ArtifactController::class, 'index'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.index');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [ArtifactController::class, 'show'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.show');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}/file', [ArtifactController::class, 'download'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.file.show');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [ArtifactController::class, 'store'])->middleware(['abilities:artifacts:write', 'team.permission:manage_applications'])->name('apps.builds.artifacts.store');
 
         Route::get('/webhooks', [WebhookEndpointController::class, 'index'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.index');
         Route::get('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'show'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.show');

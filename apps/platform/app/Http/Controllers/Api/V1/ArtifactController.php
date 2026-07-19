@@ -2,21 +2,26 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\WebhookEventType;
+use App\Http\Concerns\NormalizesArtifactMetadata;
 use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\ArtifactResource;
 use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ArtifactController extends Controller
 {
-    use ResolvesPageSize;
+    use NormalizesArtifactMetadata, ResolvesPageSize;
 
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
@@ -43,6 +48,40 @@ class ArtifactController extends Controller
         abort_unless($media, 404);
 
         return response()->download($media->getPath(), $media->file_name);
+    }
+
+    public function store(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse
+    {
+        $this->assertBuildBelongs($team, $mobileApp, $buildRecord);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'file' => ['required', 'file', 'max:512000'],
+            'metadata' => ['nullable'],
+        ]);
+
+        $metadata = $this->normalizeMetadata($request);
+
+        $artifact = DB::transaction(function () use ($buildRecord, $team, $request, $data, $metadata) {
+            $artifact = $buildRecord->artifacts()->create([
+                'team_id' => $team->id,
+                'name' => $data['name'],
+                'metadata' => $metadata,
+            ]);
+            $artifact->addMediaFromRequest('file')->toMediaCollection('file');
+
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::ArtifactCreated,
+                $artifact,
+                WebhookPayload::artifact($artifact),
+                $request->user(),
+            );
+
+            return $artifact->load('media');
+        });
+
+        return (new ArtifactResource($artifact))->response()->setStatusCode(201);
     }
 
     protected function assertBuildBelongs(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): void
