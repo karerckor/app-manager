@@ -40,5 +40,19 @@ class TagRulesTest extends TestCase
         $this->assertArrayHasKey('tags.*.0', $rules);
         $this->assertArrayHasKey('tags.*.1', $rules);
         $this->assertContains('required', $rules['tags.*.0']);
+        $this->assertContains('max:'.TagRules::MAX_TEXT_LENGTH, $rules['tags.*.0']);
+        $this->assertContains('regex:'.TagRules::HEX_REGEX, $rules['tags.*.1']);
+        $this->assertContains('array', $rules['tags']);
+        $this->assertContains('array', $rules['tags.*']);
+    }
+
+    public function test_normalize_coerces_non_string_color_to_null(): void
+    {
+        $this->assertSame([['ok', null]], TagRules::normalize([['ok', 123]]));
+    }
+
+    public function test_normalize_ignores_non_array_and_extra_elements(): void
+    {
+        $this->assertSame([['ok', '#fff']], TagRules::normalize(['plain', ['ok', '#fff', 'extra']]));
     }
 }
