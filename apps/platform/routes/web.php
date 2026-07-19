@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AppAssetController;
+use App\Http\Controllers\AppBuildPageController;
 use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\AppIdentifierPageController;
 use App\Http\Controllers\BuildArtifactController;
@@ -85,10 +86,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
         Route::post('/apps/{mobileApp:slug}/builds', [ManualBuildController::class, 'store'])
             ->name('apps.builds.store');
-        // Placeholder so AppContext::for() can generate the "builds_page" URL.
-        // Replace with the real Builds/Index page controller in a later task.
-        Route::get('/apps/{mobileApp:slug}/builds', fn () => abort(404))
+        Route::get('/apps/{mobileApp:slug}/builds', [AppBuildPageController::class, 'index'])
             ->name('apps.builds.index');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [AppBuildPageController::class, 'show'])
+            ->name('apps.builds.show');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [PipelineBuildController::class, 'cancel'])
             ->name('apps.builds.cancel');
         Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/status', [ForceBuildStatusController::class, 'update'])
