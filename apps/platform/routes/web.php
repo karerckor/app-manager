@@ -14,6 +14,7 @@ use App\Http\Controllers\Integrations\PipelineBuildController;
 use App\Http\Controllers\Integrations\WebhookEndpointController;
 use App\Http\Controllers\ManualBuildController;
 use App\Http\Controllers\MobileAppController;
+use App\Http\Controllers\TagsController;
 use App\Http\Controllers\TeamApiKeyController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\Webhooks\GitHubWebhookController;
@@ -91,6 +92,14 @@ Route::middleware('auth')->group(function () {
             ->name('apps.builds.artifacts.download');
         Route::delete('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [BuildArtifactController::class, 'destroy'])
             ->name('apps.builds.artifacts.destroy');
+        Route::patch('/apps/{mobileApp:slug}/tags', [TagsController::class, 'updateApp'])
+            ->name('apps.tags.update');
+        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/tags', [TagsController::class, 'updateBuild'])
+            ->name('apps.builds.tags.update');
+        Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}/tags', [TagsController::class, 'updateArtifact'])
+            ->name('apps.builds.artifacts.tags.update');
+        Route::patch('/credentials/{credential}/tags', [TagsController::class, 'updateCredential'])
+            ->name('credentials.tags.update');
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
         Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');
