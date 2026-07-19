@@ -71,6 +71,7 @@ class MobileAppController extends Controller
     {
         $this->authorizeTeam($request, $team);
         $canRunPipelines = $team->allows($request->user(), TeamPermission::RunPipelines);
+        $canManageArtifacts = $team->allows($request->user(), TeamPermission::ManageApplications);
 
         $mobileApp->load([
             'appIdentifiers' => fn ($query) => $query
@@ -163,11 +164,11 @@ class MobileAppController extends Controller
                 ])
                 ->values() : collect(),
             'builds' => $mobileApp->buildRecords()
-                ->with(['ciCdRun.pipeline'])
+                ->with(['ciCdRun.pipeline', 'artifacts.media'])
                 ->latest()
                 ->limit(30)
                 ->get()
-                ->map(function ($build) use ($canRunPipelines, $team, $mobileApp) {
+                ->map(function ($build) use ($canRunPipelines, $canManageArtifacts, $team, $mobileApp) {
                     $run = $canRunPipelines ? $build->ciCdRun : null;
 
                     return [
@@ -192,6 +193,22 @@ class MobileAppController extends Controller
                             && $build->reporting_mode === BuildReportingMode::Manual
                             && ! $build->status->isTerminal(),
                         'force_status_url' => route('accounts.apps.builds.status.update', [$team, $mobileApp, $build]),
+                        'can_manage_artifacts' => $canManageArtifacts,
+                        'artifacts_url' => route('accounts.apps.builds.artifacts.store', [$team, $mobileApp, $build]),
+                        'artifacts' => $build->artifacts->map(function ($artifact) use ($team, $mobileApp, $build) {
+                            $media = $artifact->getFirstMedia('file');
+
+                            return [
+                                'id' => $artifact->id,
+                                'name' => $artifact->name,
+                                'size' => $media?->size,
+                                'mime' => $media?->mime_type,
+                                'metadata' => $artifact->metadata,
+                                'created_at' => $artifact->created_at,
+                                'download_url' => route('accounts.apps.builds.artifacts.download', [$team, $mobileApp, $build, $artifact]),
+                                'delete_url' => route('accounts.apps.builds.artifacts.destroy', [$team, $mobileApp, $build, $artifact]),
+                            ];
+                        })->values(),
                     ];
                 }),
         ]);

@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class BuildArtifactWebTest extends TestCase
@@ -59,6 +60,26 @@ class BuildArtifactWebTest extends TestCase
 
         $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
         $this->assertDatabaseMissing('media', ['model_id' => $artifact->id]);
+    }
+
+    public function test_show_exposes_artifacts_for_a_build(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        [$user, $team, $app, $build] = $this->context('owner');
+        $artifact = Artifact::factory()->for($build)->create([
+            'team_id' => $team->id,
+            'name' => 'release.apk',
+            'metadata' => ['git_sha' => 'abc'],
+        ]);
+        $artifact->addMedia(UploadedFile::fake()->create('release.apk', 7))->toMediaCollection('file');
+
+        $this->actingAs($user)
+            ->get("/accounts/{$team->slug}/apps/{$app->slug}")
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('builds.0.can_manage_artifacts', true)
+                ->where('builds.0.artifacts.0.id', $artifact->id)
+                ->where('builds.0.artifacts.0.name', 'release.apk')
+                ->where('builds.0.artifacts.0.metadata.git_sha', 'abc'));
     }
 
     /** @return array{0: User, 1: Team, 2: MobileApp, 3: BuildRecord} */
