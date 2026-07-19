@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\BuildReportingMode;
 use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
@@ -12,6 +11,9 @@ use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Profile;
 use App\Models\Team;
+use App\Support\Apps\BuildPresenter;
+use App\Support\Apps\IdentifierPresenter;
+use App\Support\Apps\PipelinePresenter;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
 use Illuminate\Http\RedirectResponse;
@@ -113,44 +115,9 @@ class MobileAppController extends Controller
                     'manual_builds' => route('accounts.apps.builds.store', ['team' => $team, 'mobileApp' => $mobileApp]),
                 ],
             ],
-            'identifiers' => $mobileApp->appIdentifiers->map(fn ($identifier) => [
-                'id' => $identifier->id,
-                'name' => $identifier->name,
-                'platform' => $identifier->platform->value,
-                'identifier' => $identifier->identifier,
-                'version' => $identifier->version,
-                'version_code' => $identifier->version_code,
-                'update_url' => route('accounts.apps.identifiers.update', [
-                    'team' => $team,
-                    'mobileApp' => $mobileApp,
-                    'appIdentifier' => $identifier,
-                ]),
-                'delete_url' => route('accounts.apps.identifiers.destroy', [
-                    'team' => $team,
-                    'mobileApp' => $mobileApp,
-                    'appIdentifier' => $identifier,
-                ]),
-                'credentials_count' => $identifier->credentials->count()
-                    + $identifier->profiles->sum(fn ($profile) => $profile->credentials->count()),
-                'services' => $identifier->credentials
-                    ->map(fn ($credential) => $this->credentialData($team, $credential, $identifier, null))
-                    ->values(),
-                'build_targets' => $identifier->profiles
-                    ->map(function ($profile) use ($team, $identifier) {
-                        $definition = BuildProfileSchema::definition($profile->type, $identifier->platform) ?? [];
-
-                        return [
-                            'type' => $profile->type->value,
-                            'label' => $definition['label'] ?? $profile->name,
-                            'artifact' => $definition['artifact'] ?? null,
-                            'description' => $definition['description'] ?? null,
-                            'credentials' => $profile->credentials
-                                ->map(fn ($credential) => $this->credentialData($team, $credential, $identifier, $profile))
-                                ->values(),
-                        ];
-                    })
-                    ->values(),
-            ]),
+            'identifiers' => $mobileApp->appIdentifiers->map(
+                fn ($identifier) => IdentifierPresenter::present($team, $mobileApp, $identifier)
+            ),
             'credentialTypes' => CredentialSchema::definitions(),
             'buildProfiles' => BuildProfileSchema::definitions(),
             'pipelines' => $canRunPipelines ? $mobileApp->ciCdPipelines()
@@ -159,72 +126,14 @@ class MobileAppController extends Controller
                 ->latest()
                 ->get()
                 ->filter(fn ($pipeline) => $pipeline->integration->status->canDispatch())
-                ->map(fn ($pipeline) => [
-                    'id' => $pipeline->id,
-                    'name' => $pipeline->name,
-                    'provider' => $pipeline->integration->provider->value,
-                    'repository' => $pipeline->repository_full_name,
-                    'workflow' => $pipeline->workflow_name,
-                    'default_ref' => $pipeline->default_ref,
-                    'profile_type' => $pipeline->profile_type->value,
-                    'reporting_mode' => $pipeline->reporting_mode->value,
-                    'input_schema' => $pipeline->input_schema ?? [],
-                    'input_defaults' => $pipeline->input_defaults ?? [],
-                    'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $pipeline->integration, $pipeline]),
-                ])
+                ->map(fn ($pipeline) => PipelinePresenter::present($team, $pipeline))
                 ->values() : collect(),
             'builds' => $mobileApp->buildRecords()
                 ->with(['ciCdRun.pipeline', 'artifacts.media'])
                 ->latest()
                 ->limit(30)
                 ->get()
-                ->map(function ($build) use ($canRunPipelines, $canManageArtifacts, $team, $mobileApp) {
-                    $run = $canRunPipelines ? $build->ciCdRun : null;
-
-                    return [
-                        'id' => $build->id,
-                        'status' => $build->status->value,
-                        'profile_type' => $build->profile_type->value,
-                        'pipeline_name' => $run?->pipeline?->name,
-                        'external_url' => $run?->external_run_url,
-                        'provider_status' => $run?->provider_status,
-                        'reporting_mode' => $build->reporting_mode->value,
-                        'parameters' => $build->parameters ?? [],
-                        'logs' => $build->log_output,
-                        'logs_pending' => $build->reporting_mode->value === 'automatic'
-                            && $run?->external_run_id !== null
-                            && $build->logs_updated_at === null,
-                        'created_at' => $build->created_at,
-                        'tags' => $build->tags ?? [],
-                        'tags_url' => route('accounts.apps.builds.tags.update', [$team, $mobileApp, $build]),
-                        'started_at' => $build->started_at,
-                        'finished_at' => $build->finished_at,
-                        'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
-                        'cancel_url' => route('accounts.apps.builds.cancel', [$team, $mobileApp, $build]),
-                        'can_force_status' => $canRunPipelines
-                            && $build->reporting_mode === BuildReportingMode::Manual
-                            && ! $build->status->isTerminal(),
-                        'force_status_url' => route('accounts.apps.builds.status.update', [$team, $mobileApp, $build]),
-                        'can_manage_artifacts' => $canManageArtifacts,
-                        'artifacts_url' => route('accounts.apps.builds.artifacts.store', [$team, $mobileApp, $build]),
-                        'artifacts' => $build->artifacts->map(function ($artifact) use ($team, $mobileApp, $build) {
-                            $media = $artifact->getFirstMedia('file');
-
-                            return [
-                                'id' => $artifact->id,
-                                'name' => $artifact->name,
-                                'size' => $media?->size,
-                                'mime' => $media?->mime_type,
-                                'metadata' => $artifact->metadata,
-                                'tags' => $artifact->tags ?? [],
-                                'tags_url' => route('accounts.apps.builds.artifacts.tags.update', [$team, $mobileApp, $build, $artifact]),
-                                'created_at' => $artifact->created_at,
-                                'download_url' => route('accounts.apps.builds.artifacts.download', [$team, $mobileApp, $build, $artifact]),
-                                'delete_url' => route('accounts.apps.builds.artifacts.destroy', [$team, $mobileApp, $build, $artifact]),
-                            ];
-                        })->values(),
-                    ];
-                }),
+                ->map(fn ($build) => BuildPresenter::present($team, $mobileApp, $build, $canRunPipelines, $canManageArtifacts)),
         ]);
     }
 
