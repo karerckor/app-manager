@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AppAssetController;
 use App\Http\Controllers\AppIdentifierController;
+use App\Http\Controllers\AppIdentifierPageController;
 use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
@@ -84,6 +85,10 @@ Route::middleware('auth')->group(function () {
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
         Route::post('/apps/{mobileApp:slug}/builds', [ManualBuildController::class, 'store'])
             ->name('apps.builds.store');
+        // Placeholder so AppContext::for() can generate the "builds_page" URL.
+        // Replace with the real Builds/Index page controller in a later task.
+        Route::get('/apps/{mobileApp:slug}/builds', fn () => abort(404))
+            ->name('apps.builds.index');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [PipelineBuildController::class, 'cancel'])
             ->name('apps.builds.cancel');
         Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/status', [ForceBuildStatusController::class, 'update'])
@@ -105,6 +110,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
         Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
         Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->name('apps.identifiers.destroy');
+        Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierPageController::class, 'index'])->name('apps.identifiers.index');
+        Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierPageController::class, 'show'])->name('apps.identifiers.show');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');
         Route::post('/apps/{mobileApp:slug}/assets/{collection}', [AppAssetController::class, 'upload'])->name('apps.assets.upload');
         Route::get('/apps/{mobileApp:slug}/assets/{collection}/preview', [AppAssetController::class, 'preview'])->name('apps.assets.preview');
