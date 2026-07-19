@@ -32,12 +32,54 @@ class TeamApiKeyApiTest extends TestCase
 
     public function test_admin_can_read_but_contributor_cannot(): void
     {
-        $user = User::factory()->create();
-        $team = Team::factory()->create();
-        $team->addUser($user, TeamRole::Contributor);
+        $admin = User::factory()->create();
+        $adminTeam = Team::factory()->create();
+        $adminTeam->addUser($admin, TeamRole::Admin);
 
-        $this->withToken($user->createTeamApiKey($team, 'k', [ApiKeyScope::ApiKeysRead->value])->plainTextToken)
-            ->getJson("/api/v1/{$team->slug}/api-keys")
+        $this->withToken($admin->createTeamApiKey($adminTeam, 'k', [ApiKeyScope::ApiKeysRead->value])->plainTextToken)
+            ->getJson("/api/v1/{$adminTeam->slug}/api-keys")
+            ->assertOk();
+
+        $contributor = User::factory()->create();
+        $contributorTeam = Team::factory()->create();
+        $contributorTeam->addUser($contributor, TeamRole::Contributor);
+
+        $this->withToken($contributor->createTeamApiKey($contributorTeam, 'k', [ApiKeyScope::ApiKeysRead->value])->plainTextToken)
+            ->getJson("/api/v1/{$contributorTeam->slug}/api-keys")
             ->assertForbidden();
+    }
+
+    public function test_show_returns_key(): void
+    {
+        $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->addUser($user, TeamRole::Owner);
+        $user->update(['current_team_id' => $team->id]);
+        $key = $user->createTeamApiKey($team, 'reader', [ApiKeyScope::ApiKeysRead->value]);
+
+        $response = $this->withToken($key->plainTextToken)
+            ->getJson("/api/v1/{$team->slug}/api-keys/{$key->accessToken->id}")
+            ->assertOk()
+            ->assertJsonPath('data.name', 'reader');
+
+        $response->assertJsonMissingPath('data.token');
+    }
+
+    public function test_show_other_team_key_returns_404(): void
+    {
+        $user = User::factory()->create();
+        $teamA = Team::factory()->create(['owner_id' => $user->id]);
+        $teamA->addUser($user, TeamRole::Owner);
+        $user->update(['current_team_id' => $teamA->id]);
+        $reader = $user->createTeamApiKey($teamA, 'reader', [ApiKeyScope::ApiKeysRead->value])->plainTextToken;
+
+        $otherOwner = User::factory()->create();
+        $teamB = Team::factory()->create(['owner_id' => $otherOwner->id]);
+        $teamB->addUser($otherOwner, TeamRole::Owner);
+        $teamBKey = $otherOwner->createTeamApiKey($teamB, 'other-team-key', [ApiKeyScope::ApiKeysRead->value])->accessToken;
+
+        $this->withToken($reader)
+            ->getJson("/api/v1/{$teamA->slug}/api-keys/{$teamBKey->id}")
+            ->assertNotFound();
     }
 }
