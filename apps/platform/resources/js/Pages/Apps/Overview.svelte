@@ -10,6 +10,7 @@
     export let pipelines = [];
     export let identifiers = [];
     export let buildProfiles = [];
+    export let tag_suggestions = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let active = 'overview';
@@ -32,7 +33,7 @@
     }[type] ?? { icon: Activity, class: 'bg-slate-100 text-slate-500' });
 </script>
 
-<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} {navigationTeams} {navigationTeam} {active}>
+<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]">
         <div class="space-y-6">
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -57,13 +58,13 @@
                         <p class="mt-0.5 truncate text-xs font-medium text-slate-500">Last build{stats.last_build ? ` · ${formatDateTime(stats.last_build.at)}` : ''}</p>
                     </div>
                 </Link>
-                <Link href={app.urls.identifiers_page} class="card flex items-center gap-3 transition hover:border-slate-300">
+                <div class="card flex items-center gap-3">
                     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><KeyRound class="h-5 w-5" strokeWidth={1.8} /></span>
                     <div class="min-w-0">
                         <p class="text-2xl font-bold tracking-tight">{stats.credentials ?? 0}</p>
-                        <p class="mt-0.5 text-xs font-medium text-slate-500">Credentials</p>
+                        <p class="mt-0.5 text-xs font-medium text-slate-500">Team credentials</p>
                     </div>
-                </Link>
+                </div>
             </div>
 
             <section class="card p-0">

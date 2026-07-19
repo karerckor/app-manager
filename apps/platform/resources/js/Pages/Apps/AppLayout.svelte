@@ -14,6 +14,7 @@
     export let pipelines = [];
     export let identifiers = [];
     export let buildProfiles = [];
+    export let tagSuggestions = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let active = 'overview';
@@ -64,7 +65,7 @@
                 <div class="min-w-0">
                     <div class="flex items-center gap-2"><h1 class="truncate text-2xl font-bold tracking-tight">{app.name}</h1><span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Active</span></div>
                     <p class="mt-1 text-sm text-slate-500">{app.description || app.slug}</p>
-                    <div class="mt-2.5"><TagEditor tags={app.tags} url={app.urls.tags} /></div>
+                    <div class="mt-2.5"><TagEditor tags={app.tags} url={app.urls.tags} suggestions={tagSuggestions} /></div>
                 </div>
             </div>
             <div class="flex items-center gap-2">

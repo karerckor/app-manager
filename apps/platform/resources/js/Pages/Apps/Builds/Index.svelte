@@ -13,6 +13,7 @@
     export let pipelines = [];
     export let identifiers = [];
     export let buildProfiles = [];
+    export let tag_suggestions = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let active = 'builds';
@@ -47,7 +48,7 @@
 
 <svelte:head><title>Builds · {app.name} · App Manager</title></svelte:head>
 
-<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} {navigationTeams} {navigationTeam} {active}>
+<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <section class="card overflow-hidden p-0">
         <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Build history</h2><p class="mt-1 text-xs text-slate-500">Builds reported by CI providers and your own runners.</p></div>
         {#if builds.length}
@@ -76,7 +77,7 @@
                                         <Link href={build.show_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Details</Link>
                                         {#if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-slate-400">Syncing logs…</span>{/if}
                                         {#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}
-                                        {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
+                                        {#if build.can_cancel}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
                                         {#if build.can_force_status}<button class="ghost px-2.5 py-1.5 text-[10px] text-amber-700" on:click={() => openForceStatus(build)}>Force status</button>{/if}
                                     </div>
                                 </td>

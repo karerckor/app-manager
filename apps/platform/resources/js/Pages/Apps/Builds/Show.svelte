@@ -13,6 +13,7 @@
     export let pipelines = [];
     export let identifiers = [];
     export let buildProfiles = [];
+    export let tag_suggestions = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let active = 'builds';
@@ -60,7 +61,7 @@
 
 <svelte:head><title>Build #{build.id} · {app.name} · App Manager</title></svelte:head>
 
-<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} {navigationTeams} {navigationTeam} {active}>
+<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <Link href={app.urls.builds_page} class="mb-5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-indigo-600"><ArrowLeft class="h-3.5 w-3.5" strokeWidth={2.2} /> Back to builds</Link>
 
     <div class="card mb-6">
@@ -77,7 +78,7 @@
             <div class="flex shrink-0 flex-wrap items-center gap-2">
                 {#if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-slate-400">Syncing logs…</span>{/if}
                 {#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Open run</a>{/if}
-                {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={cancelBuild}>Cancel</button>{/if}
+                {#if build.can_cancel}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={cancelBuild}>Cancel</button>{/if}
                 {#if build.can_force_status}<button class="ghost px-2.5 py-1.5 text-[10px] text-amber-700" on:click={openForceStatus}>Force status</button>{/if}
             </div>
         </div>

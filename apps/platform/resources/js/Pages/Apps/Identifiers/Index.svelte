@@ -10,10 +10,10 @@
     export let pipelines = [];
     export let identifiers = [];
     export let buildProfiles = [];
+    export let tag_suggestions = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let active = 'identifiers';
-    export let credentialTypes = [];
 
     let showIdentifier = false;
     let editingIdentifier = null;
@@ -39,7 +39,7 @@
 
 <svelte:head><title>Identifiers · {app.name} · App Manager</title></svelte:head>
 
-<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} {navigationTeams} {navigationTeam} {active}>
+<AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <section class="card p-0">
         <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>

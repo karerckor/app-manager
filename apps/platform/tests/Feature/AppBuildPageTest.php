@@ -49,6 +49,15 @@ class AppBuildPageTest extends TestCase
                 ->where('builds.0.status', 'completed'));
     }
 
+    public function test_index_forbidden_for_non_member(): void
+    {
+        [$user] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+
+        $this->actingAs($user)->get(route('accounts.apps.builds.index', [$foreignApp->team, $foreignApp]))
+            ->assertForbidden();
+    }
+
     public function test_show_returns_single_build(): void
     {
         [$user, $team] = $this->userWithTeam();
@@ -70,6 +79,24 @@ class AppBuildPageTest extends TestCase
                 ->component('Apps/Builds/Show')
                 ->where('build.id', $build->id)
                 ->where('build.parameters', ['channel' => 'internal']));
+    }
+
+    public function test_show_forbidden_for_non_member(): void
+    {
+        [$user] = $this->userWithTeam();
+        $foreignApp = MobileApp::factory()->create();
+        $foreignBuild = BuildRecord::factory()->create([
+            'team_id' => $foreignApp->team_id,
+            'mobile_app_id' => $foreignApp->id,
+            'app_identifier_id' => null,
+            'requested_by_user_id' => null,
+            'profile_type' => ProfileType::Production,
+            'status' => 'completed',
+            'reporting_mode' => 'manual',
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.builds.show', [$foreignApp->team, $foreignApp, $foreignBuild]))
+            ->assertForbidden();
     }
 
     public function test_show_404_when_build_belongs_to_another_app(): void

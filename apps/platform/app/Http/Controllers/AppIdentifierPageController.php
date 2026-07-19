@@ -21,14 +21,13 @@ class AppIdentifierPageController extends Controller
 
         $mobileApp->load([
             'appIdentifiers' => fn ($q) => $q
-                ->withCount(['credentials', 'profiles'])
+                ->withCount('credentials')
                 ->orderBy('platform')->orderBy('name'),
         ]);
 
         return Inertia::render('Apps/Identifiers/Index', [
             ...AppContext::for($request, $team, $mobileApp),
             'active' => 'identifiers',
-            'credentialTypes' => CredentialSchema::definitions(),
             'identifiers' => $mobileApp->appIdentifiers->map(fn ($identifier) => [
                 'id' => $identifier->id,
                 'name' => $identifier->name,
