@@ -82,6 +82,27 @@
     const pipelineBuildForm = useForm({ request_uuid: '', ref: '', inputs: {} });
     const forceStatusForm = useForm({ status: 'cancelled' });
 
+    const artifactForm = useForm({ name: '', metadata: '', file: null });
+
+    const uploadArtifact = (build) => artifactForm
+        .transform((data) => ({ ...data, metadata: data.metadata?.trim() ? data.metadata : null }))
+        .post(build.artifacts_url, {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: () => artifactForm.reset(),
+        });
+
+    const deleteArtifact = (artifact) => router.delete(artifact.delete_url, { preserveScroll: true });
+
+    const formatSize = (bytes) => {
+        if (bytes == null) return '';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let value = bytes;
+        let unit = 0;
+        while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+        return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0)} ${units[unit]}`;
+    };
+
     $: selectedIdentifier = identifiers.find((identifier) => String(identifier.id) === String(credentialForm.app_identifier_id));
     $: availableCredentialTypes = credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform));
     $: selectedSchema = credentialTypes.find((type) => type.value === credentialForm.type);
@@ -486,6 +507,37 @@
                                                         <div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Launch parameters</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{formatParameters(build.parameters)}</pre></div>
                                                         {#if build.logs}<div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Logs</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{build.logs}</pre></div>{/if}
                                                     </div>
+
+                                                    <section class="mt-4 border-t border-slate-200 pt-4">
+                                                        <p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Artifacts</p>
+
+                                                        {#if build.artifacts.length === 0}
+                                                            <p class="text-xs text-slate-500">No artifacts attached to this build.</p>
+                                                        {:else}
+                                                            <ul class="space-y-2">
+                                                                {#each build.artifacts as artifact (artifact.id)}
+                                                                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                                                        <div>
+                                                                            <a href={artifact.download_url} class="text-xs font-semibold text-indigo-600 hover:underline">{artifact.name}</a>
+                                                                            {#if artifact.size != null}<span class="ml-2 text-[10px] text-slate-400">{formatSize(artifact.size)}</span>{/if}
+                                                                        </div>
+                                                                        {#if build.can_manage_artifacts}
+                                                                            <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteArtifact(artifact)}>Delete</button>
+                                                                        {/if}
+                                                                    </li>
+                                                                {/each}
+                                                            </ul>
+                                                        {/if}
+
+                                                        {#if build.can_manage_artifacts}
+                                                            <form class="mt-3 space-y-3" on:submit|preventDefault={() => uploadArtifact(build)}>
+                                                                <label><span class="label">Artifact name</span><input type="text" bind:value={artifactForm.name} placeholder="Artifact name" required />{#if artifactForm.errors.name}<span class="error">{artifactForm.errors.name}</span>{/if}</label>
+                                                                <label><span class="label">Metadata (JSON) <span class="font-normal text-slate-400">(optional)</span></span><textarea class="min-h-16 font-mono text-xs leading-5" bind:value={artifactForm.metadata} placeholder={'{}'}></textarea></label>
+                                                                <label><span class="label">File</span><input type="file" on:change={(e) => (artifactForm.file = e.currentTarget.files[0])} required />{#if artifactForm.errors.file}<span class="error">{artifactForm.errors.file}</span>{/if}</label>
+                                                                <div class="flex justify-end"><button type="submit" class="px-3 py-2 text-xs" disabled={artifactForm.processing}>{artifactForm.processing ? 'Uploading…' : 'Upload artifact'}</button></div>
+                                                            </form>
+                                                        {/if}
+                                                    </section>
                                                 </td>
                                             </tr>
                                         {/if}
