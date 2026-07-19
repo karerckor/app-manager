@@ -61,6 +61,29 @@ class AppIdentifierController extends Controller
         return back()->with('status', 'App identifier updated.');
     }
 
+    public function destroy(
+        Request $request,
+        Team $team,
+        MobileApp $mobileApp,
+        AppIdentifier $appIdentifier,
+    ): RedirectResponse {
+        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
+
+        DB::transaction(function () use ($appIdentifier, $team, $request) {
+            $payload = WebhookPayload::appIdentifier($appIdentifier);
+            $appIdentifier->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::AppIdentifierDeleted,
+                $appIdentifier,
+                $payload,
+                $request->user(),
+            );
+        });
+
+        return back()->with('status', 'App identifier removed.');
+    }
+
     private function rules(
         Request $request,
         MobileApp $mobileApp,
