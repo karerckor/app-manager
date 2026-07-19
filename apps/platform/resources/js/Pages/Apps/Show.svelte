@@ -1,6 +1,7 @@
 <script>
     import { Link, router, useForm } from '@inertiajs/svelte';
     import { onMount } from 'svelte';
+    import { Pencil, Trash2, Plus, ChevronRight, KeyRound, Clock, Check, TriangleAlert, Download, Upload, Play, CirclePlus, Package, Image as ImageIcon } from '@lucide/svelte';
     import AppShell from '../../Components/AppShell.svelte';
     import TagEditor from '../../Components/TagEditor.svelte';
 
@@ -123,6 +124,17 @@
     $: credentialTypeChanged = editingCredential && credentialForm.type !== editingCredential.type;
     $: credentialFileRequired = !editingCredential || credentialTypeChanged || !editingCredential.file;
     $: manualProfileOptions = profilesForIdentifier(manualBuildForm.app_identifier_id);
+    $: allTags = (() => {
+        const acc = [];
+        const push = (list) => (list || []).forEach((t) => acc.push(Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]));
+        push(app.tags);
+        builds.forEach((build) => { push(build.tags); (build.artifacts || []).forEach((artifact) => push(artifact.tags)); });
+        identifiers.forEach((identifier) => {
+            (identifier.services || []).forEach((credential) => push(credential.tags));
+            (identifier.build_targets || []).forEach((target) => (target.credentials || []).forEach((credential) => push(credential.tags)));
+        });
+        return acc;
+    })();
 
     const closeIdentifier = () => {
         showIdentifier = false;
@@ -352,19 +364,22 @@
     <main class="mx-auto max-w-[1240px] px-5 py-8 sm:px-8 lg:px-10 lg:py-9">
         <nav class="mb-6 flex items-center gap-2 text-xs font-medium text-slate-500"><Link href={app.urls.index} class="hover:text-indigo-600">Applications</Link><span class="text-slate-300">/</span><span class="text-slate-800">{app.name}</span></nav>
 
-        <header class="mb-7 flex flex-wrap items-center justify-between gap-5">
-            <div class="flex min-w-0 items-center gap-4">
+        <header class="mb-7 flex flex-wrap items-start justify-between gap-5">
+            <div class="flex min-w-0 items-start gap-4">
                 {#if app.assets.app_icon}<img src={app.assets.app_icon.preview_url} alt={`${app.name} icon`} class="h-14 w-14 shrink-0 rounded-2xl bg-white object-cover shadow-lg shadow-slate-200 ring-1 ring-slate-200" />{:else}<span class="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-200">{initials(app.name)}</span>{/if}
-                <div class="min-w-0"><div class="flex items-center gap-2"><h1 class="truncate text-2xl font-bold tracking-tight">{app.name}</h1><span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Active</span></div><p class="mt-1 text-sm text-slate-500">{app.description || app.slug}</p></div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2"><h1 class="truncate text-2xl font-bold tracking-tight">{app.name}</h1><span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Active</span></div>
+                    <p class="mt-1 text-sm text-slate-500">{app.description || app.slug}</p>
+                    <div class="mt-2.5"><TagEditor tags={app.tags} url={app.urls.tags} suggestions={allTags} /></div>
+                </div>
             </div>
             <div class="flex items-center gap-2">
                 <button type="button" class="secondary flex items-center gap-2" on:click={openEdit}>
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    <Pencil class="h-4 w-4" strokeWidth={2.2} />
                     Edit
                 </button>
-                <TagEditor tags={app.tags} url={app.urls.tags} />
                 <button class="flex items-center gap-2" on:click={openCreateIdentifier}>
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                    <Plus class="h-4 w-4" strokeWidth={2.2} />
                     Add identifier
                 </button>
             </div>
@@ -378,26 +393,36 @@
         </div>
 
         {#snippet credentialRow(credential)}
-            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                <div class="flex min-w-0 items-center gap-3">
-                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span>
-                    <div class="min-w-0"><p class="truncate text-xs font-semibold">{credential.name}</p><p class="mt-0.5 text-[10px] text-slate-500">{typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} encrypted field${credential.fields.length === 1 ? '' : 's'}` : ''}</p></div>
+            <div class="rounded-xl border border-slate-200 bg-white px-3.5 py-3 transition hover:border-slate-300">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="flex min-w-0 items-start gap-3">
+                        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600"><KeyRound class="h-4 w-4" strokeWidth={1.8} /></span>
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold text-slate-900">{credential.name}</p>
+                            <p class="mt-0.5 text-[11px] text-slate-500">{typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} encrypted field${credential.fields.length === 1 ? '' : 's'}` : ''}</p>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}"><Clock class="h-3 w-3" />{formatDate(credential.expires_at)}</span>
+                                {#if credential.file}<span class="inline-flex items-center gap-1 text-[11px] text-slate-500"><Check class="h-3 w-3 text-emerald-500" />{credential.file.name} · {formatBytes(credential.file.size)}</span>{:else}<span class="inline-flex items-center gap-1 text-[11px] text-amber-600"><TriangleAlert class="h-3 w-3" />No file uploaded</span>{/if}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50/60 p-0.5">
+                        {#if credential.file}<a href={credential.file.download_url} class="grid h-7 w-7 place-items-center rounded-md bg-transparent text-slate-500 shadow-none hover:bg-white hover:text-indigo-600 hover:shadow-sm" title="Download" aria-label="Download file"><Download class="h-4 w-4" strokeWidth={1.9} /></a>{/if}
+                        <label for={`credential-${credential.id}`} class="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-slate-500 hover:bg-white hover:text-indigo-600 hover:shadow-sm" title={credential.file ? 'Replace file' : 'Upload file'} aria-label={credential.file ? 'Replace file' : 'Upload file'}><Upload class="h-4 w-4" strokeWidth={1.9} /></label>
+                        <input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />
+                        <button type="button" class="grid h-7 w-7 place-items-center rounded-md bg-transparent p-0 text-slate-500 shadow-none hover:bg-white hover:text-indigo-600 hover:shadow-sm" title="Edit" aria-label="Edit credential" on:click={() => openEditCredential(credential)}><Pencil class="h-4 w-4" strokeWidth={1.9} /></button>
+                        <button type="button" class="grid h-7 w-7 place-items-center rounded-md bg-transparent p-0 text-rose-500 shadow-none hover:bg-white hover:text-rose-600 hover:shadow-sm" title="Delete" aria-label="Delete credential" on:click={() => confirmingCredentialDelete = credential.id}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
+                    </div>
                 </div>
-                <div class="flex flex-wrap items-center justify-end gap-2">
-                    <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">{formatDate(credential.expires_at)}</span>
-                    {#if credential.file}<span class="hidden text-[10px] text-slate-400 sm:inline">{credential.file.name} · {formatBytes(credential.file.size)}</span>{:else}<span class="text-[10px] text-slate-400">No file</span>{/if}
-                    <button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>
-                    {#if confirmingCredentialDelete === credential.id}
-                        <span class="text-[10px] font-semibold text-rose-700">{credential.attached_elsewhere ? 'Delete? Shared with other apps — removed everywhere.' : 'Delete?'}</span>
-                        <button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => confirmingCredentialDelete = null}>Cancel</button>
-                        <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteCredential(credential)}>Confirm</button>
-                    {:else}
-                        <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => confirmingCredentialDelete = credential.id}>Delete</button>
-                    {/if}
-                    {#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}
-                    <label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label>
-                    <input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />
-                    <TagEditor tags={credential.tags} url={credential.tags_url} />
+                {#if confirmingCredentialDelete === credential.id}
+                    <div class="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2">
+                        <span class="text-[11px] font-medium text-rose-700">{credential.attached_elsewhere ? 'Shared with other apps — this removes it everywhere.' : 'Delete this credential permanently?'}</span>
+                        <span class="flex gap-2"><button type="button" class="ghost px-2.5 py-1 text-[11px]" on:click={() => confirmingCredentialDelete = null}>Cancel</button><button type="button" class="danger px-2.5 py-1 text-[11px]" on:click={() => deleteCredential(credential)}>Delete</button></span>
+                    </div>
+                {/if}
+                <div class="mt-2.5 flex items-center gap-2 border-t border-slate-100 pt-2.5">
+                    <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Tags</span>
+                    <TagEditor tags={credential.tags} url={credential.tags_url} suggestions={allTags} />
                 </div>
             </div>
         {/snippet}
@@ -405,19 +430,31 @@
         {#if tab === 'overview'}
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]">
                 <section class="card p-0">
-                    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">App identifiers</h2><p class="mt-0.5 text-xs text-slate-500">Bundle IDs and package names for each platform.</p></div><button class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={openCreateIdentifier}><span class="text-base leading-none">+</span> Add</button></div>
+                    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">App identifiers</h2><p class="mt-0.5 text-xs text-slate-500">Bundle IDs and package names for each platform.</p></div><button class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={openCreateIdentifier}><Plus class="h-4 w-4" strokeWidth={2.2} /> Add</button></div>
                     {#if identifiers.length}
                         <div class="divide-y divide-slate-100">
                             {#each identifiers as identifier}
                                 <div class="px-5 py-4">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <button type="button" class="flex min-w-0 items-center gap-3 bg-transparent p-0 text-left shadow-none hover:bg-transparent" on:click={() => toggleIdentifier(identifier)} aria-expanded={expandedIdentifierId === identifier.id}>
-                                            <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 text-slate-400 transition-transform {expandedIdentifierId === identifier.id ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 6 6 6-6 6"/></svg>
+                                            <ChevronRight class="h-4 w-4 shrink-0 text-slate-400 transition-transform {expandedIdentifierId === identifier.id ? 'rotate-90' : ''}" strokeWidth={2.4} />
                                             <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl {identifier.platform === 'ios' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700'}">{#if identifier.platform === 'ios'}<svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="currentColor"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7a4.5 4.5 0 0 0-3.5-1.9c-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.1-.8a4.7 4.7 0 0 0-4 2.4c-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10.7 10.7 0 0 0 1.4-2.9 4.2 4.2 0 0 1-3-3.8ZM14.3 5.8A4.2 4.2 0 0 0 15.4 3a4.3 4.3 0 0 0-2.8 1.4 4 4 0 0 0-1.1 2.7 3.6 3.6 0 0 0 2.8-1.3Z"/></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="m7.2 8.4-1.7-3a.5.5 0 0 1 .2-.7.5.5 0 0 1 .7.2l1.8 3A9 9 0 0 1 12 7c1.4 0 2.7.3 3.8.9l1.8-3a.5.5 0 1 1 .9.5l-1.7 3a7 7 0 0 1 3.2 5.3H4a7 7 0 0 1 3.2-5.3ZM8.3 11a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Zm7.4 0a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Z"/></svg>{/if}</span>
                                             <span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate text-sm font-semibold">{identifier.name || (identifier.platform === 'ios' ? 'iOS application' : 'Android application')}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase">{identifier.platform}</span>{#if identifier.version || identifier.version_code}<span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}</span>{/if}</span><code class="mt-1 block truncate text-xs text-slate-500">{identifier.identifier}</code></span>
                                         </button>
-                                        <div class="flex items-center gap-2"><span class="text-xs text-slate-400">{identifier.credentials_count} credential{identifier.credentials_count === 1 ? '' : 's'}</span><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditIdentifier(identifier)}>Edit</button>{#if confirmingIdentifierDelete === identifier.id}<span class="text-[10px] font-semibold text-rose-700">{identifier.credentials_count > 0 ? `Delete? ${identifier.credentials_count} credential${identifier.credentials_count === 1 ? '' : 's'} will be detached.` : 'Delete?'}</span><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => confirmingIdentifierDelete = null}>Cancel</button><button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteIdentifier(identifier)}>Confirm</button>{:else}<button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => confirmingIdentifierDelete = identifier.id}>Delete</button>{/if}</div>
+                                        <div class="flex shrink-0 items-center gap-2">
+                                            <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"><KeyRound class="h-3 w-3 text-slate-400" />{identifier.credentials_count}</span>
+                                            <div class="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50/60 p-0.5">
+                                                <button type="button" class="grid h-7 w-7 place-items-center rounded-md bg-transparent p-0 text-slate-500 shadow-none hover:bg-white hover:text-indigo-600 hover:shadow-sm" title="Edit" aria-label="Edit identifier" on:click={() => openEditIdentifier(identifier)}><Pencil class="h-4 w-4" strokeWidth={1.9} /></button>
+                                                <button type="button" class="grid h-7 w-7 place-items-center rounded-md bg-transparent p-0 text-rose-500 shadow-none hover:bg-white hover:text-rose-600 hover:shadow-sm" title="Delete" aria-label="Delete identifier" on:click={() => confirmingIdentifierDelete = identifier.id}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
+                                            </div>
+                                        </div>
                                     </div>
+                                    {#if confirmingIdentifierDelete === identifier.id}
+                                        <div class="mt-3 ml-7 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-rose-50 px-3 py-2">
+                                            <span class="text-[11px] font-medium text-rose-700">{identifier.credentials_count > 0 ? `Delete this identifier? ${identifier.credentials_count} credential${identifier.credentials_count === 1 ? '' : 's'} will be detached.` : 'Delete this identifier?'}</span>
+                                            <span class="flex gap-2"><button type="button" class="ghost px-2.5 py-1 text-[11px]" on:click={() => confirmingIdentifierDelete = null}>Cancel</button><button type="button" class="danger px-2.5 py-1 text-[11px]" on:click={() => deleteIdentifier(identifier)}>Delete</button></span>
+                                        </div>
+                                    {/if}
                                     {#if expandedIdentifierId === identifier.id}
                                         <div class="mt-4 space-y-4 pl-7">
                                             {#if identifier.services.length}
@@ -435,7 +472,7 @@
                                             {#if !identifier.services.length && !identifier.build_targets.length}
                                                 <p class="text-xs text-slate-500">No credentials attached yet. Add a signing key, service account, or platform configuration.</p>
                                             {/if}
-                                            <button type="button" class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={() => openCreateCredential(identifier)}><span class="text-base leading-none">+</span> Add credential</button>
+                                            <button type="button" class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={() => openCreateCredential(identifier)}><Plus class="h-4 w-4" strokeWidth={2.2} /> Add credential</button>
                                         </div>
                                     {/if}
                                 </div>
@@ -457,7 +494,7 @@
                         <div class="space-y-3">
                             {#each [['app_icon', 'App icon', 'Square PNG or JPG'], ['splash_icon', 'Splash icon', 'PNG or JPG up to 10 MB']] as asset}
                                 <div class="rounded-xl border border-slate-200 p-3">
-                                    <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg></span><div class="min-w-0 flex-1"><p class="text-xs font-semibold">{asset[1]}</p><p class="mt-0.5 truncate text-[10px] text-slate-400">{app.assets[asset[0]]?.name || asset[2]}</p></div></div>
+                                    <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500"><ImageIcon class="h-4 w-4" strokeWidth={1.8} /></span><div class="min-w-0 flex-1"><p class="text-xs font-semibold">{asset[1]}</p><p class="mt-0.5 truncate text-[10px] text-slate-400">{app.assets[asset[0]]?.name || asset[2]}</p></div></div>
                                     <div class="mt-3 flex gap-2"><label for={`asset-${asset[0]}`} class="flex-1 cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50">{app.assets[asset[0]] ? 'Replace' : 'Upload'}</label><input id={`asset-${asset[0]}`} class="hidden" type="file" accept="image/*" on:change={(event) => uploadAsset(asset[0], event)} />{#if app.assets[asset[0]]}<a href={app.assets[asset[0]].download_url} class="flex-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 hover:bg-slate-200">Download</a>{/if}</div>
                                 </div>
                             {/each}
@@ -468,16 +505,35 @@
         {:else}
             <div class="space-y-6">
                 {#if auth?.team?.permissions?.run_pipelines}
-                    <section class="card flex flex-wrap items-center justify-between gap-4">
-                        <div><h2 class="text-sm font-bold">Manual build</h2><p class="mt-1 text-xs text-slate-500">Create a build record without starting GitHub Actions. Its JSON parameters are sent to build webhooks.</p></div>
-                        <button class="px-3 py-2 text-xs" on:click={openManualBuild}>Create manual build</button>
-                    </section>
-
                     <section class="card p-0">
-                        <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Run a pipeline</h2><p class="mt-1 text-xs text-slate-500">Review the ref and JSON inputs before starting a configured CI/CD workflow.</p></div>
-                        {#if pipelines.length}
-                            <div class="divide-y divide-slate-100">{#each pipelines as pipeline}<div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span></div><p class="mt-1 text-xs text-slate-500">{pipeline.provider} · {pipeline.repository} · {pipeline.workflow} · {pipeline.default_ref}</p></div><button class="px-3 py-2 text-xs" on:click={() => openPipelineBuild(pipeline)}>Run build</button></div>{/each}</div>
-                        {:else}<div class="px-5 py-10 text-center"><p class="text-sm font-semibold">No active pipelines</p><p class="mt-1 text-xs text-slate-500">Configure one from Integrations first.</p></div>{/if}
+                        <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Start a build</h2><p class="mt-1 text-xs text-slate-500">Trigger a connected CI/CD pipeline, or record a manual build without CI.</p></div>
+                        <div>
+                            {#each pipelines as pipeline, i}
+                                <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5 {i > 0 ? 'border-t border-slate-100' : ''}">
+                                    <div class="flex min-w-0 items-center gap-3">
+                                        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600"><Play class="h-4 w-4" fill="currentColor" /></span>
+                                        <div class="min-w-0">
+                                            <div class="flex flex-wrap items-center gap-2"><p class="text-sm font-semibold text-slate-900">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span></div>
+                                            <p class="mt-0.5 truncate text-xs text-slate-500">{pipeline.provider} · {pipeline.repository} · {pipeline.workflow} · {pipeline.default_ref}</p>
+                                        </div>
+                                    </div>
+                                    <button class="px-3 py-2 text-xs" on:click={() => openPipelineBuild(pipeline)}>Run build</button>
+                                </div>
+                            {/each}
+
+                            {#if pipelines.length}<div class="flex items-center gap-3 px-5 pt-3"><span class="h-px flex-1 bg-slate-100"></span><span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">or</span><span class="h-px flex-1 bg-slate-100"></span></div>{/if}
+
+                            <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5 {pipelines.length ? 'pt-3' : ''}">
+                                <div class="flex min-w-0 items-center gap-3">
+                                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"><CirclePlus class="h-4 w-4" strokeWidth={1.9} /></span>
+                                    <div class="min-w-0">
+                                        <div class="flex flex-wrap items-center gap-2"><p class="text-sm font-semibold text-slate-900">Manual build</p><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">Manual</span></div>
+                                        <p class="mt-0.5 text-xs text-slate-500">{pipelines.length ? 'No CI trigger — records a build and fires build webhooks.' : 'No pipelines connected yet. Configure one in Integrations, or record a build manually.'}</p>
+                                    </div>
+                                </div>
+                                <button class="{pipelines.length ? 'secondary' : ''} px-3 py-2 text-xs" on:click={openManualBuild}>Create manual build</button>
+                            </div>
+                        </div>
                     </section>
                 {/if}
 
@@ -485,14 +541,24 @@
                     <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Build history</h2><p class="mt-1 text-xs text-slate-500">Builds reported by CI providers and your own runners.</p></div>
                     {#if builds.length}
                         <div class="overflow-x-auto">
-                            <table class="w-full min-w-[860px] text-left text-xs">
-                                <thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Started</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
+                            <table class="w-full min-w-[760px] text-left text-xs">
+                                <thead class="bg-slate-50 text-[10px] font-bold uppercase text-slate-400"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Artifacts</th><th class="px-4 py-3">Started</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
                                 <tbody class="divide-y divide-slate-100">
                                     {#each builds as build}
-                                        <tr>
-                                            <td class="px-5 py-4"><div class="flex items-center gap-2"><span class="font-semibold">{build.pipeline_name || 'Manual build'}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">{build.reporting_mode}</span></div></td>
+                                        <tr class="align-top">
+                                            <td class="px-5 py-4">
+                                                <div class="flex items-center gap-2"><span class="font-semibold">{build.pipeline_name || 'Manual build'}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">{build.reporting_mode}</span></div>
+                                                <div class="mt-1.5"><TagEditor tags={build.tags} url={build.tags_url} suggestions={allTags} /></div>
+                                            </td>
                                             <td class="px-4 py-4 text-slate-500">{build.profile_type}</td>
-                                            <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status}</span></td>
+                                            <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status.replaceAll('_', ' ')}</span></td>
+                                            <td class="px-4 py-4">
+                                                {#if build.artifacts.length}
+                                                    <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold text-indigo-700"><Package class="h-3 w-3" />{build.artifacts.length} attached</span>
+                                                {:else}
+                                                    <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-400"><Package class="h-3 w-3" strokeWidth={1.8} />None</span>
+                                                {/if}
+                                            </td>
                                             <td class="px-4 py-4 text-slate-500">{formatDateTime(build.started_at || build.created_at)}</td>
                                             <td class="px-5 py-4">
                                                 <div class="flex justify-end gap-2">
@@ -502,34 +568,34 @@
                                                     {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
                                                     {#if build.can_force_status}<button class="ghost px-2.5 py-1.5 text-[10px] text-amber-700" on:click={() => openForceStatus(build)}>Force status</button>{/if}
                                                 </div>
-                                                <div class="mt-2 flex justify-end"><TagEditor tags={build.tags} url={build.tags_url} /></div>
                                             </td>
                                         </tr>
                                         {#if expandedBuildId === build.id}
                                             <tr>
-                                                <td colspan="5" class="bg-slate-50 px-5 py-4">
+                                                <td colspan="6" class="bg-slate-50 px-5 py-4">
                                                     <div class="grid gap-4 {build.logs ? 'lg:grid-cols-2' : ''}">
                                                         <div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Launch parameters</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{formatParameters(build.parameters)}</pre></div>
                                                         {#if build.logs}<div><p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Logs</p><pre class="max-h-[24rem] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 px-4 py-3 font-mono text-[11px] leading-5 text-slate-200">{build.logs}</pre></div>{/if}
                                                     </div>
 
                                                     <section class="mt-4 border-t border-slate-200 pt-4">
-                                                        <p class="mb-2 text-[10px] font-bold tracking-wider text-slate-500 uppercase">Artifacts</p>
+                                                        <div class="mb-2.5 flex items-center justify-between"><p class="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Artifacts</p>{#if build.artifacts.length}<span class="text-[10px] font-medium text-slate-400">{build.artifacts.length} attached</span>{/if}</div>
 
                                                         {#if build.artifacts.length === 0}
-                                                            <p class="text-xs text-slate-500">No artifacts attached to this build.</p>
+                                                            <p class="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-xs text-slate-500">No artifacts attached to this build yet.</p>
                                                         {:else}
                                                             <ul class="space-y-2">
                                                                 {#each build.artifacts as artifact (artifact.id)}
-                                                                    <li class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                                                        <div>
-                                                                            <a href={artifact.download_url} class="text-xs font-semibold text-indigo-600 hover:underline">{artifact.name}</a>
-                                                                            {#if artifact.size != null}<span class="ml-2 text-[10px] text-slate-400">{formatSize(artifact.size)}</span>{/if}
+                                                                    <li class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                                                                        <div class="flex min-w-0 items-center gap-2.5">
+                                                                            <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600"><Package class="h-4 w-4" strokeWidth={1.8} /></span>
+                                                                            <div class="min-w-0"><p class="truncate text-xs font-semibold text-slate-900">{artifact.name}</p><p class="mt-0.5 text-[10px] text-slate-400">{artifact.size != null ? formatSize(artifact.size) : 'Unknown size'}</p></div>
                                                                         </div>
                                                                         <div class="flex items-center gap-2">
-                                                                            <TagEditor tags={artifact.tags} url={artifact.tags_url} />
+                                                                            <TagEditor tags={artifact.tags} url={artifact.tags_url} suggestions={allTags} />
+                                                                            <a href={artifact.download_url} class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-indigo-600" title="Download" aria-label="Download artifact"><Download class="h-4 w-4" strokeWidth={1.9} /></a>
                                                                             {#if build.can_manage_artifacts}
-                                                                                <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteArtifact(artifact)}>Delete</button>
+                                                                                <button type="button" class="grid h-7 w-7 place-items-center rounded-md border border-slate-200 bg-white p-0 text-rose-500 shadow-none hover:text-rose-600" title="Delete" aria-label="Delete artifact" on:click={() => deleteArtifact(artifact)}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
                                                                             {/if}
                                                                         </div>
                                                                     </li>
@@ -538,11 +604,19 @@
                                                         {/if}
 
                                                         {#if build.can_manage_artifacts}
-                                                            <form class="mt-3 space-y-3" on:submit|preventDefault={() => uploadArtifact(build)}>
-                                                                <label><span class="label">Artifact name</span><input type="text" bind:value={artifactForm.name} placeholder="Artifact name" required />{#if artifactForm.errors.name}<span class="error">{artifactForm.errors.name}</span>{/if}</label>
-                                                                <label><span class="label">Metadata (JSON) <span class="font-normal text-slate-400">(optional)</span></span><textarea class="min-h-16 font-mono text-xs leading-5" bind:value={artifactForm.metadata} placeholder={'{}'}></textarea></label>
-                                                                <label><span class="label">File</span><input type="file" on:change={(e) => (artifactForm.file = e.currentTarget.files[0])} required />{#if artifactForm.errors.file}<span class="error">{artifactForm.errors.file}</span>{/if}</label>
-                                                                <div class="flex justify-end"><button type="submit" class="px-3 py-2 text-xs" disabled={artifactForm.processing}>{artifactForm.processing ? 'Uploading…' : 'Upload artifact'}</button></div>
+                                                            <form class="mt-3 rounded-xl border border-slate-200 bg-white p-3.5" on:submit|preventDefault={() => uploadArtifact(build)}>
+                                                                <p class="mb-3 text-xs font-semibold text-slate-700">Attach a new artifact</p>
+                                                                <div class="grid gap-3 sm:grid-cols-2">
+                                                                    <label><span class="label">Name</span><input type="text" bind:value={artifactForm.name} placeholder="e.g. app-release.ipa" required />{#if artifactForm.errors.name}<span class="error">{artifactForm.errors.name}</span>{/if}</label>
+                                                                    <label><span class="label">Metadata (JSON) <span class="font-normal text-slate-400">(optional)</span></span><input type="text" class="font-mono text-xs" bind:value={artifactForm.metadata} placeholder={'{ "channel": "internal" }'} />{#if artifactForm.errors.metadata}<span class="error">{artifactForm.errors.metadata}</span>{/if}</label>
+                                                                </div>
+                                                                <label class="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition hover:border-indigo-400 hover:bg-indigo-50/40">
+                                                                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-indigo-600 shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
+                                                                    <span class="min-w-0"><strong class="block truncate text-xs text-slate-700">{artifactForm.file?.name || 'Choose a file'}</strong><small class="text-[10px] text-slate-400">The build output to store and share.</small></span>
+                                                                    <input type="file" class="hidden" on:change={(e) => (artifactForm.file = e.currentTarget.files?.[0] ?? null)} />
+                                                                </label>
+                                                                {#if artifactForm.errors.file}<span class="error">{artifactForm.errors.file}</span>{/if}
+                                                                <div class="mt-3 flex justify-end"><button type="submit" class="px-3 py-2 text-xs" disabled={artifactForm.processing || !artifactForm.file}>{artifactForm.processing ? 'Uploading…' : 'Upload artifact'}</button></div>
                                                             </form>
                                                         {/if}
                                                     </section>
@@ -695,7 +769,7 @@
                 <label class="block">
                     <span class="label">Credential file <span class="font-normal text-slate-400">({credentialFileRequired ? 'required' : 'optional'}, max 20 MB)</span></span>
                     <span class="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 transition hover:border-indigo-400 hover:bg-indigo-50/40">
-                        <span class="grid h-9 w-9 place-items-center rounded-lg bg-white text-indigo-600 shadow-sm"><svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4m0 0L8 8m4-4 4 4"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></svg></span>
+                        <span class="grid h-9 w-9 place-items-center rounded-lg bg-white text-indigo-600 shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
                         <span class="min-w-0"><strong class="block truncate text-xs text-slate-700">{credentialForm.file?.name || (editingCredential?.file && !credentialTypeChanged ? `Keep ${editingCredential.file.name}` : 'Choose a file')}</strong><small class="text-[10px] text-slate-400">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small></span>
                         <input type="file" class="hidden" accept={selectedSchema?.file.accept} on:change={pickCredentialFile} />
                     </span>

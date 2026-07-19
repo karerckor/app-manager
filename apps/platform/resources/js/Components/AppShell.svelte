@@ -1,5 +1,6 @@
 <script>
     import { Link, router } from '@inertiajs/svelte';
+    import { LayoutGrid, KeyRound, Blocks, ShieldCheck, LogOut } from '@lucide/svelte';
 
     export let auth;
     export let teams = [];
@@ -33,23 +34,23 @@
 
         <nav class="space-y-1">
             <Link href={appsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'apps' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
-                <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+                <LayoutGrid class="h-4.5 w-4.5" strokeWidth={1.8} />
                 Applications
             </Link>
             {#if canManageApiKeys}
                 <Link href={apiKeysUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'api-keys' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
-                    <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg>
+                    <KeyRound class="h-4.5 w-4.5" strokeWidth={1.8} />
                     API keys
                 </Link>
             {/if}
             {#if auth?.team?.permissions?.manage_integrations}
                 <Link href={integrationsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'integrations' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
-                    <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 12h8M12 8v8"/><path d="M7 3h3v4H7a5 5 0 0 0 0 10h3v4H7A9 9 0 0 1 7 3ZM17 3h-3v4h3a5 5 0 0 1 0 10h-3v4h3a9 9 0 0 0 0-18Z"/></svg>
+                    <Blocks class="h-4.5 w-4.5" strokeWidth={1.8} />
                     Integrations
                 </Link>
             {/if}
             <span class="flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500">
-                <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg>
+                <ShieldCheck class="h-4.5 w-4.5" strokeWidth={1.8} />
                 Team access <span class="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase">Soon</span>
             </span>
         </nav>
@@ -59,7 +60,7 @@
                 <span class="grid h-9 w-9 place-items-center rounded-full bg-indigo-400/15 text-xs font-bold text-indigo-300">{initials(auth.user.name)}</span>
                 <div class="min-w-0 flex-1"><p class="truncate text-xs font-semibold">{auth.user.name}</p><p class="truncate text-[11px] text-slate-500">{auth.user.email}</p></div>
                 <button aria-label="Sign out" title="Sign out" class="ghost p-2 text-slate-500 hover:bg-white/5 hover:text-white" on:click={logout}>
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg>
+                    <LogOut class="h-4 w-4" />
                 </button>
             </div>
         </div>

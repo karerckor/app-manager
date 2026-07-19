@@ -1,5 +1,6 @@
 <script>
     import { router, useForm } from '@inertiajs/svelte';
+    import { Plus, TriangleAlert, KeyRound } from '@lucide/svelte';
     import AppShell from '../../Components/AppShell.svelte';
 
     export let auth;
@@ -64,7 +65,7 @@
                 <p class="mt-2 max-w-2xl text-sm text-slate-500">Team-bound credentials for CI and integrations. Grant only the scopes each client needs.</p>
             </div>
             <button class="flex items-center gap-2" on:click={() => showCreate = true}>
-                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                <Plus class="h-4 w-4" strokeWidth={2.2} />
                 New API key
             </button>
         </div>
@@ -73,7 +74,7 @@
             <section class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                 <div class="flex items-start gap-3">
                     <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-400/20 text-amber-700">
-                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.7 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>
+                        <TriangleAlert class="h-5 w-5" strokeWidth={1.9} />
                     </span>
                     <div class="min-w-0 flex-1">
                         <h2 class="text-sm font-bold text-amber-950">Copy this key now</h2>
@@ -122,7 +123,7 @@
                 </div>
             {:else}
                 <div class="px-6 py-16 text-center">
-                    <span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span>
+                    <span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><KeyRound class="h-6 w-6" strokeWidth={1.7} /></span>
                     <h3 class="text-sm font-bold">No API keys yet</h3>
                     <p class="mx-auto mt-2 max-w-sm text-sm text-slate-500">Create a scoped key for a CI runner, deployment pipeline, or another integration.</p>
                     <button class="mt-5" on:click={() => showCreate = true}>New API key</button>

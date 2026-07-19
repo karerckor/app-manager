@@ -12,6 +12,9 @@ export default defineConfig({
         tailwindcss(),
         svelte(),
     ],
+    resolve: {
+        dedupe: ['svelte'],
+    },
     server: {
         watch: {
             ignored: ['**/storage/framework/views/**'],

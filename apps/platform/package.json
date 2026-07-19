@@ -16,6 +16,7 @@
     },
     "dependencies": {
         "@inertiajs/svelte": "^3.6.1",
+        "@lucide/svelte": "^1.25.0",
         "svelte": "^5.56.4"
     }
 }

@@ -27,6 +27,7 @@ class DashboardController extends Controller
                 'name' => $app->name,
                 'slug' => $app->slug,
                 'description' => $app->description,
+                'tags' => $app->tags ?? [],
                 'url' => route('accounts.apps.show', ['team' => $team, 'mobileApp' => $app]),
                 'icon_url' => $app->hasMedia('app_icon')
                     ? route('accounts.apps.assets.preview', ['team' => $team, 'mobileApp' => $app, 'collection' => 'app_icon'])
