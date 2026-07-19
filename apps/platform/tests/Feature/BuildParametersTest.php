@@ -54,7 +54,7 @@ class BuildParametersTest extends TestCase
                 'profile_type' => ProfileType::Production->value,
                 'parameters' => $parameters,
             ])
-            ->assertRedirect(route('accounts.apps.show', [$team, $app]))
+            ->assertRedirect(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSessionHas('status', 'Manual build created.');
 
         $build = BuildRecord::query()->sole();
@@ -66,7 +66,7 @@ class BuildParametersTest extends TestCase
         $event = WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->sole();
         $this->assertSame($parameters, $event->payload['parameters']);
 
-        $this->get(route('accounts.apps.show', [$team, $app]))
+        $this->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('app.urls.manual_builds', route('accounts.apps.builds.store', [$team, $app]))
@@ -124,7 +124,7 @@ class BuildParametersTest extends TestCase
         $event = WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->sole();
         $this->assertSame($parameters, $event->payload['parameters']);
 
-        $this->get(route('accounts.apps.show', [$team, $app]))
+        $this->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pipelines.0.input_schema.channel.type', 'choice')

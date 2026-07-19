@@ -62,10 +62,10 @@ class PlatformDashboardTest extends TestCase
         ])->assertRedirect();
         $identifier = $app->appIdentifiers()->firstOrFail();
 
-        $this->get(route('accounts.apps.show', [$team, $app]))
+        $this->get(route('accounts.apps.identifiers.index', [$team, $app]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('Apps/Show')
+                ->component('Apps/Identifiers/Index')
                 ->where('app.id', $app->id)
                 ->has('identifiers', 1)
                 ->where('identifiers.0.identifier', 'com.example.atlas')
@@ -154,12 +154,13 @@ class PlatformDashboardTest extends TestCase
         $this->assertTrue($profile->credentials()->whereKey($credential->id)->exists());
         $this->assertSame('release.keystore', $credential->getFirstMedia('file')->file_name);
 
-        $this->get(route('accounts.apps.show', [$team, $app]))
+        $this->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifiers.0.build_targets.0.type', ProfileType::Production->value)
-                ->where('identifiers.0.build_targets.0.artifact', '.aab')
-                ->where('identifiers.0.build_targets.0.credentials.0.profile.value', ProfileType::Production->value));
+                ->component('Apps/Identifiers/Show')
+                ->where('identifier.build_targets.0.type', ProfileType::Production->value)
+                ->where('identifier.build_targets.0.artifact', '.aab')
+                ->where('identifier.build_targets.0.credentials.0.profile.value', ProfileType::Production->value));
 
         $this->get(route('accounts.credentials.download', [$team, $credential]))
             ->assertSuccessful()
@@ -182,16 +183,16 @@ class PlatformDashboardTest extends TestCase
         ]);
         $identifier->credentials()->attach($credential);
 
-        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+        $this->actingAs($user)->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifiers.0.build_targets', [])
-                ->where('identifiers.0.services.0.type', CredentialType::FirebaseConfig->value)
-                ->where('identifiers.0.services.0.name', 'Firebase config')
-                ->where('identifiers.0.services.0.app_identifier_id', $identifier->id)
-                ->where('identifiers.0.services.0.profile', null)
-                ->has('identifiers.0.services.0.update_url')
-                ->has('identifiers.0.services.0.tags_url'));
+                ->where('identifier.build_targets', [])
+                ->where('identifier.services.0.type', CredentialType::FirebaseConfig->value)
+                ->where('identifier.services.0.name', 'Firebase config')
+                ->where('identifier.services.0.app_identifier_id', $identifier->id)
+                ->where('identifier.services.0.profile', null)
+                ->has('identifier.services.0.update_url')
+                ->has('identifier.services.0.tags_url'));
     }
 
     public function test_app_icon_is_exposed_on_the_dashboard_and_drilldown_as_an_inline_preview(): void

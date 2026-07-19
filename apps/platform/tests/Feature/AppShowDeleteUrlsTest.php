@@ -37,12 +37,12 @@ class AppShowDeleteUrlsTest extends TestCase
         $identifier->credentials()->attach($credential);
 
         $this->actingAs($user->fresh())
-            ->get(route('accounts.apps.show', [$team, $app]))
+            ->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifiers.0.delete_url', route('accounts.apps.identifiers.destroy', [$team, $app, $identifier]))
-                ->where('identifiers.0.services.0.delete_url', route('accounts.credentials.destroy', [$team, $credential]))
-                ->where('identifiers.0.services.0.attached_elsewhere', false));
+                ->where('identifier.delete_url', route('accounts.apps.identifiers.destroy', [$team, $app, $identifier]))
+                ->where('identifier.services.0.delete_url', route('accounts.credentials.destroy', [$team, $credential]))
+                ->where('identifier.services.0.attached_elsewhere', false));
     }
 
     public function test_show_page_flags_a_credential_shared_with_another_app_as_attached_elsewhere(): void
@@ -72,9 +72,9 @@ class AppShowDeleteUrlsTest extends TestCase
         $otherIdentifier->credentials()->attach($credential);
 
         $this->actingAs($user->fresh())
-            ->get(route('accounts.apps.show', [$team, $app]))
+            ->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifiers.0.services.0.attached_elsewhere', true));
+                ->where('identifier.services.0.attached_elsewhere', true));
     }
 }

@@ -4,6 +4,7 @@ use App\Http\Controllers\AppAssetController;
 use App\Http\Controllers\AppBuildPageController;
 use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\AppIdentifierPageController;
+use App\Http\Controllers\AppOverviewController;
 use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
@@ -81,7 +82,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/api-keys', [TeamApiKeyController::class, 'store'])->name('api-keys.store');
         Route::delete('/api-keys/{apiKey}', [TeamApiKeyController::class, 'destroy'])->name('api-keys.destroy');
         Route::post('/apps', [MobileAppController::class, 'store'])->name('apps.store');
-        Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->name('apps.show');
+        Route::get('/apps/{mobileApp:slug}', AppOverviewController::class)->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->name('apps.destroy');
         Route::post('/apps/{mobileApp:slug}/builds', [ManualBuildController::class, 'store'])

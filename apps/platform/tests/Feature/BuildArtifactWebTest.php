@@ -74,7 +74,7 @@ class BuildArtifactWebTest extends TestCase
         $artifact->addMedia(UploadedFile::fake()->create('release.apk', 7))->toMediaCollection('file');
 
         $this->actingAs($user)
-            ->get("/accounts/{$team->slug}/apps/{$app->slug}")
+            ->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('builds.0.can_manage_artifacts', true)
                 ->where('builds.0.artifacts.0.id', $artifact->id)

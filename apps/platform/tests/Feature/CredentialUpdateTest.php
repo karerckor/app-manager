@@ -96,16 +96,16 @@ class CredentialUpdateTest extends TestCase
         ]);
         $profile->credentials()->attach($credential);
 
-        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+        $this->actingAs($user)->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifiers.0.build_targets.0.credentials.0.app_identifier_id', $identifier->id)
-                ->where('identifiers.0.build_targets.0.credentials.0.profile.value', ProfileType::Production->value)
-                ->where('identifiers.0.build_targets.0.credentials.0.payload.store_password', '')
-                ->where('identifiers.0.build_targets.0.credentials.0.payload.key_alias', 'release')
-                ->where('identifiers.0.build_targets.0.credentials.0.payload.key_password', '')
-                ->where('identifiers.0.build_targets.0.credentials.0.configured_fields', ['store_password', 'key_alias', 'key_password'])
-                ->where('identifiers.0.build_targets.0.credentials.0.update_url', route('accounts.credentials.update', [$team, $credential])));
+                ->where('identifier.build_targets.0.credentials.0.app_identifier_id', $identifier->id)
+                ->where('identifier.build_targets.0.credentials.0.profile.value', ProfileType::Production->value)
+                ->where('identifier.build_targets.0.credentials.0.payload.store_password', '')
+                ->where('identifier.build_targets.0.credentials.0.payload.key_alias', 'release')
+                ->where('identifier.build_targets.0.credentials.0.payload.key_password', '')
+                ->where('identifier.build_targets.0.credentials.0.configured_fields', ['store_password', 'key_alias', 'key_password'])
+                ->where('identifier.build_targets.0.credentials.0.update_url', route('accounts.credentials.update', [$team, $credential])));
     }
 
     public function test_credential_cannot_be_updated_through_an_app_it_is_not_attached_to(): void

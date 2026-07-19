@@ -55,7 +55,7 @@ class ManualBuildController extends Controller
         );
 
         return redirect()
-            ->route('accounts.apps.show', [$team, $mobileApp])
+            ->route('accounts.apps.builds.index', [$team, $mobileApp])
             ->with('status', 'Manual build created.')
             ->with('build_id', $build->id);
     }

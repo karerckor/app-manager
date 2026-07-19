@@ -40,7 +40,7 @@ class PipelineBuildController extends Controller
         );
 
         return redirect()
-            ->route('accounts.apps.show', [$team, $pipeline->mobileApp])
+            ->route('accounts.apps.builds.index', [$team, $pipeline->mobileApp])
             ->with('status', 'Build queued.')
             ->with('build_id', $build->id);
     }

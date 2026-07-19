@@ -62,7 +62,10 @@ class TagSerializationTest extends TestCase
             ->get("/accounts/{$team->slug}/apps/{$app->slug}")
             ->assertInertia(fn (Assert $page) => $page
                 ->where('app.tags.0.0', 'flagship')
-                ->has('app.urls.tags')
+                ->has('app.urls.tags'));
+
+        $this->get(route('accounts.apps.builds.index', [$team, $app]))
+            ->assertInertia(fn (Assert $page) => $page
                 ->where('builds.0.tags.0.0', 'nightly')
                 ->has('builds.0.tags_url'));
     }

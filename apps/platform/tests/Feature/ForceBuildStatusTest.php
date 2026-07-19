@@ -44,7 +44,7 @@ class ForceBuildStatusTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame(BuildStatus::CancelRequested, $build->refresh()->status);
-        $this->get(route('accounts.apps.show', [$team, $app]))
+        $this->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('builds.0.can_force_status', true)
