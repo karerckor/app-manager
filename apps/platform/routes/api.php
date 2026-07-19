@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
 use App\Http\Controllers\Api\V1\PipelineBuildController;
+use App\Http\Controllers\Api\V1\WebhookDeliveryController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
@@ -87,4 +88,8 @@ Route::prefix('v1/{team:slug}')
         Route::post('/webhooks/{webhookEndpoint}/rotate-secret', [WebhookEndpointController::class, 'rotateSecret'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.rotate-secret');
         Route::post('/webhooks/{webhookEndpoint}/test', [WebhookEndpointController::class, 'test'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.test');
         Route::delete('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'destroy'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.destroy');
+
+        Route::get('/webhooks/{webhookEndpoint}/deliveries', [WebhookDeliveryController::class, 'index'])->middleware(['abilities:deliveries:read', 'team.permission:manage_integrations'])->name('webhooks.deliveries.index');
+        Route::get('/webhooks/{webhookEndpoint}/deliveries/{delivery}', [WebhookDeliveryController::class, 'show'])->middleware(['abilities:deliveries:read', 'team.permission:manage_integrations'])->name('webhooks.deliveries.show');
+        Route::post('/webhooks/{webhookEndpoint}/deliveries/{delivery}/redeliver', [WebhookDeliveryController::class, 'redeliver'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.deliveries.redeliver');
     });
