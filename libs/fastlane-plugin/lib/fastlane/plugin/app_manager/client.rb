@@ -92,6 +92,28 @@ module Fastlane
         data
       end
 
+      def upload_artifact(build_id:, file_path:, name:, metadata: {})
+        raise Error, "file_path #{file_path} does not exist" unless File.file?(file_path)
+
+        body, content_type = multipart_body(
+          fields: { "name" => name, "metadata" => JSON.generate(metadata || {}) },
+          file_field: "file",
+          file_path: file_path
+        )
+        response = request(
+          app_endpoint("builds", build_id, "artifacts"),
+          method: :post,
+          body: body,
+          content_type: content_type
+        )
+        parsed = JSON.parse(response.body)
+        raise Error, "App Manager returned an invalid artifact response" unless parsed.is_a?(Hash) && parsed["data"].is_a?(Hash)
+
+        parsed["data"]
+      rescue JSON::ParserError, TypeError
+        raise Error, "App Manager returned invalid JSON for artifact upload"
+      end
+
       def download_asset(asset:, output_path:, overwrite: true)
         path = app_endpoint("assets", asset)
         download(path, output_path, overwrite: overwrite, mode: ASSET_FILE_MODE)
@@ -204,7 +226,7 @@ module Fastlane
         destination
       end
 
-      def request(path, method: :get, body: nil)
+      def request(path, method: :get, body: nil, content_type: nil)
         uri = URI.parse(path)
         request_class = {
           get: Net::HTTP::Get,
@@ -216,8 +238,13 @@ module Fastlane
         request["Accept"] = "application/json"
         request["User-Agent"] = "fastlane-plugin-app_manager/#{Fastlane::AppManager::VERSION}"
         if body
-          request["Content-Type"] = "application/json"
-          request.body = JSON.generate(body)
+          if body.is_a?(String)
+            request["Content-Type"] = content_type || "application/octet-stream"
+            request.body = body
+          else
+            request["Content-Type"] = "application/json"
+            request.body = JSON.generate(body)
+          end
         end
 
         http = Net::HTTP.new(uri.host, uri.port)
@@ -245,6 +272,24 @@ module Fastlane
         "App Manager API request failed (HTTP #{response.code}): #{message}"
       rescue JSON::ParserError
         "App Manager API request failed (HTTP #{response.code}): #{response.message}"
+      end
+
+      def multipart_body(fields:, file_field:, file_path:)
+        boundary = "----AppManager#{Fastlane::AppManager::VERSION.gsub('.', '')}#{file_path.hash.abs}"
+        parts = []
+        fields.each do |key, value|
+          parts << "--#{boundary}\r\n"
+          parts << "Content-Disposition: form-data; name=\"#{key}\"\r\n\r\n"
+          parts << "#{value}\r\n"
+        end
+        filename = File.basename(file_path)
+        parts << "--#{boundary}\r\n"
+        parts << "Content-Disposition: form-data; name=\"#{file_field}\"; filename=\"#{filename}\"\r\n"
+        parts << "Content-Type: application/octet-stream\r\n\r\n"
+        parts << File.binread(file_path)
+        parts << "\r\n--#{boundary}--\r\n"
+
+        [parts.join, "multipart/form-data; boundary=#{boundary}"]
       end
 
       def endpoint(*segments)
