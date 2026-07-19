@@ -82,4 +82,44 @@ class TeamApiKeyApiTest extends TestCase
             ->getJson("/api/v1/{$teamA->slug}/api-keys/{$teamBKey->id}")
             ->assertNotFound();
     }
+
+    public function test_owner_creates_and_revokes_key_but_cannot_exceed_calling_token(): void
+    {
+        $owner = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $owner->id]);
+        $team->addUser($owner, TeamRole::Owner);
+        $owner->update(['current_team_id' => $team->id]);
+        // Calling token holds api-keys:write + apps:read only.
+        $caller = $owner->createTeamApiKey($team, 'caller', [
+            ApiKeyScope::ApiKeysWrite->value, ApiKeyScope::AppsRead->value,
+        ])->plainTextToken;
+
+        // Requesting apps:write exceeds the calling token → 422.
+        $this->withToken($caller)->postJson("/api/v1/{$team->slug}/api-keys", [
+            'name' => 'too-wide', 'scopes' => [ApiKeyScope::AppsWrite->value],
+        ])->assertUnprocessable();
+
+        // Within the caller's scopes → 201 with the token shown once.
+        $created = $this->withToken($caller)->postJson("/api/v1/{$team->slug}/api-keys", [
+            'name' => 'reader', 'scopes' => [ApiKeyScope::AppsRead->value],
+        ])->assertCreated();
+        $this->assertNotEmpty($created->json('data.token'));
+        $id = $created->json('data.id');
+
+        $this->withToken($caller)->deleteJson("/api/v1/{$team->slug}/api-keys/{$id}")->assertNoContent();
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $id]);
+    }
+
+    public function test_admin_cannot_create_key_owner_only(): void
+    {
+        $admin = User::factory()->create();
+        $team = Team::factory()->create();
+        $team->addUser($admin, TeamRole::Admin);
+
+        $this->withToken($admin->createTeamApiKey($team, 'k', [ApiKeyScope::ApiKeysWrite->value])->plainTextToken)
+            ->postJson("/api/v1/{$team->slug}/api-keys", [
+                'name' => 'x', 'scopes' => [ApiKeyScope::AppsRead->value],
+            ])
+            ->assertForbidden();
+    }
 }

@@ -76,6 +76,8 @@ Route::prefix('v1/{team:slug}')
 
         Route::get('/api-keys', [TeamApiKeyController::class, 'index'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.index');
         Route::get('/api-keys/{apiKey}', [TeamApiKeyController::class, 'show'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.show');
+        Route::post('/api-keys', [TeamApiKeyController::class, 'store'])->middleware(['abilities:api-keys:write'])->name('api-keys.store');
+        Route::delete('/api-keys/{apiKey}', [TeamApiKeyController::class, 'destroy'])->middleware(['abilities:api-keys:write'])->name('api-keys.destroy');
 
         Route::get('/apps/{mobileApp:slug}/builds', [BuildController::class, 'index'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.index');
         Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.store');
