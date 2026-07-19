@@ -110,6 +110,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/credentials/{credential}/file', [CredentialController::class, 'upload'])->name('credentials.upload');
         Route::get('/credentials/{credential}/file', [CredentialController::class, 'download'])->name('credentials.download');
         Route::post('/credentials/{credential}', [CredentialController::class, 'update'])->name('credentials.update');
+        Route::delete('/credentials/{credential}', [CredentialController::class, 'destroy'])->name('credentials.destroy');
         Route::put('/switch', [TeamController::class, 'switch'])->name('switch');
     });
 

@@ -211,6 +211,26 @@ class CredentialController extends Controller
         return back()->with('status', 'Credential updated.');
     }
 
+    public function destroy(Request $request, Team $team, Credential $credential): RedirectResponse
+    {
+        $this->authorizeTeam($request, $team);
+        abort_unless($credential->team_id === $team->id, 404);
+
+        DB::transaction(function () use ($credential, $team, $request) {
+            $payload = WebhookPayload::credential($credential);
+            $credential->delete();
+            $this->webhookEvents->record(
+                $team,
+                WebhookEventType::CredentialDeleted,
+                $credential,
+                $payload,
+                $request->user(),
+            );
+        });
+
+        return back()->with('status', 'Credential removed.');
+    }
+
     public function upload(Request $request, Team $team, Credential $credential): RedirectResponse
     {
         $this->authorizeTeam($request, $team);
