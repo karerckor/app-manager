@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tags;
 
+use App\Enums\WebhookEventType;
 use App\Models\AppIdentifier;
 use App\Models\Artifact;
 use App\Models\BuildRecord;
@@ -9,6 +10,7 @@ use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\WebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -39,6 +41,21 @@ class TagsEndpointTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame([['bug', '#ff0000'], ['urgent', null]], $app->fresh()->tags);
+    }
+
+    public function test_app_tag_update_records_webhook_event(): void
+    {
+        config(['integrations.enabled' => true, 'integrations.webhooks.enabled' => true]);
+        [$user, $team] = $this->member();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->patch("/accounts/{$team->slug}/apps/{$app->slug}/tags", [
+                'tags' => [['bug', null]],
+            ])
+            ->assertRedirect();
+
+        $this->assertTrue(WebhookEvent::query()->where('event_type', WebhookEventType::MobileAppUpdated)->exists());
     }
 
     public function test_updates_credential_tags(): void
@@ -78,6 +95,26 @@ class TagsEndpointTest extends TestCase
                 'tags' => [['signed', '#123abc']],
             ])->assertRedirect();
         $this->assertSame([['signed', '#123abc']], $artifact->fresh()->tags);
+    }
+
+    public function test_build_tag_update_records_no_webhook_event(): void
+    {
+        config(['integrations.enabled' => true, 'integrations.webhooks.enabled' => true]);
+        [$user, $team] = $this->member();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+        ]);
+
+        $this->actingAs($user)
+            ->patch("/accounts/{$team->slug}/apps/{$app->slug}/builds/{$build->id}/tags", [
+                'tags' => [['nightly', null]],
+            ])->assertRedirect();
+
+        $this->assertSame(0, WebhookEvent::query()->count());
     }
 
     public function test_rejects_invalid_hex(): void
