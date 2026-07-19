@@ -53,6 +53,35 @@ class WebhookDeliveryApiTest extends TestCase
         Queue::assertPushed(DeliverWebhook::class);
     }
 
+    /**
+     * Protects the partial unique index added in
+     * 2026_07_19_000000_allow_webhook_redeliveries.php: a second ORIGINAL
+     * delivery (redelivery_of_id IS NULL) for the same
+     * (webhook_event_id, webhook_endpoint_id) pair must still violate the
+     * publisher-idempotency constraint.
+     *
+     * The complementary case — that a REDELIVERY (redelivery_of_id set) for
+     * the same pair is allowed — is exercised end-to-end by
+     * test_redeliver_creates_linked_delivery() above, which persists exactly
+     * such a row via the /redeliver endpoint without error.
+     */
+    public function test_second_original_delivery_for_same_event_and_endpoint_is_rejected(): void
+    {
+        [, , $endpoint, $delivery] = $this->ctx();
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        WebhookDelivery::create([
+            'team_id' => $delivery->team_id,
+            'webhook_event_id' => $delivery->webhook_event_id,
+            'webhook_endpoint_id' => $endpoint->id,
+            'redelivery_of_id' => null,
+            'status' => WebhookDeliveryStatus::Pending,
+            'attempt_count' => 0,
+            'payload_snapshot' => $delivery->payload_snapshot,
+        ]);
+    }
+
     /** @return array{User, Team, WebhookEndpoint, WebhookDelivery} */
     private function ctx(): array
     {
