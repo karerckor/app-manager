@@ -273,4 +273,37 @@ RSpec.describe Fastlane::AppManager::Client do
       expect(client.append_build_log(build_id: "build-1", content: "hello\n")["bytes"]).to eq(6)
     end
   end
+
+  describe "#upload_artifact" do
+    it "posts a multipart request to the build artifacts endpoint" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "release.apk")
+        File.binwrite(path, "APKBINARY")
+        response = Struct.new(:body).new(JSON.generate(
+          "data" => { "id" => "artifact-1", "name" => "release.apk" }
+        ))
+
+        expect(client).to receive(:request).with(
+          "https://manager.example/api/v1/mobile-team/apps/customer-app/builds/build-1/artifacts",
+          method: :post,
+          body: an_instance_of(String),
+          content_type: a_string_matching(%r{\Amultipart/form-data; boundary=})
+        ) do |_path, method:, body:, content_type:|
+          expect(body).to include("release.apk")
+          expect(body).to include("APKBINARY")
+          expect(body).to include("git_sha")
+          response
+        end
+
+        artifact = client.upload_artifact(
+          build_id: "build-1",
+          file_path: path,
+          name: "release.apk",
+          metadata: { "git_sha" => "abc" }
+        )
+
+        expect(artifact).to include("id" => "artifact-1", "name" => "release.apk")
+      end
+    end
+  end
 end

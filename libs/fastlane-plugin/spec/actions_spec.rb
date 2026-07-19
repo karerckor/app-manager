@@ -1,4 +1,5 @@
 require "spec_helper"
+require "tmpdir"
 
 RSpec.describe "App Manager actions" do
   before do
@@ -226,5 +227,69 @@ RSpec.describe "App Manager actions" do
     expect(configure_keys).to include(:app)
     expect(credential_keys).not_to include(:app)
     expect(asset_keys).not_to include(:app)
+  end
+
+  it "app_manager_add_artifact uploads an artifact to the resolved build" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "release.apk")
+      File.binwrite(path, "APK")
+      allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with("build-1").and_return("build-1")
+      allow(Fastlane::Helper::AppManagerHelper).to receive(:add_artifact).and_return(
+        "id" => "artifact-1",
+        "name" => "release.apk"
+      )
+
+      result = Fastlane::Actions::AppManagerAddArtifactAction.run(
+        build_id: "build-1",
+        file: path,
+        name: "release.apk",
+        metadata: { "git_sha" => "abc" }
+      )
+
+      expect(result).to eq("id" => "artifact-1", "name" => "release.apk")
+      expect(Fastlane::Helper::AppManagerHelper).to have_received(:add_artifact).with(
+        build_id: "build-1",
+        file_path: path,
+        name: "release.apk",
+        metadata: { "git_sha" => "abc" }
+      )
+    end
+  end
+
+  it "app_manager_add_artifact defaults the artifact name to the file basename and resolves build_id from context" do
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "app-release.aab")
+      File.binwrite(path, "AAB")
+      allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with(nil).and_return("build-2")
+      allow(Fastlane::Helper::AppManagerHelper).to receive(:add_artifact).and_return(
+        "id" => "artifact-2",
+        "name" => "app-release.aab"
+      )
+
+      Fastlane::Actions::AppManagerAddArtifactAction.run(
+        build_id: nil,
+        file: path,
+        name: nil,
+        metadata: nil
+      )
+
+      expect(Fastlane::Helper::AppManagerHelper).to have_received(:add_artifact).with(
+        build_id: "build-2",
+        file_path: path,
+        name: "app-release.aab",
+        metadata: {}
+      )
+    end
+  end
+
+  it "app_manager_add_artifact raises when the artifact file does not exist" do
+    expect do
+      Fastlane::Actions::AppManagerAddArtifactAction.run(
+        build_id: "build-1",
+        file: "/nonexistent/path/release.apk",
+        name: nil,
+        metadata: nil
+      )
+    end.to raise_error(FastlaneCore::Interface::FastlaneError, /does not exist/)
   end
 end

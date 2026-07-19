@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AppAssetController;
 use App\Http\Controllers\Api\V1\AppIdentifierController;
+use App\Http\Controllers\Api\V1\ArtifactController;
 use App\Http\Controllers\Api\V1\BuildController;
 use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CiCdPipelineController;
@@ -86,6 +87,12 @@ Route::prefix('v1/{team:slug}')
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [BuildController::class, 'cancel'])->middleware(['abilities:pipelines:run', 'team.permission:run_pipelines'])->name('apps.builds.cancel');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.show');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware(['abilities:logs:write', 'team.permission:manage_applications'])->name('apps.builds.logs.store');
+
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [ArtifactController::class, 'index'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.index');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [ArtifactController::class, 'show'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.show');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}/file', [ArtifactController::class, 'download'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.file.show');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [ArtifactController::class, 'store'])->middleware(['abilities:artifacts:write', 'team.permission:manage_applications'])->name('apps.builds.artifacts.store');
+        Route::delete('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [ArtifactController::class, 'destroy'])->middleware(['abilities:artifacts:write', 'team.permission:manage_applications'])->name('apps.builds.artifacts.destroy');
 
         Route::get('/webhooks', [WebhookEndpointController::class, 'index'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.index');
         Route::get('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'show'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.show');

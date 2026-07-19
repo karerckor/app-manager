@@ -58,6 +58,7 @@ APP_MANAGER_APP=customer-app
 | `app_manager_build_start` | Mark an API-managed build as `running` | iOS, Android |
 | `app_manager_build_log` | Append plain-text build output | iOS, Android |
 | `app_manager_build_finish` | Finish as `completed`, `failed`, or `cancelled` | iOS, Android |
+| `app_manager_add_artifact` | Upload and attach a build artifact | iOS, Android |
 
 All download actions require:
 
@@ -250,6 +251,14 @@ app_manager_build_log(message: "Resolving dependencies")
 begin
   # Run the real build here.
   app_manager_build_log(message: "Artifact created")
+
+  app_manager_add_artifact(
+    file: "output/app-release.apk",
+    name: "app-release.apk",
+    metadata: { git_sha: ENV["GIT_SHA"] }
+    # build_id defaults to APP_MANAGER_BUILD_ID from a prior app_manager_create_build
+  )
+
   app_manager_build_finish(status: "completed")
 rescue StandardError => error
   app_manager_build_log(message: "Build failed: #{error.message}")
@@ -257,6 +266,8 @@ rescue StandardError => error
   raise
 end
 ```
+
+`app_manager_add_artifact` uploads the file at `file` and attaches it to the resolved build. `name` defaults to the file's basename, and `metadata` accepts any JSON-compatible hash (for example a commit SHA or build flavor) recorded alongside the artifact.
 
 `app_manager_create_build` stores the returned UUID in `APP_MANAGER_BUILD_ID` lane context. The other actions use that value automatically. For a CI/CD pipeline configured with manual reporting, App Manager creates the build before dispatch and injects its UUID into the selected `workflow_dispatch` string input. Map that input to the runner environment:
 

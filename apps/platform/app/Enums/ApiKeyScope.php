@@ -16,6 +16,8 @@ enum ApiKeyScope: string
     case BuildsWrite = 'builds:write';
     case LogsRead = 'logs:read';
     case LogsWrite = 'logs:write';
+    case ArtifactsRead = 'artifacts:read';
+    case ArtifactsWrite = 'artifacts:write';
     case IntegrationsRead = 'integrations:read';
     case PipelinesRead = 'pipelines:read';
     case PipelinesWrite = 'pipelines:write';
@@ -65,9 +67,11 @@ enum ApiKeyScope: string
     {
         return match ($this) {
             self::AppsRead, self::IdentifiersRead, self::AssetsRead,
-            self::CredentialsRead, self::BuildsRead, self::LogsRead => TeamPermission::View,
+            self::CredentialsRead, self::BuildsRead, self::LogsRead,
+            self::ArtifactsRead => TeamPermission::View,
             self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
-            self::BuildsWrite, self::LogsWrite => TeamPermission::ManageApplications,
+            self::BuildsWrite, self::LogsWrite,
+            self::ArtifactsWrite => TeamPermission::ManageApplications,
             self::CredentialsWrite => TeamPermission::ManageCredentials,
             self::IntegrationsRead,
             self::PipelinesRead, self::PipelinesWrite,
@@ -93,6 +97,7 @@ enum ApiKeyScope: string
             'credentials' => 'Credentials',
             'builds' => 'Builds',
             'logs' => 'Build logs',
+            'artifacts' => 'Build artifacts',
             'integrations' => 'Integrations',
             'pipelines' => 'Pipelines',
             'webhooks' => 'Webhooks',
@@ -121,6 +126,8 @@ enum ApiKeyScope: string
             self::BuildsWrite => 'Create, start, update and cancel builds.',
             self::LogsRead => 'Read build log entries.',
             self::LogsWrite => 'Append build log entries.',
+            self::ArtifactsRead => 'View and download build artifacts.',
+            self::ArtifactsWrite => 'Upload and delete build artifacts.',
             self::IntegrationsRead => 'List integrations and discover repositories, workflows and refs.',
             self::PipelinesRead => 'View pipeline configurations and their inputs.',
             self::PipelinesWrite => 'Create, update and delete pipeline configurations.',

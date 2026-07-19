@@ -45,7 +45,7 @@ class TeamApiKeyTest extends TestCase
                 ->has('apiKeys', 1)
                 ->where('apiKeys.0.name', 'GitHub Actions')
                 ->where('apiKeys.0.created_by.id', $owner->id)
-                ->has('scopeGroups', 11));
+                ->has('scopeGroups', 12));
 
         $this->delete(route('accounts.api-keys.destroy', [$team, $apiKey]))
             ->assertRedirect()

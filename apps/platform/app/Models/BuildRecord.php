@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
@@ -60,6 +61,18 @@ class BuildRecord extends Model
     public function ciCdRun(): HasOne
     {
         return $this->hasOne(CiCdRun::class);
+    }
+
+    public function artifacts(): HasMany
+    {
+        return $this->hasMany(Artifact::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (BuildRecord $build): void {
+            $build->artifacts()->cursor()->each(fn (Artifact $artifact) => $artifact->delete());
+        });
     }
 
     protected function casts(): array

@@ -31,6 +31,8 @@ class ApiKeyScopeTest extends TestCase
             'builds:write',
             'logs:read',
             'logs:write',
+            'artifacts:read',
+            'artifacts:write',
             'integrations:read',
             'pipelines:read',
             'pipelines:write',

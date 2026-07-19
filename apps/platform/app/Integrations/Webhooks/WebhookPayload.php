@@ -3,6 +3,7 @@
 namespace App\Integrations\Webhooks;
 
 use App\Models\AppIdentifier;
+use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\MobileApp;
@@ -68,6 +69,26 @@ class WebhookPayload
             'finished_at' => $build->finished_at?->toISOString(),
             'created_at' => $build->created_at?->toISOString(),
             'updated_at' => $build->updated_at?->toISOString(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public static function artifact(Artifact $artifact): array
+    {
+        $media = $artifact->getFirstMedia('file');
+
+        return [
+            'id' => $artifact->id,
+            'build_record_id' => $artifact->build_record_id,
+            'mobile_app_id' => $artifact->buildRecord?->mobile_app_id,
+            'name' => $artifact->name,
+            'metadata' => $artifact->metadata,
+            'file' => $media ? [
+                'name' => $media->file_name,
+                'size' => $media->size,
+                'mime_type' => $media->mime_type,
+            ] : null,
+            'created_at' => $artifact->created_at?->toISOString(),
         ];
     }
 }
