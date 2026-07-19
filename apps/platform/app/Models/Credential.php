@@ -33,6 +33,16 @@ class Credential extends Model implements HasMedia
         return $this->morphedByMany(Profile::class, 'credentialable')->withTimestamps();
     }
 
+    public function isAttachedOutsideApp(string $mobileAppId): bool
+    {
+        return $this->appIdentifiers()
+            ->where('app_identifiers.mobile_app_id', '!=', $mobileAppId)
+            ->exists()
+            || $this->profiles()
+                ->whereHas('appIdentifier', fn ($query) => $query->where('mobile_app_id', '!=', $mobileAppId))
+                ->exists();
+    }
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('file')->singleFile();

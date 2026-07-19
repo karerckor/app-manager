@@ -284,12 +284,7 @@ class CredentialController extends Controller
 
     private function isAttachedOutsideApp(Credential $credential, MobileApp $mobileApp): bool
     {
-        return $credential->appIdentifiers()
-            ->where('app_identifiers.mobile_app_id', '!=', $mobileApp->id)
-            ->exists()
-            || $credential->profiles()
-                ->whereHas('appIdentifier', fn ($query) => $query->where('mobile_app_id', '!=', $mobileApp->id))
-                ->exists();
+        return $credential->isAttachedOutsideApp($mobileApp->id);
     }
 
     private function detachFromApp(Credential $credential, MobileApp $mobileApp): void

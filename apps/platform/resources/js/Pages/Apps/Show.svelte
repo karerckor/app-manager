@@ -388,7 +388,7 @@
                     {#if credential.file}<span class="hidden text-[10px] text-slate-400 sm:inline">{credential.file.name} · {formatBytes(credential.file.size)}</span>{:else}<span class="text-[10px] text-slate-400">No file</span>{/if}
                     <button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>
                     {#if confirmingCredentialDelete === credential.id}
-                        <span class="text-[10px] font-semibold text-rose-700">Delete?</span>
+                        <span class="text-[10px] font-semibold text-rose-700">{credential.attached_elsewhere ? 'Delete? Shared with other apps — removed everywhere.' : 'Delete?'}</span>
                         <button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => confirmingCredentialDelete = null}>Cancel</button>
                         <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteCredential(credential)}>Confirm</button>
                     {:else}

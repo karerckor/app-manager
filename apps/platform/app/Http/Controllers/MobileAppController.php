@@ -302,6 +302,7 @@ class MobileAppController extends Controller
             ]),
             'update_url' => route('accounts.credentials.update', ['team' => $team, 'credential' => $credential]),
             'delete_url' => route('accounts.credentials.destroy', ['team' => $team, 'credential' => $credential]),
+            'attached_elsewhere' => $credential->isAttachedOutsideApp($identifier->mobile_app_id),
             'upload_url' => route('accounts.credentials.upload', ['team' => $team, 'credential' => $credential]),
             'file' => $media ? [
                 'name' => $media->file_name,

@@ -41,6 +41,40 @@ class AppShowDeleteUrlsTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('identifiers.0.delete_url', route('accounts.apps.identifiers.destroy', [$team, $app, $identifier]))
-                ->where('identifiers.0.services.0.delete_url', route('accounts.credentials.destroy', [$team, $credential])));
+                ->where('identifiers.0.services.0.delete_url', route('accounts.credentials.destroy', [$team, $credential]))
+                ->where('identifiers.0.services.0.attached_elsewhere', false));
+    }
+
+    public function test_show_page_flags_a_credential_shared_with_another_app_as_attached_elsewhere(): void
+    {
+        $user = User::factory()->create();
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+        $team->users()->attach($user, ['role' => 'owner']);
+        $user->update(['current_team_id' => $team->id]);
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.app',
+        ]);
+        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $otherIdentifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $otherApp->id,
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.other',
+        ]);
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::GooglePlayServiceAccount,
+            'name' => 'Shared account',
+        ]);
+        $identifier->credentials()->attach($credential);
+        $otherIdentifier->credentials()->attach($credential);
+
+        $this->actingAs($user->fresh())
+            ->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('identifiers.0.services.0.attached_elsewhere', true));
     }
 }
