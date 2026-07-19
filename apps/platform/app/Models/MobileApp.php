@@ -50,6 +50,11 @@ class MobileApp extends Model implements HasMedia
     protected static function booted(): void
     {
         static::deleting(function (MobileApp $mobileApp) {
+            // Build records must be deleted via Eloquent (and thus purged) before the
+            // app identifiers, whose deletion cascades build_records away at the DB
+            // level (app_identifier_id has cascadeOnDelete), which would bypass the
+            // BuildRecord::deleting hook and leave artifact media orphaned.
+            $mobileApp->buildRecords()->cursor()->each(fn (BuildRecord $build) => $build->delete());
             $mobileApp->appIdentifiers->each->delete();
         });
     }

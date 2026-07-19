@@ -4,11 +4,14 @@ namespace Tests\Feature;
 
 use App\Enums\CredentialType;
 use App\Models\AppIdentifier;
+use App\Models\Artifact;
+use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Profile;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -89,5 +92,34 @@ class CascadeDeletionTest extends TestCase
         $team->delete();
 
         $this->assertDatabaseCount('media', 0);
+    }
+
+    public function test_deleting_mobile_app_purges_build_artifact_media_via_cascade(): void
+    {
+        Storage::fake(config('filesystems.default'));
+        Storage::fake('public');
+
+        $team = Team::factory()->create();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+        ]);
+        $artifact = Artifact::factory()->for($build)->create(['team_id' => $team->id]);
+        $artifact->addMedia(UploadedFile::fake()->create('release.apk', 8))->toMediaCollection('file');
+
+        $media = $artifact->getFirstMedia('file');
+        $path = $media->getPath();
+        $this->assertFileExists($path);
+
+        $app->delete();
+
+        $this->assertDatabaseMissing('mobile_apps', ['id' => $app->id]);
+        $this->assertDatabaseMissing('build_records', ['id' => $build->id]);
+        $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
+        $this->assertDatabaseMissing('media', ['model_id' => $artifact->id]);
+        $this->assertFileDoesNotExist($path);
     }
 }
