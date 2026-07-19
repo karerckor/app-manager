@@ -42,6 +42,27 @@ class CiCdPipelineController extends Controller
         return back()->with('status', 'Pipeline updated.');
     }
 
+    public function rename(
+        Request $request,
+        Team $team,
+        Integration $integration,
+        CiCdPipeline $pipeline,
+    ): RedirectResponse {
+        Gate::forUser($request->user())->authorize('update', $pipeline);
+        abort_unless($pipeline->team_id === $team->id && $pipeline->integration_id === $integration->id, 404);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+        ]);
+
+        $pipeline->update([
+            'name' => $data['name'],
+            'updated_by_user_id' => $request->user()->id,
+        ]);
+
+        return back()->with('status', 'Pipeline renamed.');
+    }
+
     public function destroy(
         Request $request,
         Team $team,

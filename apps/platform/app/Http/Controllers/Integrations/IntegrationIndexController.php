@@ -87,6 +87,7 @@ class IntegrationIndexController extends Controller
                         'input_defaults' => $pipeline->input_defaults ?? [],
                         'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $integration, $pipeline]),
                         'update_url' => route('accounts.integrations.pipelines.update', [$team, $integration, $pipeline]),
+                        'rename_url' => route('accounts.integrations.pipelines.rename', [$team, $integration, $pipeline]),
                         'destroy_url' => route('accounts.integrations.pipelines.destroy', [$team, $integration, $pipeline]),
                     ]),
                 ]),

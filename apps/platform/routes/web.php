@@ -58,6 +58,8 @@ Route::middleware('auth')->group(function () {
             ->name('integrations.pipelines.store');
         Route::patch('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'update'])
             ->name('integrations.pipelines.update');
+        Route::patch('/integrations/{integration}/pipelines/{pipeline}/name', [CiCdPipelineController::class, 'rename'])
+            ->name('integrations.pipelines.rename');
         Route::delete('/integrations/{integration}/pipelines/{pipeline}', [CiCdPipelineController::class, 'destroy'])
             ->name('integrations.pipelines.destroy');
         Route::post('/integrations/webhooks', [WebhookEndpointController::class, 'store'])

@@ -20,6 +20,8 @@
 
     let tab = 'ci_cd';
     let showPipeline = false;
+    let showRename = false;
+    let renamingPipeline = null;
     let activeIntegration = null;
     let editingPipeline = null;
     let repositories = [];
@@ -49,6 +51,7 @@
         events: webhookEventTypes.length ? [webhookEventTypes[0]] : [],
         enabled: true,
     });
+    const renameForm = useForm({ name: '' });
 
     $: selectedApp = apps.find((app) => app.id === pipelineForm.mobile_app_id);
     $: selectedWorkflow = workflows.find((workflow) => String(workflow.id) === String(pipelineForm.workflow_id));
@@ -165,6 +168,16 @@
             router.delete(integration.disconnect_url, { preserveScroll: true });
         }
     };
+    const openRename = (pipeline) => {
+        renamingPipeline = pipeline;
+        renameForm.name = pipeline.name;
+        renameForm.clearErrors();
+        showRename = true;
+    };
+    const saveRename = () => renameForm.patch(renamingPipeline.rename_url, {
+        preserveScroll: true,
+        onSuccess: () => showRename = false,
+    });
     const deletePipeline = (pipeline) => {
         if (confirm(`Remove pipeline “${pipeline.name}”?`)) router.delete(pipeline.destroy_url, { preserveScroll: true });
     };
@@ -244,7 +257,7 @@
                         {#if integration.pipelines.length}
                             <div class="divide-y divide-slate-100">
                                 {#each integration.pipelines as pipeline}
-                                    <div class="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.5fr)_auto] md:items-center"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span>{#if !pipeline.enabled}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">Disabled</span>{/if}</div><p class="mt-1 text-xs text-slate-500">{pipeline.repository_full_name} · {pipeline.workflow_name} · {pipeline.default_ref}</p></div><div class="text-xs"><p class="font-medium">{pipeline.app_name}</p><p class="mt-1 text-slate-500">{pipeline.target_name || 'All targets'} · {pipeline.profile_type}</p></div><div class="flex justify-end gap-2"><button class="px-3 py-2 text-xs" disabled={!pipeline.enabled} on:click={() => runPipeline(pipeline)}>Run build</button><button class="secondary px-2 py-2 text-xs" on:click={() => openPipeline(integration, pipeline)}>Edit</button><button class="ghost px-2 py-2 text-xs text-rose-600" on:click={() => deletePipeline(pipeline)}>Remove</button></div></div>
+                                    <div class="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.5fr)_auto] md:items-center"><div><div class="flex items-center gap-2"><p class="text-sm font-semibold">{pipeline.name}</p><span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 uppercase">{pipeline.reporting_mode}</span>{#if !pipeline.enabled}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">Disabled</span>{/if}</div><p class="mt-1 text-xs text-slate-500">{pipeline.repository_full_name} · {pipeline.workflow_name} · {pipeline.default_ref}</p></div><div class="text-xs"><p class="font-medium">{pipeline.app_name}</p><p class="mt-1 text-slate-500">{pipeline.target_name || 'All targets'} · {pipeline.profile_type}</p></div><div class="flex justify-end gap-2"><button class="px-3 py-2 text-xs" disabled={!pipeline.enabled} on:click={() => runPipeline(pipeline)}>Run build</button><button class="secondary px-2 py-2 text-xs" on:click={() => openRename(pipeline)}>Rename</button><button class="secondary px-2 py-2 text-xs" on:click={() => openPipeline(integration, pipeline)}>Edit</button><button class="ghost px-2 py-2 text-xs text-rose-600" on:click={() => deletePipeline(pipeline)}>Remove</button></div></div>
                                 {/each}
                             </div>
                         {:else}<div class="px-5 py-9 text-center text-sm text-slate-500">No pipelines configured yet.</div>{/if}
@@ -278,6 +291,16 @@
         {#if pipelineForm.reporting_mode === 'manual'}<label><span class="label">Build ID workflow input</span><select bind:value={pipelineForm.build_id_input} required><option value="" disabled>Select a string input</option>{#each manualBuildInputs as name}<option value={name}>{name}</option>{/each}</select><span class="mt-1 block text-xs text-slate-500">App Manager injects the build UUID into this workflow_dispatch input. Pass it to your runner as APP_MANAGER_BUILD_ID.</span>{#if pipelineForm.errors.build_id_input}<span class="error">{pipelineForm.errors.build_id_input}</span>{/if}</label>{/if}
         {#if selectedWorkflow && Object.keys(selectedWorkflow.inputs ?? {}).length}<fieldset><legend class="label">Workflow inputs</legend><div class="space-y-3 rounded-xl border border-slate-200 p-4">{#each Object.entries(selectedWorkflow.inputs) as [name, definition]}{#if pipelineForm.reporting_mode !== 'manual' || name !== pipelineForm.build_id_input}<label><span class="mb-1 block text-xs font-semibold">{name}{#if definition.required}<span class="text-rose-500"> *</span>{/if}</span><input value={pipelineForm.input_defaults[name] ?? ''} on:input={(event) => pipelineForm.input_defaults = { ...pipelineForm.input_defaults, [name]: event.currentTarget.value }} placeholder={definition.description ?? ''} /></label>{/if}{/each}</div></fieldset>{/if}
     </div><div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4"><button type="button" class="secondary" on:click={() => showPipeline = false}>Cancel</button><button disabled={pipelineForm.processing || discovering || !workflows.length}>{pipelineForm.processing ? 'Saving…' : 'Save pipeline'}</button></div></form></div>
+{/if}
+
+{#if showRename}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && (showRename = false)}>
+        <form class="modal max-w-md" on:submit|preventDefault={saveRename}>
+            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Rename pipeline</h2><p class="mt-1 text-sm text-slate-500">Change the display name only. Repository, workflow, and other settings stay the same.</p></div><button type="button" class="ghost p-2" on:click={() => showRename = false}>✕</button></div>
+            <div class="p-6"><label><span class="label">Pipeline name</span><input bind:value={renameForm.name} required />{#if renameForm.errors.name}<span class="error">{renameForm.errors.name}</span>{/if}</label></div>
+            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4"><button type="button" class="secondary" on:click={() => showRename = false}>Cancel</button><button disabled={renameForm.processing}>{renameForm.processing ? 'Saving…' : 'Save name'}</button></div>
+        </form>
+    </div>
 {/if}
 
 {#if showWebhook}
