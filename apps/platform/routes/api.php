@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
 use App\Http\Controllers\Api\V1\PipelineBuildController;
+use App\Http\Controllers\Api\V1\TeamApiKeyController;
 use App\Http\Controllers\Api\V1\WebhookDeliveryController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
@@ -72,6 +73,9 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.file.show');
         Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.store');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.destroy');
+
+        Route::get('/api-keys', [TeamApiKeyController::class, 'index'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.index');
+        Route::get('/api-keys/{apiKey}', [TeamApiKeyController::class, 'show'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.show');
 
         Route::get('/apps/{mobileApp:slug}/builds', [BuildController::class, 'index'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.index');
         Route::post('/apps/{mobileApp:slug}/builds', [BuildController::class, 'store'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.store');
