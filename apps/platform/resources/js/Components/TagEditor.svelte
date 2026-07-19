@@ -39,6 +39,7 @@
         }
         const next = [...working, [value, useColor ? color : null]];
         text = '';
+        useColor = false;
         working = next;
         submit(next);
     }
@@ -76,8 +77,17 @@
                 bind:value={text}
                 on:keydown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
             />
-            <input type="checkbox" bind:checked={useColor} aria-label="Use color" />
-            <input type="color" bind:value={color} disabled={!useColor} class="h-5 w-5 border-0 bg-transparent p-0" />
+            <label class="inline-flex cursor-pointer items-center" title={useColor ? 'Tag color — click to change' : 'Add a color (optional)'}>
+                <span
+                    class="inline-block h-5 w-5 rounded border border-slate-300"
+                    style="background-color: {useColor ? color : '#ffffff'};"
+                    class:bg-white={!useColor}
+                ></span>
+                <input type="color" class="sr-only" bind:value={color} on:input={() => (useColor = true)} aria-label="Tag color" />
+            </label>
+            {#if useColor}
+                <button type="button" class="text-[10px] text-slate-400 hover:text-slate-600" title="Remove color" on:click={() => (useColor = false)}>clear</button>
+            {/if}
             <button type="button" class="ghost px-2 py-0.5 text-[10px]" disabled={saving} on:click={addTag}>Add</button>
         </span>
     {/if}
