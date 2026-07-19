@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
+use App\Models\Concerns\HasTags;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,10 +30,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'started_at',
     'cancel_requested_at',
     'finished_at',
+    'tags',
 ])]
 class BuildRecord extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, HasTags;
 
     protected $attributes = [
         'reporting_mode' => 'manual',
