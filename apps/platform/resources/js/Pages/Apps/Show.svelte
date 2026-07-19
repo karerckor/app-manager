@@ -2,6 +2,7 @@
     import { Link, router, useForm } from '@inertiajs/svelte';
     import { onMount } from 'svelte';
     import AppShell from '../../Components/AppShell.svelte';
+    import TagEditor from '../../Components/TagEditor.svelte';
 
     export let auth;
     export let flash = {};
@@ -367,6 +368,7 @@
                     <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
                     Edit
                 </button>
+                <TagEditor tags={app.tags} url={app.urls.tags} />
                 <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
                     <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
                     {identifiers.length ? 'Add credential' : 'Add identifier'}
@@ -453,7 +455,7 @@
                                 <td class="px-4 py-4"><p class="max-w-48 truncate text-xs font-medium">{credential.identifier}</p><p class="mt-0.5 text-[10px] text-slate-400 uppercase">{credential.platform}</p></td>
                                 <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">{formatDate(credential.expires_at)}</span></td>
                                 <td class="px-4 py-4">{#if credential.file}<div><p class="max-w-40 truncate text-xs font-medium">{credential.file.name}</p><p class="mt-0.5 text-[10px] text-slate-400">{formatBytes(credential.file.size)}</p></div>{:else}<span class="text-xs text-slate-400">No file</span>{/if}</td>
-                                <td class="px-5 py-4"><div class="flex justify-end gap-2"><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>{#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}<label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label><input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} /></div></td>
+                                <td class="px-5 py-4"><div class="flex justify-end gap-2"><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>{#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}<label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label><input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} /></div><div class="mt-2 flex justify-end"><TagEditor tags={credential.tags} url={credential.tags_url} /></div></td>
                             </tr>
                         {/each}
                     </tbody></table></div>
@@ -498,6 +500,7 @@
                                                     {#if build.can_cancel && auth?.team?.permissions?.run_pipelines}<button class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => cancelBuild(build)}>Cancel</button>{/if}
                                                     {#if build.can_force_status}<button class="ghost px-2.5 py-1.5 text-[10px] text-amber-700" on:click={() => openForceStatus(build)}>Force status</button>{/if}
                                                 </div>
+                                                <div class="mt-2 flex justify-end"><TagEditor tags={build.tags} url={build.tags_url} /></div>
                                             </td>
                                         </tr>
                                         {#if expandedBuildId === build.id}
@@ -521,9 +524,12 @@
                                                                             <a href={artifact.download_url} class="text-xs font-semibold text-indigo-600 hover:underline">{artifact.name}</a>
                                                                             {#if artifact.size != null}<span class="ml-2 text-[10px] text-slate-400">{formatSize(artifact.size)}</span>{/if}
                                                                         </div>
-                                                                        {#if build.can_manage_artifacts}
-                                                                            <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteArtifact(artifact)}>Delete</button>
-                                                                        {/if}
+                                                                        <div class="flex items-center gap-2">
+                                                                            <TagEditor tags={artifact.tags} url={artifact.tags_url} />
+                                                                            {#if build.can_manage_artifacts}
+                                                                                <button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600" on:click={() => deleteArtifact(artifact)}>Delete</button>
+                                                                            {/if}
+                                                                        </div>
                                                                     </li>
                                                                 {/each}
                                                             </ul>
