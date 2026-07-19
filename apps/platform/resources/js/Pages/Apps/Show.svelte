@@ -8,7 +8,6 @@
     export let flash = {};
     export let app;
     export let identifiers = [];
-    export let credentials = [];
     export let credentialTypes = [];
     export let buildProfiles = [];
     export let pipelines = [];
@@ -17,6 +16,7 @@
     export let navigationTeam = null;
 
     let tab = 'overview';
+    let expandedIdentifierId = null;
     let showIdentifier = false;
     let showCredential = false;
     let editingIdentifier = null;
@@ -151,7 +151,7 @@
     const saveCredential = () => credentialForm.post(editingCredential?.update_url ?? app.urls.credentials, {
         forceFormData: true,
         preserveScroll: true,
-        onSuccess: () => { closeCredential(); tab = 'credentials'; },
+        onSuccess: () => { expandedIdentifierId = credentialForm.app_identifier_id; closeCredential(); },
     });
     const selectCredentialType = (value, platform = selectedIdentifier?.platform) => {
         const schema = credentialTypes.find((type) => type.value === value);
@@ -166,20 +166,7 @@
             : payloadFor(schema);
         credentialForm.file = null;
     };
-    const changeIdentifier = (event) => {
-        credentialForm.app_identifier_id = event.currentTarget.value;
-        const identifier = identifiers.find((item) => String(item.id) === String(credentialForm.app_identifier_id));
-        const compatibleTypes = credentialTypes.filter((type) => type.platforms.includes(identifier?.platform));
-
-        if (! compatibleTypes.some((type) => type.value === credentialForm.type)) {
-            selectCredentialType(compatibleTypes[0]?.value, identifier?.platform);
-        } else {
-            const profiles = profilesFor(selectedSchema, identifier?.platform);
-            if (!profiles.some((profile) => profile.value === credentialForm.profile_type)) {
-                credentialForm.profile_type = profiles[0]?.value ?? '';
-            }
-        }
-    };
+    const toggleIdentifier = (identifier) => expandedIdentifierId = expandedIdentifierId === identifier.id ? null : identifier.id;
     const changeCredentialType = (event) => selectCredentialType(event.currentTarget.value);
     const uploadAsset = (collection, event) => {
         const file = event.currentTarget.files?.[0];
@@ -192,9 +179,8 @@
         event.currentTarget.value = '';
     };
     const pickCredentialFile = (event) => credentialForm.file = event.currentTarget.files?.[0] ?? null;
-    const openCreateCredential = () => {
+    const openCreateCredential = (identifier) => {
         editingCredential = null;
-        const identifier = identifiers[0] ?? null;
         const schema = credentialTypes.find((type) => type.platforms.includes(identifier?.platform)) ?? credentialTypes[0];
         credentialForm.mobile_app_id = app.id;
         credentialForm.app_identifier_id = identifier?.id ?? '';
@@ -234,9 +220,6 @@
             : field.hint || '';
     const initials = (name) => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
     const schemaFor = (type) => credentialTypes.find((definition) => definition.value === type);
-    const profileSchemaFor = (platform, type) => credentialTypes
-        .flatMap((definition) => definition.profiles ?? [])
-        .find((profile) => profile.platform === platform && profile.value === type);
     const typeLabel = (type) => schemaFor(type)?.label ?? type.replaceAll('_', ' ');
     const formatBytes = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     const formatDate = (value) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) : 'No expiration';
@@ -369,9 +352,9 @@
                     Edit
                 </button>
                 <TagEditor tags={app.tags} url={app.urls.tags} />
-                <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
+                <button class="flex items-center gap-2" on:click={openCreateIdentifier}>
                     <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-                    {identifiers.length ? 'Add credential' : 'Add identifier'}
+                    Add identifier
                 </button>
             </div>
         </header>
@@ -380,9 +363,26 @@
 
         <div class="mb-7 flex gap-1 border-b border-slate-200">
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'overview' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'overview'}>Overview</button>
-            <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'credentials' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'credentials'}>Credentials <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{credentials.length}</span></button>
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'builds' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'builds'}>Builds <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{builds.length}</span></button>
         </div>
+
+        {#snippet credentialRow(credential)}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                <div class="flex min-w-0 items-center gap-3">
+                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span>
+                    <div class="min-w-0"><p class="truncate text-xs font-semibold">{credential.name}</p><p class="mt-0.5 text-[10px] text-slate-500">{typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} encrypted field${credential.fields.length === 1 ? '' : 's'}` : ''}</p></div>
+                </div>
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                    <span class="rounded-full px-2.5 py-1 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">{formatDate(credential.expires_at)}</span>
+                    {#if credential.file}<span class="hidden text-[10px] text-slate-400 sm:inline">{credential.file.name} · {formatBytes(credential.file.size)}</span>{:else}<span class="text-[10px] text-slate-400">No file</span>{/if}
+                    <button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>
+                    {#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}
+                    <label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label>
+                    <input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />
+                    <TagEditor tags={credential.tags} url={credential.tags_url} />
+                </div>
+            </div>
+        {/snippet}
 
         {#if tab === 'overview'}
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]">
@@ -393,19 +393,31 @@
                             {#each identifiers as identifier}
                                 <div class="px-5 py-4">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
-                                        <div class="flex min-w-0 items-center gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl {identifier.platform === 'ios' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700'}">{#if identifier.platform === 'ios'}<svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="currentColor"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7a4.5 4.5 0 0 0-3.5-1.9c-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.1-.8a4.7 4.7 0 0 0-4 2.4c-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10.7 10.7 0 0 0 1.4-2.9 4.2 4.2 0 0 1-3-3.8ZM14.3 5.8A4.2 4.2 0 0 0 15.4 3a4.3 4.3 0 0 0-2.8 1.4 4 4 0 0 0-1.1 2.7 3.6 3.6 0 0 0 2.8-1.3Z"/></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="m7.2 8.4-1.7-3a.5.5 0 0 1 .2-.7.5.5 0 0 1 .7.2l1.8 3A9 9 0 0 1 12 7c1.4 0 2.7.3 3.8.9l1.8-3a.5.5 0 1 1 .9.5l-1.7 3a7 7 0 0 1 3.2 5.3H4a7 7 0 0 1 3.2-5.3ZM8.3 11a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Zm7.4 0a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Z"/></svg>{/if}</span><div class="min-w-0"><div class="flex items-center gap-2"><h3 class="truncate text-sm font-semibold">{identifier.name || (identifier.platform === 'ios' ? 'iOS application' : 'Android application')}</h3><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase">{identifier.platform}</span>{#if identifier.version || identifier.version_code}<span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}</span>{/if}</div><code class="mt-1 block truncate text-xs text-slate-500">{identifier.identifier}</code></div></div>
+                                        <button type="button" class="flex min-w-0 items-center gap-3 bg-transparent p-0 text-left shadow-none hover:bg-transparent" on:click={() => toggleIdentifier(identifier)} aria-expanded={expandedIdentifierId === identifier.id}>
+                                            <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 text-slate-400 transition-transform {expandedIdentifierId === identifier.id ? 'rotate-90' : ''}" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 6 6 6-6 6"/></svg>
+                                            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl {identifier.platform === 'ios' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700'}">{#if identifier.platform === 'ios'}<svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="currentColor"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7a4.5 4.5 0 0 0-3.5-1.9c-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.1-.8a4.7 4.7 0 0 0-4 2.4c-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10.7 10.7 0 0 0 1.4-2.9 4.2 4.2 0 0 1-3-3.8ZM14.3 5.8A4.2 4.2 0 0 0 15.4 3a4.3 4.3 0 0 0-2.8 1.4 4 4 0 0 0-1.1 2.7 3.6 3.6 0 0 0 2.8-1.3Z"/></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="m7.2 8.4-1.7-3a.5.5 0 0 1 .2-.7.5.5 0 0 1 .7.2l1.8 3A9 9 0 0 1 12 7c1.4 0 2.7.3 3.8.9l1.8-3a.5.5 0 1 1 .9.5l-1.7 3a7 7 0 0 1 3.2 5.3H4a7 7 0 0 1 3.2-5.3ZM8.3 11a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Zm7.4 0a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Z"/></svg>{/if}</span>
+                                            <span class="min-w-0"><span class="flex items-center gap-2"><span class="truncate text-sm font-semibold">{identifier.name || (identifier.platform === 'ios' ? 'iOS application' : 'Android application')}</span><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase">{identifier.platform}</span>{#if identifier.version || identifier.version_code}<span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}</span>{/if}</span><code class="mt-1 block truncate text-xs text-slate-500">{identifier.identifier}</code></span>
+                                        </button>
                                         <div class="flex items-center gap-2"><span class="text-xs text-slate-400">{identifier.credentials_count} credential{identifier.credentials_count === 1 ? '' : 's'}</span><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditIdentifier(identifier)}>Edit</button></div>
                                     </div>
-                                    {#if identifier.profiles.length}
-                                        <div class="mt-3 flex flex-wrap gap-2 pl-12">
-                                            {#each identifier.profiles as profile}
-                                                <span class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                                                    {profileSchemaFor(identifier.platform, profile.type)?.label || profile.name || profile.type}
-                                                    {#if profileSchemaFor(identifier.platform, profile.type)?.artifact}
-                                                        <span class="ml-1 text-slate-400">{profileSchemaFor(identifier.platform, profile.type).artifact}</span>
-                                                    {/if}
-                                                </span>
+                                    {#if expandedIdentifierId === identifier.id}
+                                        <div class="mt-4 space-y-4 pl-7">
+                                            {#if identifier.services.length}
+                                                <div>
+                                                    <p class="mb-2 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Services</p>
+                                                    <div class="space-y-2">{#each identifier.services as credential (credential.id)}{@render credentialRow(credential)}{/each}</div>
+                                                </div>
+                                            {/if}
+                                            {#each identifier.build_targets as target (target.type)}
+                                                <div>
+                                                    <p class="mb-2 flex items-center gap-2 text-[10px] font-bold tracking-wider text-slate-400 uppercase">Build target · {target.label}{#if target.artifact}<span class="font-mono text-slate-300 normal-case">{target.artifact}</span>{/if}</p>
+                                                    <div class="space-y-2">{#each target.credentials as credential (credential.id)}{@render credentialRow(credential)}{/each}</div>
+                                                </div>
                                             {/each}
+                                            {#if !identifier.services.length && !identifier.build_targets.length}
+                                                <p class="text-xs text-slate-500">No credentials attached yet. Add a signing key, service account, or platform configuration.</p>
+                                            {/if}
+                                            <button type="button" class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={() => openCreateCredential(identifier)}><span class="text-base leading-none">+</span> Add credential</button>
                                         </div>
                                     {/if}
                                 </div>
@@ -435,34 +447,6 @@
                     </section>
                 </aside>
             </div>
-        {:else if tab === 'credentials'}
-            <section class="card overflow-hidden p-0">
-                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">Signing & service credentials</h2><p class="mt-0.5 text-xs text-slate-500">Signing files are assigned to a build target and expected artifact.</p></div><button class="flex items-center gap-1.5 px-3 py-2 text-xs" disabled={!identifiers.length} on:click={openCreateCredential}><span class="text-base leading-none">+</span> Add credential</button></div>
-                {#if credentials.length}
-                    <div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left"><thead class="bg-slate-50/80 text-[10px] font-bold tracking-wider text-slate-400 uppercase"><tr><th class="px-5 py-3">Credential</th><th class="px-4 py-3">Build target</th><th class="px-4 py-3">Attached to</th><th class="px-4 py-3">Expiration</th><th class="px-4 py-3">File</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">
-                        {#each credentials as credential}
-                            <tr class="hover:bg-slate-50/60">
-                                <td class="px-5 py-4"><div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-xl bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span><div><p class="text-xs font-semibold">{credential.name}</p><p class="mt-0.5 text-[10px] text-slate-500">{typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} encrypted field${credential.fields.length === 1 ? '' : 's'}` : ''}</p></div></div></td>
-                                <td class="px-4 py-4">
-                                    {#if credential.profile}
-                                        <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700"><span>{credential.profile.label}</span><span class="text-indigo-400">{credential.profile.artifact}</span></span>
-                                    {:else if schemaFor(credential.type)?.attachment === 'profile'}
-                                        <span class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-700">Build target not set</span>
-                                    {:else}
-                                        <span class="text-xs text-slate-400">Shared service</span>
-                                    {/if}
-                                </td>
-                                <td class="px-4 py-4"><p class="max-w-48 truncate text-xs font-medium">{credential.identifier}</p><p class="mt-0.5 text-[10px] text-slate-400 uppercase">{credential.platform}</p></td>
-                                <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">{formatDate(credential.expires_at)}</span></td>
-                                <td class="px-4 py-4">{#if credential.file}<div><p class="max-w-40 truncate text-xs font-medium">{credential.file.name}</p><p class="mt-0.5 text-[10px] text-slate-400">{formatBytes(credential.file.size)}</p></div>{:else}<span class="text-xs text-slate-400">No file</span>{/if}</td>
-                                <td class="px-5 py-4"><div class="flex justify-end gap-2"><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>{#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}<label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label><input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} /></div><div class="mt-2 flex justify-end"><TagEditor tags={credential.tags} url={credential.tags_url} /></div></td>
-                            </tr>
-                        {/each}
-                    </tbody></table></div>
-                {:else}
-                    <div class="px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span><h3 class="text-sm font-bold">No credentials yet</h3><p class="mt-2 text-sm text-slate-500">Add a signing key, service account, or platform configuration.</p><button class="mt-5" disabled={!identifiers.length} on:click={openCreateCredential}>Add credential</button></div>
-                {/if}
-            </section>
         {:else}
             <div class="space-y-6">
                 {#if auth?.team?.permissions?.run_pipelines}
@@ -627,13 +611,11 @@
                 <button type="button" class="ghost -mr-2 p-2" on:click={closeCredential}>✕</button>
             </div>
             <div class="space-y-5 p-6">
-                <label>
-                    <span class="label">Attach to identifier</span>
-                    <select value={credentialForm.app_identifier_id} on:change={changeIdentifier}>
-                        {#each identifiers as identifier}<option value={identifier.id}>{identifier.platform.toUpperCase()} · {identifier.identifier}</option>{/each}
-                    </select>
-                    {#if credentialForm.errors.app_identifier_id}<span class="error">{credentialForm.errors.app_identifier_id}</span>{/if}
-                </label>
+                <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <span class="rounded bg-white px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase ring-1 ring-slate-200">{selectedIdentifier?.platform}</span>
+                    <span class="min-w-0 truncate text-xs text-slate-600">Attaching to <code class="font-semibold text-slate-800">{selectedIdentifier?.identifier}</code></span>
+                    {#if credentialForm.errors.app_identifier_id}<span class="error ml-auto">{credentialForm.errors.app_identifier_id}</span>{/if}
+                </div>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <label>
                         <span class="label">Credential type</span>

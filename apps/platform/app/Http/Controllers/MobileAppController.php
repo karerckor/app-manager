@@ -7,7 +7,10 @@ use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
+use App\Models\AppIdentifier;
+use App\Models\Credential;
 use App\Models\MobileApp;
+use App\Models\Profile;
 use App\Models\Team;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
@@ -80,18 +83,6 @@ class MobileAppController extends Controller
                 ->orderBy('name'),
         ]);
 
-        $credentials = $mobileApp->appIdentifiers
-            ->flatMap(function ($identifier) use ($team) {
-                $direct = $identifier->credentials->map(fn ($credential) => [$credential, null]);
-                $profile = $identifier->profiles->flatMap(
-                    fn ($item) => $item->credentials->map(fn ($credential) => [$credential, $item]),
-                );
-
-                return $direct->concat($profile)->map(fn ($pair) => $this->credentialData($team, $pair[0], $identifier, $pair[1]));
-            })
-            ->unique('id')
-            ->values();
-
         return Inertia::render('Apps/Show', [
             'app' => [
                 'id' => $mobileApp->id,
@@ -134,15 +125,27 @@ class MobileAppController extends Controller
                     'mobileApp' => $mobileApp,
                     'appIdentifier' => $identifier,
                 ]),
-                'profiles' => $identifier->profiles->map(fn ($profile) => [
-                    'id' => $profile->id,
-                    'name' => $profile->name,
-                    'type' => $profile->type->value,
-                ]),
                 'credentials_count' => $identifier->credentials->count()
                     + $identifier->profiles->sum(fn ($profile) => $profile->credentials->count()),
+                'services' => $identifier->credentials
+                    ->map(fn ($credential) => $this->credentialData($team, $credential, $identifier, null))
+                    ->values(),
+                'build_targets' => $identifier->profiles
+                    ->map(function ($profile) use ($team, $identifier) {
+                        $definition = BuildProfileSchema::definition($profile->type, $identifier->platform) ?? [];
+
+                        return [
+                            'type' => $profile->type->value,
+                            'label' => $definition['label'] ?? $profile->name,
+                            'artifact' => $definition['artifact'] ?? null,
+                            'description' => $definition['description'] ?? null,
+                            'credentials' => $profile->credentials
+                                ->map(fn ($credential) => $this->credentialData($team, $credential, $identifier, $profile))
+                                ->values(),
+                        ];
+                    })
+                    ->values(),
             ]),
-            'credentials' => $credentials,
             'credentialTypes' => CredentialSchema::definitions(),
             'buildProfiles' => BuildProfileSchema::definitions(),
             'pipelines' => $canRunPipelines ? $mobileApp->ciCdPipelines()
@@ -269,7 +272,7 @@ class MobileAppController extends Controller
             ->with('status', 'Application deleted.');
     }
 
-    private function credentialData(Team $team, $credential, $identifier, $profile): array
+    private function credentialData(Team $team, Credential $credential, AppIdentifier $identifier, ?Profile $profile): array
     {
         $media = $credential->getFirstMedia('file');
         $definition = CredentialSchema::definition($credential->type);
@@ -284,8 +287,6 @@ class MobileAppController extends Controller
             'type' => $credential->type->value,
             'expires_at' => $credential->expires_at,
             'updated_at' => $credential->updated_at,
-            'identifier' => $identifier->identifier,
-            'platform' => $identifier->platform->value,
             'profile' => $profile ? BuildProfileSchema::definition($profile->type, $identifier->platform) : null,
             'fields' => array_keys($payload),
             'configured_fields' => array_keys($payload),

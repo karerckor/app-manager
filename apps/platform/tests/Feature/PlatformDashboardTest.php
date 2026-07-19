@@ -157,12 +157,41 @@ class PlatformDashboardTest extends TestCase
         $this->get(route('accounts.apps.show', [$team, $app]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('credentials.0.profile.value', ProfileType::Production->value)
-                ->where('credentials.0.profile.artifact', '.aab'));
+                ->where('identifiers.0.build_targets.0.type', ProfileType::Production->value)
+                ->where('identifiers.0.build_targets.0.artifact', '.aab')
+                ->where('identifiers.0.build_targets.0.credentials.0.profile.value', ProfileType::Production->value));
 
         $this->get(route('accounts.credentials.download', [$team, $credential]))
             ->assertSuccessful()
             ->assertDownload('release.keystore');
+    }
+
+    public function test_identifier_attached_credentials_are_exposed_as_services(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = $app->appIdentifiers()->create([
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.atlas',
+            'name' => 'Atlas Android',
+        ]);
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::FirebaseConfig,
+            'name' => 'Firebase config',
+        ]);
+        $identifier->credentials()->attach($credential);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('identifiers.0.build_targets', [])
+                ->where('identifiers.0.services.0.type', CredentialType::FirebaseConfig->value)
+                ->where('identifiers.0.services.0.name', 'Firebase config')
+                ->where('identifiers.0.services.0.app_identifier_id', $identifier->id)
+                ->where('identifiers.0.services.0.profile', null)
+                ->has('identifiers.0.services.0.update_url')
+                ->has('identifiers.0.services.0.tags_url'));
     }
 
     public function test_app_icon_is_exposed_on_the_dashboard_and_drilldown_as_an_inline_preview(): void
