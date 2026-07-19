@@ -82,4 +82,9 @@ Route::prefix('v1/{team:slug}')
 
         Route::get('/webhooks', [WebhookEndpointController::class, 'index'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.index');
         Route::get('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'show'])->middleware(['abilities:webhooks:read', 'team.permission:manage_integrations'])->name('webhooks.show');
+        Route::post('/webhooks', [WebhookEndpointController::class, 'store'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.store');
+        Route::patch('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'update'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.update');
+        Route::post('/webhooks/{webhookEndpoint}/rotate-secret', [WebhookEndpointController::class, 'rotateSecret'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.rotate-secret');
+        Route::post('/webhooks/{webhookEndpoint}/test', [WebhookEndpointController::class, 'test'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.test');
+        Route::delete('/webhooks/{webhookEndpoint}', [WebhookEndpointController::class, 'destroy'])->middleware(['abilities:webhooks:write', 'team.permission:manage_integrations'])->name('webhooks.destroy');
     });
