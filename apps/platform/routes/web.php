@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AppAssetController;
 use App\Http\Controllers\AppIdentifierController;
+use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ForceBuildStatusController;
@@ -84,6 +85,12 @@ Route::middleware('auth')->group(function () {
             ->name('apps.builds.cancel');
         Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/status', [ForceBuildStatusController::class, 'update'])
             ->name('apps.builds.status.update');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [BuildArtifactController::class, 'store'])
+            ->name('apps.builds.artifacts.store');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [BuildArtifactController::class, 'download'])
+            ->name('apps.builds.artifacts.download');
+        Route::delete('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [BuildArtifactController::class, 'destroy'])
+            ->name('apps.builds.artifacts.destroy');
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->name('apps.identifiers.store');
         Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->name('apps.identifiers.update');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->name('apps.credentials.store');

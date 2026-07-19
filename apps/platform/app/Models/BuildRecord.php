@@ -68,6 +68,13 @@ class BuildRecord extends Model
         return $this->hasMany(Artifact::class);
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (BuildRecord $build): void {
+            $build->artifacts()->cursor()->each(fn (Artifact $artifact) => $artifact->delete());
+        });
+    }
+
     protected function casts(): array
     {
         return [
