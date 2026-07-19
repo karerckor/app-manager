@@ -61,6 +61,12 @@ module Fastlane
           UI.user_error!(e.message)
         end
 
+        def add_artifact(**options)
+          client.upload_artifact(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
         def client
           Fastlane::AppManager::Client.new
         end
