@@ -36,14 +36,13 @@ class MobileAppController extends Controller
         $data = $request->validate($this->rules($team));
         $data['slug'] = $this->availableSlug($team, ($data['slug'] ?? null) ?: $data['name']);
 
-        $mobileApp = DB::transaction(function () use ($team, $request, $data) {
+        $mobileApp = DB::transaction(function () use ($team, $data) {
             $mobileApp = $team->mobileApps()->create($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppCreated,
                 $mobileApp,
                 WebhookPayload::mobileApp($mobileApp),
-                $request->user(),
             );
 
             return $mobileApp;
@@ -62,14 +61,13 @@ class MobileAppController extends Controller
     public function update(Request $request, Team $team, MobileApp $mobileApp): MobileAppResource
     {
         $data = $request->validate($this->rules($team, $mobileApp));
-        DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+        DB::transaction(function () use ($mobileApp, $team, $data) {
             $mobileApp->update($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppUpdated,
                 $mobileApp,
                 WebhookPayload::mobileApp($mobileApp),
-                $request->user(),
             );
         });
 
@@ -78,7 +76,7 @@ class MobileAppController extends Controller
 
     public function destroy(Request $request, Team $team, MobileApp $mobileApp): Response
     {
-        DB::transaction(function () use ($mobileApp, $team, $request) {
+        DB::transaction(function () use ($mobileApp, $team) {
             $payload = WebhookPayload::mobileApp($mobileApp);
             $mobileApp->delete();
             $this->webhookEvents->record(
@@ -86,7 +84,6 @@ class MobileAppController extends Controller
                 WebhookEventType::MobileAppDeleted,
                 $mobileApp,
                 $payload,
-                $request->user(),
             );
         });
 

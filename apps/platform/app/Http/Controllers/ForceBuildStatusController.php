@@ -8,6 +8,7 @@ use App\Exceptions\InvalidBuildTransition;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Audit\ActorContextManager;
 use App\Support\Builds\BuildLifecycle;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,7 +49,7 @@ class ForceBuildStatusController extends Controller
             $build = $lifecycle->finish(
                 $buildRecord,
                 BuildStatus::from($data['status']),
-                actor: $request->user(),
+                actor: app(ActorContextManager::class)->current(),
             );
         } catch (InvalidBuildTransition $exception) {
             return back()->withErrors(['status' => $exception->getMessage()]);

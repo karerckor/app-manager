@@ -8,7 +8,7 @@ use App\Exceptions\InvalidBuildTransition;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\BuildRecord;
-use App\Models\User;
+use App\Support\Audit\ActorContext;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -35,7 +35,7 @@ class BuildLifecycle
                 WebhookEventType::BuildStarted,
                 $current,
                 WebhookPayload::build($current),
-                $current->requestedBy,
+                $this->ciCdActor($current),
             );
 
             return $current->refresh();
@@ -61,7 +61,7 @@ class BuildLifecycle
                 WebhookEventType::BuildCancelRequested,
                 $current,
                 WebhookPayload::build($current),
-                $current->requestedBy,
+                $this->ciCdActor($current),
             );
 
             return $current->refresh();
@@ -72,7 +72,7 @@ class BuildLifecycle
         BuildRecord $build,
         BuildStatus $status,
         ?DateTimeInterface $finishedAt = null,
-        ?User $actor = null,
+        ?ActorContext $actor = null,
     ): BuildRecord {
         if (! $status->isTerminal()) {
             throw InvalidBuildTransition::from($build->status, $status);
@@ -99,11 +99,20 @@ class BuildLifecycle
                 WebhookEventType::BuildCompleted,
                 $current,
                 WebhookPayload::build($current),
-                $actor ?? $current->requestedBy,
+                $actor ?? $this->ciCdActor($current),
             );
 
             return $current->refresh();
         });
+    }
+
+    private function ciCdActor(BuildRecord $build): ActorContext
+    {
+        $requester = $build->requestedBy;
+
+        return $requester
+            ? ActorContext::forUser($requester, 'ci_cd')
+            : ActorContext::system();
     }
 
     private function lock(BuildRecord $build): BuildRecord

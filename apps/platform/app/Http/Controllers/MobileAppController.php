@@ -41,7 +41,7 @@ class MobileAppController extends Controller
             $slug = $baseSlug.'-'.$suffix++;
         }
 
-        $app = DB::transaction(function () use ($team, $request, $data, $slug) {
+        $app = DB::transaction(function () use ($team, $data, $slug) {
             $app = $team->mobileApps()->create([
                 'name' => $data['name'],
                 'slug' => $slug,
@@ -52,7 +52,6 @@ class MobileAppController extends Controller
                 WebhookEventType::MobileAppCreated,
                 $app,
                 WebhookPayload::mobileApp($app),
-                $request->user(),
             );
 
             return $app;
@@ -70,7 +69,7 @@ class MobileAppController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+        DB::transaction(function () use ($mobileApp, $team, $data) {
             $mobileApp->update([
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
@@ -80,7 +79,6 @@ class MobileAppController extends Controller
                 WebhookEventType::MobileAppUpdated,
                 $mobileApp,
                 WebhookPayload::mobileApp($mobileApp),
-                $request->user(),
             );
         });
 
@@ -93,7 +91,7 @@ class MobileAppController extends Controller
     {
         $this->authorizeTeam($request, $team);
 
-        DB::transaction(function () use ($mobileApp, $team, $request) {
+        DB::transaction(function () use ($mobileApp, $team) {
             $payload = WebhookPayload::mobileApp($mobileApp);
             $mobileApp->delete();
             $this->webhookEvents->record(
@@ -101,7 +99,6 @@ class MobileAppController extends Controller
                 WebhookEventType::MobileAppDeleted,
                 $mobileApp,
                 $payload,
-                $request->user(),
             );
         });
 

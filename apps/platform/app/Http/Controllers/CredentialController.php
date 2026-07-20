@@ -96,7 +96,6 @@ class CredentialController extends Controller
                 WebhookEventType::CredentialCreated,
                 $credential,
                 WebhookPayload::credential($credential),
-                $request->user(),
             );
         });
 
@@ -204,7 +203,6 @@ class CredentialController extends Controller
                 WebhookEventType::CredentialUpdated,
                 $credential,
                 WebhookPayload::credential($credential),
-                $request->user(),
             );
         });
 
@@ -216,7 +214,7 @@ class CredentialController extends Controller
         $this->authorizeTeam($request, $team);
         abort_unless($credential->team_id === $team->id, 404);
 
-        DB::transaction(function () use ($credential, $team, $request) {
+        DB::transaction(function () use ($credential, $team) {
             $payload = WebhookPayload::credential($credential);
             $credential->delete();
             $this->webhookEvents->record(
@@ -224,7 +222,6 @@ class CredentialController extends Controller
                 WebhookEventType::CredentialDeleted,
                 $credential,
                 $payload,
-                $request->user(),
             );
         });
 
@@ -243,14 +240,13 @@ class CredentialController extends Controller
                 new ValidCredentialFile($credential->type, $credential->payload ?? []),
             ],
         ]);
-        DB::transaction(function () use ($credential, $team, $request) {
+        DB::transaction(function () use ($credential, $team) {
             $credential->addMediaFromRequest('file')->toMediaCollection('file');
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::CredentialUpdated,
                 $credential,
                 WebhookPayload::credential($credential),
-                $request->user(),
             );
         });
 

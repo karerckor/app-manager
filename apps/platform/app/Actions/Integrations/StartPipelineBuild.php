@@ -17,6 +17,8 @@ use App\Models\CiCdRun;
 use App\Models\Integration;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\Audit\ActorContext;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -145,7 +147,7 @@ class StartPipelineBuild
                 WebhookEventType::BuildCreated,
                 $build,
                 WebhookPayload::build($build),
-                $user,
+                ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
 
             DB::afterCommit(fn () => DispatchCiCdRun::dispatch($run->id)->onQueue('integrations'));

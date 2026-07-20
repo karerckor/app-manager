@@ -67,7 +67,7 @@ class TagsController extends Controller
     {
         $data = $request->validate(TagRules::rules());
 
-        DB::transaction(function () use ($model, $team, $request, $data) {
+        DB::transaction(function () use ($model, $team, $data) {
             $model->syncTags($data['tags'] ?? [])->save();
 
             [$event, $payload] = match (true) {
@@ -77,7 +77,7 @@ class TagsController extends Controller
             };
 
             if ($event !== null) {
-                $this->webhookEvents->record($team, $event, $model, $payload, $request->user());
+                $this->webhookEvents->record($team, $event, $model, $payload);
             }
         });
     }

@@ -35,14 +35,13 @@ class AppIdentifierController extends Controller
     public function store(Request $request, Team $team, MobileApp $mobileApp): JsonResponse
     {
         $data = $request->validate($this->rules($request, $mobileApp));
-        $appIdentifier = DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+        $appIdentifier = DB::transaction(function () use ($mobileApp, $team, $data) {
             $appIdentifier = $mobileApp->appIdentifiers()->create($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierCreated,
                 $appIdentifier,
                 WebhookPayload::appIdentifier($appIdentifier),
-                $request->user(),
             );
 
             return $appIdentifier;
@@ -65,14 +64,13 @@ class AppIdentifierController extends Controller
         AppIdentifier $appIdentifier,
     ): AppIdentifierResource {
         $data = $request->validate($this->rules($request, $mobileApp, $appIdentifier));
-        DB::transaction(function () use ($appIdentifier, $team, $request, $data) {
+        DB::transaction(function () use ($appIdentifier, $team, $data) {
             $appIdentifier->update($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierUpdated,
                 $appIdentifier,
                 WebhookPayload::appIdentifier($appIdentifier),
-                $request->user(),
             );
         });
 
@@ -85,7 +83,7 @@ class AppIdentifierController extends Controller
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
     ): Response {
-        DB::transaction(function () use ($appIdentifier, $team, $request) {
+        DB::transaction(function () use ($appIdentifier, $team) {
             $payload = WebhookPayload::appIdentifier($appIdentifier);
             $appIdentifier->delete();
             $this->webhookEvents->record(
@@ -93,7 +91,6 @@ class AppIdentifierController extends Controller
                 WebhookEventType::AppIdentifierDeleted,
                 $appIdentifier,
                 $payload,
-                $request->user(),
             );
         });
 

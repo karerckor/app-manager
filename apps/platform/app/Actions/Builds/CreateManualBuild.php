@@ -13,6 +13,8 @@ use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\Audit\ActorContext;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Support\Facades\DB;
 
 class CreateManualBuild
@@ -92,7 +94,7 @@ class CreateManualBuild
                 WebhookEventType::BuildCreated,
                 $build,
                 WebhookPayload::build($build),
-                $user,
+                ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
 
             return $build->refresh();

@@ -63,7 +63,7 @@ class ArtifactController extends Controller
 
         $metadata = $this->normalizeMetadata($request);
 
-        $artifact = DB::transaction(function () use ($buildRecord, $team, $request, $data, $metadata) {
+        $artifact = DB::transaction(function () use ($buildRecord, $team, $data, $metadata) {
             $artifact = $buildRecord->artifacts()->create([
                 'team_id' => $team->id,
                 'name' => $data['name'],
@@ -76,7 +76,6 @@ class ArtifactController extends Controller
                 WebhookEventType::ArtifactCreated,
                 $artifact,
                 WebhookPayload::artifact($artifact),
-                $request->user(),
             );
 
             return $artifact->load('media');
@@ -89,7 +88,7 @@ class ArtifactController extends Controller
     {
         $artifact = $this->artifact($team, $mobileApp, $buildRecord, $artifact);
 
-        DB::transaction(function () use ($artifact, $team, $request) {
+        DB::transaction(function () use ($artifact, $team) {
             $payload = WebhookPayload::artifact($artifact);
             $artifact->delete();
             $this->webhookEvents->record(
@@ -97,7 +96,6 @@ class ArtifactController extends Controller
                 WebhookEventType::ArtifactDeleted,
                 $artifact,
                 $payload,
-                $request->user(),
             );
         });
 

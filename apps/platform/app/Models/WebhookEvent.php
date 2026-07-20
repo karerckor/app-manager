@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'aggregate_type',
     'aggregate_id',
     'actor_user_id',
+    'source',
     'payload',
     'occurred_at',
     'published_at',

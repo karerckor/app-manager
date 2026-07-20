@@ -5,32 +5,39 @@ namespace App\Integrations\Webhooks;
 use App\Enums\WebhookEventType;
 use App\Jobs\Webhooks\PublishWebhookEvent;
 use App\Models\Team;
-use App\Models\User;
 use App\Models\WebhookEvent;
+use App\Support\Audit\ActorContext;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class WebhookEventRecorder
 {
+    public function __construct(private readonly ActorContextManager $actorContext) {}
+
     /** @param array<string, mixed> $payload */
     public function record(
         Team $team,
         WebhookEventType $eventType,
         Model|string $aggregate,
         array $payload,
-        ?User $actor = null,
+        ?ActorContext $actor = null,
     ): ?WebhookEvent {
         if (! config('integrations.enabled') || ! config('integrations.webhooks.enabled')) {
             return null;
         }
 
+        $actor ??= $this->actorContext->current();
+        $payload['actor'] = $actor->toWebhookActor();
+
         $event = WebhookEvent::create([
             'team_id' => $team->id,
             'event_type' => $eventType,
-            'schema_version' => 1,
+            'schema_version' => 2,
             'aggregate_type' => is_string($aggregate) ? $aggregate : class_basename($aggregate),
             'aggregate_id' => is_string($aggregate) ? null : $aggregate->getKey(),
-            'actor_user_id' => $actor?->id,
+            'actor_user_id' => $actor->originator?->id,
+            'source' => $actor->source,
             'payload' => $payload,
             'occurred_at' => now(),
         ]);

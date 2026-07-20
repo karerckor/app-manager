@@ -136,7 +136,6 @@ class WebhookEndpointController extends Controller
             WebhookEventType::WebhookTest,
             $webhookEndpoint,
             ['endpoint_id' => $webhookEndpoint->id],
-            $request->user(),
         ));
 
         return back()->with('status', 'Test webhook queued.');

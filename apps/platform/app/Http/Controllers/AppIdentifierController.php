@@ -24,14 +24,13 @@ class AppIdentifierController extends Controller
 
         $data = $request->validate($this->rules($request, $mobileApp));
 
-        DB::transaction(function () use ($mobileApp, $team, $request, $data) {
+        DB::transaction(function () use ($mobileApp, $team, $data) {
             $identifier = $mobileApp->appIdentifiers()->create($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierCreated,
                 $identifier,
                 WebhookPayload::appIdentifier($identifier),
-                $request->user(),
             );
         });
 
@@ -47,14 +46,13 @@ class AppIdentifierController extends Controller
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
 
         $data = $request->validate($this->rules($request, $mobileApp, $appIdentifier));
-        DB::transaction(function () use ($appIdentifier, $team, $request, $data) {
+        DB::transaction(function () use ($appIdentifier, $team, $data) {
             $appIdentifier->update($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierUpdated,
                 $appIdentifier,
                 WebhookPayload::appIdentifier($appIdentifier),
-                $request->user(),
             );
         });
 
@@ -69,7 +67,7 @@ class AppIdentifierController extends Controller
     ): RedirectResponse {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
 
-        DB::transaction(function () use ($appIdentifier, $team, $request) {
+        DB::transaction(function () use ($appIdentifier, $team) {
             $payload = WebhookPayload::appIdentifier($appIdentifier);
             $appIdentifier->delete();
             $this->webhookEvents->record(
@@ -77,7 +75,6 @@ class AppIdentifierController extends Controller
                 WebhookEventType::AppIdentifierDeleted,
                 $appIdentifier,
                 $payload,
-                $request->user(),
             );
         });
 

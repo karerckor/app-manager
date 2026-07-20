@@ -44,7 +44,6 @@ class BuildArtifactController extends Controller
                 WebhookEventType::ArtifactCreated,
                 $artifact,
                 WebhookPayload::artifact($artifact),
-                $request->user(),
             );
         });
 
@@ -56,7 +55,7 @@ class BuildArtifactController extends Controller
         $this->assertCanManage($request, $team, $mobileApp, $buildRecord);
         $artifact = $buildRecord->artifacts()->whereKey($artifact)->firstOrFail();
 
-        DB::transaction(function () use ($artifact, $team, $request) {
+        DB::transaction(function () use ($artifact, $team) {
             $payload = WebhookPayload::artifact($artifact);
             $artifact->delete();
             $this->webhookEvents->record(
@@ -64,7 +63,6 @@ class BuildArtifactController extends Controller
                 WebhookEventType::ArtifactDeleted,
                 $artifact,
                 $payload,
-                $request->user(),
             );
         });
 

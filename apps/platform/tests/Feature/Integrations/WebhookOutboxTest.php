@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use App\Models\WebhookEvent;
+use App\Support\Audit\ActorContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\DB;
@@ -128,7 +129,7 @@ class WebhookOutboxTest extends TestCase
                 'id' => $mobileApp->id,
                 'name' => $mobileApp->name,
             ],
-            $owner,
+            ActorContext::forUser($owner, 'web'),
         );
 
         Queue::assertPushed(PublishWebhookEvent::class, fn ($job) => $job->eventId === $event->id);

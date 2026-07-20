@@ -33,6 +33,7 @@ use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\Audit\ActorContextManager;
 use App\Support\Builds\BuildLifecycle;
 use App\Support\Builds\BuildLog;
 use Closure;
@@ -86,7 +87,7 @@ class PipelineBuildTest extends TestCase
         );
         $run = $build->ciCdRun;
 
-        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
 
         $this->assertSame(CiCdDispatchStatus::Accepted, $run->refresh()->dispatch_status);
         $this->assertSame('9001', $run->external_run_id);
@@ -161,7 +162,7 @@ class PipelineBuildTest extends TestCase
             (string) Str::uuid(),
         );
         $run = $build->ciCdRun;
-        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
 
         (new ReconcileCiCdRun($run->id))->handle($registry, app(SyncCiCdRunStatus::class));
 
@@ -189,7 +190,7 @@ class PipelineBuildTest extends TestCase
             (string) Str::uuid(),
         );
         $run = $build->ciCdRun;
-        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
         (new ReconcileCiCdRun($run->id))->handle($registry, app(SyncCiCdRunStatus::class));
 
         (new SyncCiCdRunLogs($run->id))->handle($registry, app(BuildLog::class));
@@ -215,8 +216,8 @@ class PipelineBuildTest extends TestCase
         );
         $job = new DispatchCiCdRun($build->ciCdRun->id);
 
-        $job->handle($registry, app(BuildLifecycle::class));
-        $job->handle($registry, app(BuildLifecycle::class));
+        $job->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
+        $job->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
 
         $this->assertSame(CiCdDispatchStatus::Unknown, $build->ciCdRun->refresh()->dispatch_status);
         $this->assertSame(BuildStatus::Pending, $build->refresh()->status);
@@ -254,7 +255,7 @@ class PipelineBuildTest extends TestCase
         $this->assertSame(BuildReportingMode::Manual, $run->reporting_mode);
         $this->assertSame($build->id, $run->request_snapshot['inputs']['app_manager_build_id']);
 
-        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
 
         $this->assertSame(CiCdDispatchStatus::Accepted, $run->refresh()->dispatch_status);
         Queue::assertNotPushed(ReconcileCiCdRun::class);
@@ -338,7 +339,7 @@ class PipelineBuildTest extends TestCase
         );
         $run = $build->ciCdRun;
 
-        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class));
+        (new DispatchCiCdRun($run->id))->handle($registry, app(BuildLifecycle::class), app(ActorContextManager::class));
 
         $this->assertSame(BuildStatus::CancelRequested, $build->refresh()->status);
         $this->assertSame('9001', $run->refresh()->external_run_id);
