@@ -1058,7 +1058,9 @@ public function recordMembershipAudit(User $member, string $event, ?string $role
 }
 ```
 
-> Wire `recordMembershipAudit` into the existing membership add/remove/role-change code paths (search for `->users()->attach`, `->detach`, and role updates in controllers). Add one call per path. Keep those call-site edits in this task's commit.
+> Wire `recordMembershipAudit` into EVERY membership-creation path — search app-wide, not just controllers. Today there are two: `TeamController@store` (record with the ambient request context) and `App\Actions\Fortify\CreateNewUser@create` (self-registration — the new user is both actor and member; wrap the call in `app(ActorContextManager::class)->runAs(ActorContext::forUser($user, 'web'), fn () => $team->recordMembershipAudit($user, 'membership_added', 'owner'))`, inside the existing `DB::transaction`, so the owner-grant is attributed to the user who registered rather than dropped as `system`). Add one call per path.
+
+**Token-exclusion test must actually exercise the exclusion.** Do NOT store a hashed token and grep for the pre-hash plaintext (that passes whether or not `$auditExclude` is present). Instead assert directly on the persisted audit: `$this->assertArrayNotHasKey('token', $audit->new_values)` and assert the actual stored token value is absent from the audit JSON. The assertion must be able to FAIL if `$auditExclude = ['token']` were removed.
 
 - [ ] **Step 4: Run test to verify it passes**
 
