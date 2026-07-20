@@ -30,6 +30,8 @@
         build_cancelled: { icon: Ban, class: 'bg-slate-100 text-slate-500' },
         build_cancel_requested: { icon: Ban, class: 'bg-amber-50 text-amber-600' },
         artifact_uploaded: { icon: Package, class: 'bg-sky-50 text-sky-600' },
+        mobileapp_updated: { icon: Boxes, class: 'bg-indigo-50 text-indigo-600' },
+        appidentifier_created: { icon: IdCard, class: 'bg-indigo-50 text-indigo-600' },
     }[type] ?? { icon: Activity, class: 'bg-slate-100 text-slate-500' });
 </script>
 
@@ -81,6 +83,7 @@
                                 </span>
                                 <div class="min-w-0 flex-1">
                                     <p class="truncate text-sm font-semibold text-slate-900">{entry.title}</p>
+                                    {#if entry.actor}<span class="text-xs text-slate-500">by {entry.actor.name}{#if entry.source} · {entry.source}{/if}</span>{/if}
                                 </div>
                                 <span class="shrink-0 text-xs text-slate-500">{formatDateTime(entry.timestamp)}</span>
                             </Link>
