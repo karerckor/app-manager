@@ -744,7 +744,9 @@ use OwenIt\Auditing\Contracts\Resolver;
 
 class SourceResolver implements Resolver
 {
-    public static function resolve(?Auditable $auditable = null): string
+    // Param widened to `mixed` (legal contravariance): resolvers are also
+    // called in tests with plain non-Auditable models before Task 6.
+    public static function resolve(mixed $auditable = null): string
     {
         return app(ActorContextManager::class)->current()->source;
     }
@@ -763,7 +765,8 @@ use OwenIt\Auditing\Contracts\Resolver;
 
 class ApiKeyIdResolver implements Resolver
 {
-    public static function resolve(?Auditable $auditable = null): ?string
+    // Returns ?int — personal_access_tokens.id is a bigint, so apiKey->id is an int.
+    public static function resolve(mixed $auditable = null): ?int
     {
         return app(ActorContextManager::class)->current()->apiKey?->id;
     }
@@ -782,7 +785,7 @@ use OwenIt\Auditing\Contracts\Resolver;
 
 class TeamIdResolver implements Resolver
 {
-    public static function resolve(?Auditable $auditable = null): ?string
+    public static function resolve(mixed $auditable = null): ?string
     {
         $teamId = $auditable?->getAttribute('team_id');
 
