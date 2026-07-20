@@ -1,6 +1,6 @@
 <script>
     import { Link, router } from '@inertiajs/svelte';
-    import { LayoutGrid, KeyRound, Blocks, ShieldCheck, LogOut } from '@lucide/svelte';
+    import { LayoutGrid, KeyRound, Blocks, ShieldCheck, LogOut, ScrollText } from '@lucide/svelte';
 
     export let auth;
     export let teams = [];
@@ -11,6 +11,7 @@
     $: apiKeysUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/api-keys` : '/dashboard';
     $: canManageApiKeys = currentTeam?.owner_id === auth.user.id;
     $: integrationsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/integrations` : '/dashboard';
+    $: auditUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/audit` : '/dashboard';
     const switchTeam = (event) => router.put(`/accounts/${event.currentTarget.value}/switch`);
     const logout = () => router.post('/logout');
     const initials = (name = '') => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -43,6 +44,10 @@
                     API keys
                 </Link>
             {/if}
+            <Link href={auditUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'audit' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                <ScrollText class="h-4.5 w-4.5" strokeWidth={1.8} />
+                Audit log
+            </Link>
             {#if auth?.team?.permissions?.manage_integrations}
                 <Link href={integrationsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'integrations' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
                     <Blocks class="h-4.5 w-4.5" strokeWidth={1.8} />

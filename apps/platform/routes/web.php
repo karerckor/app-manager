@@ -5,6 +5,7 @@ use App\Http\Controllers\AppBuildPageController;
 use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\AppIdentifierPageController;
 use App\Http\Controllers\AppOverviewController;
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\DashboardController;
@@ -122,6 +123,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/credentials/{credential}/file', [CredentialController::class, 'download'])->name('credentials.download');
         Route::post('/credentials/{credential}', [CredentialController::class, 'update'])->name('credentials.update');
         Route::delete('/credentials/{credential}', [CredentialController::class, 'destroy'])->name('credentials.destroy');
+        Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
         Route::put('/switch', [TeamController::class, 'switch'])->name('switch');
     });
 
