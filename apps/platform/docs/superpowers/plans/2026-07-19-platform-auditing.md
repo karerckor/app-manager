@@ -518,14 +518,24 @@ class SetActorContext
 }
 ```
 
-- [ ] **Step 4: Register in `bootstrap/app.php`**
+- [ ] **Step 4: Register the middleware (ordering matters — see note)**
 
-In the `->withMiddleware(function (Middleware $middleware) {...})` closure, append the middleware to both groups (place after Sanctum/auth so `$request->user()` is resolved):
+`SetActorContext` MUST run after the user is authenticated. The two channels differ:
 
-```php
-$middleware->appendToGroup('web', \App\Http\Middleware\SetActorContext::class);
-$middleware->appendToGroup('api', \App\Http\Middleware\SetActorContext::class);
-```
+- **Web:** the `web` group runs `StartSession` before any appended middleware, and the default `web` guard resolves the user lazily from the session — so appending to the web group is correct. In `bootstrap/app.php`, add it to the existing `web(append: [...])` array:
+  ```php
+  $middleware->web(append: [
+      HandleInertiaRequests::class,
+      \App\Http\Middleware\SetActorContext::class,
+  ]);
+  ```
+- **API:** the default guard is `web` (`config/auth.php`), and `auth:sanctum` is a **route** middleware that runs *after* the global `api` group. Registering `SetActorContext` on the global api group would run it before the sanctum guard is active → `$request->user()` returns null → every API action misattributes to `system`. Instead append it to the api route group in `routes/api.php` (line ~21), after `auth:sanctum`:
+  ```php
+  Route::prefix('v1/{team:slug}')
+      ->middleware(['auth:sanctum', 'team.member', \App\Http\Middleware\SetActorContext::class])
+  ```
+
+Do NOT use `appendToGroup('api', ...)`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -1354,6 +1364,8 @@ git commit -m "feat(webhooks): embed actor block and source, bump schema_version
 **Interfaces:**
 - Consumes: `ActorContextManager`, `ActorContext` (Tasks 1–2).
 - Produces: HTTP call sites drop the trailing `$request->user()` argument (recorder defaults to current context). Build/CI code passes an explicit `ActorContext`. `DispatchCiCdRun` runs its body inside `runAs()` with the initiator context reconstructed from the run's `requested_by_user_id`.
+
+> **API attribution test (do this in this task):** verify that an API request attributes `source = api`. `Sanctum::actingAs()` yields a `TransientToken` which resolves as `web` — it will NOT exercise the api path. Instead create a real key (`$user->createToken('t')`) and send its `plainTextToken` as a Bearer header to an existing `api.v1.*` endpoint that records an event (e.g. `POST /api/v1/{team}/apps`), then assert the recorded `WebhookEvent.source === 'api'`. This is the only place the `SetActorContext` API route-group registration (Task 3) gets integration coverage.
 
 Call sites to update (remove the trailing `$request->user()` / user argument; the recorder now defaults to the middleware-set context):
 `app/Http/Controllers/MobileAppController.php`, `BuildArtifactController.php`, `TagsController.php`, `CredentialController.php`, `AppIdentifierController.php`, `Integrations/WebhookEndpointController.php`, and all `app/Http/Controllers/Api/V1/*Controller.php` recorders.
