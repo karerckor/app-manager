@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 
 #[Fillable([
     'team_id',
@@ -30,9 +32,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'disabled_at',
     'disconnected_at',
 ])]
-class Integration extends Model
+class Integration extends Model implements Auditable
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes, AuditableTrait;
 
     public function team(): BelongsTo
     {

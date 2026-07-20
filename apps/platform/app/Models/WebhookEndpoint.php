@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 
 #[Fillable([
     'team_id',
@@ -20,9 +22,9 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'consecutive_failures',
     'last_delivered_at',
 ])]
-class WebhookEndpoint extends Model
+class WebhookEndpoint extends Model implements Auditable
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes, AuditableTrait;
 
     public function team(): BelongsTo
     {

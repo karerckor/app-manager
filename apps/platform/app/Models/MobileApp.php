@@ -9,13 +9,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 #[Fillable(['team_id', 'slug', 'name', 'description', 'tags'])]
-class MobileApp extends Model implements HasMedia
+class MobileApp extends Model implements HasMedia, Auditable
 {
-    use HasFactory, HasUuids, HasTags, InteractsWithMedia;
+    use HasFactory, HasUuids, HasTags, InteractsWithMedia, AuditableTrait;
 
     public function team(): BelongsTo
     {

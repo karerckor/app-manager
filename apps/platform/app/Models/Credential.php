@@ -10,13 +10,17 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
 #[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at', 'tags'])]
-class Credential extends Model implements HasMedia
+class Credential extends Model implements HasMedia, Auditable
 {
-    use HasFactory, HasUuids, HasTags, InteractsWithMedia;
+    use HasFactory, HasUuids, HasTags, InteractsWithMedia, AuditableTrait;
+
+    protected array $auditExclude = ['payload'];
 
     public function team(): BelongsTo
     {

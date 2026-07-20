@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use OwenIt\Auditing\Auditable as AuditableTrait;
+use OwenIt\Auditing\Contracts\Auditable;
 
 #[Fillable([
     'team_id',
@@ -32,9 +34,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
     'finished_at',
     'tags',
 ])]
-class BuildRecord extends Model
+class BuildRecord extends Model implements Auditable
 {
-    use HasFactory, HasUuids, HasTags;
+    use HasFactory, HasUuids, HasTags, AuditableTrait;
 
     protected $attributes = [
         'reporting_mode' => 'manual',
