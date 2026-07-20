@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Integrations\CiCd\GitHub\GitHubProvider;
 use App\Models\ApiKey;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Sanctum\Sanctum;
 
@@ -20,6 +21,8 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(GitHubProvider::class),
             ]);
         });
+
+        $this->app->singleton(ActorContextManager::class);
     }
 
     /**
