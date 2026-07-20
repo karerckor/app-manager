@@ -72,3 +72,5 @@ Schedule::call(function () {
         ->each(fn (string $id) => DeliverWebhook::dispatch($id)->onQueue('webhooks'));
 })->everyMinute()->name('recover-webhook-deliveries')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.webhooks.enabled'));
+
+Schedule::command('audits:prune')->daily()->name('prune-audits')->withoutOverlapping();
