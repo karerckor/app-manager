@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -97,6 +98,36 @@ class Team extends Model
 
         $this->users()->syncWithoutDetaching([
             $user->id => ['role' => $value],
+        ]);
+    }
+
+    /**
+     * Explicitly record a membership change as an audit row.
+     *
+     * belongsToMany pivot changes (attach/detach/sync on `users()`) are not captured
+     * by the Auditable trait, which only observes the model's own attribute changes.
+     * Call this at every membership add/remove/role-change call site.
+     *
+     * NOTE: there is no add/remove/role-change *management* flow in this app yet
+     * (`addUser()` is only exercised by tests); this helper is forward-looking and is
+     * currently wired only into team creation (`TeamController@store`), which is the
+     * one real membership-creation site today.
+     */
+    public function recordMembershipAudit(User $member, string $event, ?string $role): Audit
+    {
+        $context = app(ActorContextManager::class)->current();
+
+        return Audit::create([
+            'user_type' => $context->originator ? User::class : null,
+            'user_id' => $context->originator?->id,
+            'event' => $event,
+            'auditable_type' => self::class,
+            'auditable_id' => $this->id,
+            'old_values' => [],
+            'new_values' => ['member_id' => $member->id, 'role' => $role],
+            'source' => $context->source,
+            'team_id' => $this->id,
+            'api_key_id' => $context->apiKey?->id,
         ]);
     }
 

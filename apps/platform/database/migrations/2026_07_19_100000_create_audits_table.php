@@ -12,7 +12,9 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->nullableUuidMorphs('user', 'audits_user_index');
             $table->string('event');
-            $table->uuidMorphs('auditable', 'audits_auditable_index');
+            $table->string('auditable_type');
+            $table->string('auditable_id');
+            $table->index(['auditable_type', 'auditable_id'], 'audits_auditable_index');
             $table->json('old_values');
             $table->json('new_values');
             $table->text('url')->nullable();

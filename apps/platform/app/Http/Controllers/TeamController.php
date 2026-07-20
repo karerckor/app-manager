@@ -17,6 +17,8 @@ class TeamController extends Controller
             'owner_id' => $user->id,
         ], ['role' => 'owner']);
 
+        $team->recordMembershipAudit($user, 'membership_added', 'owner');
+
         $user->update(['current_team_id' => $team->id]);
 
         return redirect()->route('accounts.apps.index', ['team' => $team])->with('status', 'Team created.');
