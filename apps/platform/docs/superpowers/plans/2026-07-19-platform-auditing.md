@@ -923,10 +923,12 @@ use OwenIt\Auditing\Contracts\Auditable;
 // use ..., AuditableTrait;  (add trait to existing `use` line)
 ```
 
-For `Credential` add the same, plus:
-```php
-protected array $auditExclude = ['payload'];
-```
+**Redaction — exclude EVERY `encrypted`/`encrypted:*` cast attribute from auditing** (they would otherwise duplicate secret ciphertext into the `audits` table, which has its own retention and broader read access):
+- `Credential` → `protected array $auditExclude = ['payload'];` (`encrypted:array`)
+- `WebhookEndpoint` → `protected array $auditExclude = ['secret'];` (`encrypted`; keep `secret_hint`, which is safe)
+- `BuildRecord` → `protected array $auditExclude = ['parameters'];` (`encrypted:array`)
+
+`Integration.settings` is a plain (non-encrypted) `array` config field holding no secrets today — it stays audited so config changes are tracked. Add a convention note for future integration providers not to store tokens there.
 
 > Do NOT audit models whose only `team_id` is indirect and high-churn; those are excluded per spec.
 

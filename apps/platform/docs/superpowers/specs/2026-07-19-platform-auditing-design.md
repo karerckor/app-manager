@@ -64,7 +64,7 @@ Chosen over (B) deriving everything from auditing — domain events (status tran
 - Install `owen-it/laravel-auditing` v14; publish config + migration.
 - **`audits` table additions** (beyond package defaults): `team_id` (tenant isolation + fast scoped queries), `source`, `api_key_id`. Populated via custom resolvers reading `ActorContext`; `user_id`/`user_type` = originator. Indexes: `(team_id, created_at)`, `(auditable_type, auditable_id)`, `(user_id)`.
 - **`Auditable` trait** on: `MobileApp`, `AppIdentifier`, `Credential`, `BuildRecord`, `WebhookEndpoint`, `Integration`, tag model(s), `ApiKey`, and Team membership.
-- **Redaction:** `Credential` secret/`payload` fields and any token values go in `$auditExclude` — record the fact of change, never the secret value.
+- **Redaction:** every `encrypted`/`encrypted:*` cast attribute goes in `$auditExclude` — record the fact of change, never the secret value. Concretely: `Credential.payload`, `WebhookEndpoint.secret`, `BuildRecord.parameters`, and `ApiKey.token` (Task 7). Non-encrypted config like `Integration.settings` stays audited.
 - **`team_id`** resolved from the `auditable` (or from `ActorContext` for models without a direct `team_id`).
 
 ## Layer 2 — webhook enrichment
