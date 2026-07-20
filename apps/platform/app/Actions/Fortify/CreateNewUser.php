@@ -3,6 +3,8 @@
 namespace App\Actions\Fortify;
 
 use App\Models\User;
+use App\Support\Audit\ActorContext;
+use App\Support\Audit\ActorContextManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -48,6 +50,11 @@ class CreateNewUser implements CreatesNewUsers
             ], ['role' => 'owner']);
 
             $user->update(['current_team_id' => $team->id]);
+
+            app(ActorContextManager::class)->runAs(
+                ActorContext::forUser($user, 'web'),
+                fn () => $team->recordMembershipAudit($user, 'membership_added', 'owner'),
+            );
 
             return $user;
         });

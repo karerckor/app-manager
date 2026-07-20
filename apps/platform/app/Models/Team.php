@@ -110,8 +110,10 @@ class Team extends Model
      *
      * NOTE: there is no add/remove/role-change *management* flow in this app yet
      * (`addUser()` is only exercised by tests); this helper is forward-looking and is
-     * currently wired only into team creation (`TeamController@store`), which is the
-     * one real membership-creation site today.
+     * currently wired into the two real membership-creation sites today:
+     * `TeamController@store` and `CreateNewUser@create` (self-registration). Pivot
+     * changes are not auto-audited, so this explicit call is required at every
+     * membership add/remove/role-change site.
      */
     public function recordMembershipAudit(User $member, string $event, ?string $role): Audit
     {
