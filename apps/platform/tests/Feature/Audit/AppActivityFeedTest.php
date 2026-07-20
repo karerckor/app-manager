@@ -67,4 +67,40 @@ class AppActivityFeedTest extends TestCase
         $this->assertNull($build['actor']);
         $this->assertNull($build['source']);
     }
+
+    public function test_merges_and_orders_build_and_audit_events_by_time_desc(): void
+    {
+        $user = User::factory()->create(['name' => 'Ada']);
+        $team = Team::factory()->create(['owner_id' => $user->id]);
+
+        MobileApp::disableAuditing();
+        try {
+            $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        } finally {
+            MobileApp::enableAuditing();
+        }
+
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id, 'mobile_app_id' => $app->id,
+            'app_identifier_id' => null, 'requested_by_user_id' => null,
+        ]);
+        $build->forceFill(['created_at' => now()->subHour()])->save();
+
+        $audit = Audit::create([
+            'user_type' => User::class, 'user_id' => $user->id, 'event' => 'updated',
+            'auditable_type' => MobileApp::class, 'auditable_id' => $app->id,
+            'old_values' => ['name' => 'Old'], 'new_values' => ['name' => 'New'],
+            'team_id' => $team->id, 'source' => 'web',
+        ]);
+        $audit->forceFill(['created_at' => now()])->save();
+
+        $feed = AppActivityFeed::for($team, $app);
+
+        $auditIndex = collect($feed)->search(fn ($entry) => str_starts_with($entry['type'], 'mobileapp_'));
+        $buildIndex = collect($feed)->search(fn ($entry) => $entry['type'] === 'build_created');
+
+        $this->assertNotFalse($auditIndex, 'Expected an audit-derived entry in the feed.');
+        $this->assertNotFalse($buildIndex, 'Expected a build_created entry in the feed.');
+        $this->assertLessThan($buildIndex, $auditIndex, 'Newer audit entry should be ordered before the older build entry.');
+    }
 }
