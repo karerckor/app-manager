@@ -587,9 +587,14 @@ return new class extends Migration
     {
         Schema::create('audits', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->uuidMorphs('user', 'audits_user_index');
+            $table->nullableUuidMorphs('user', 'audits_user_index');
             $table->string('event');
-            $table->uuidMorphs('auditable', 'audits_auditable_index');
+            // auditable_id is a STRING, not uuid: most auditable models use UUID PKs,
+            // but ApiKey (personal_access_tokens) has a bigint PK. A string column holds
+            // both. (uuid column + bigint id = "invalid input syntax for type uuid" on Postgres.)
+            $table->string('auditable_type');
+            $table->string('auditable_id');
+            $table->index(['auditable_type', 'auditable_id'], 'audits_auditable_index');
             $table->json('old_values');
             $table->json('new_values');
             $table->text('url')->nullable();
@@ -952,6 +957,8 @@ git commit -m "feat(audit): audit domain models and redact credential secrets"
 - Modify: `app/Models/ApiKey.php` (auditable + `$auditExclude = ['token']`)
 - Modify: `app/Models/Team.php` (record membership audits explicitly)
 - Test: `tests/Feature/Audit/SecurityAuditingTest.php`
+
+**Prerequisite migration fix (do first):** `ApiKey` has a **bigint** PK. The `audits.auditable_id` column must be a plain `string` (see the corrected Task 4 migration) — NOT `uuid` — or auditing an `ApiKey` fails on Postgres. If the audits migration still uses `uuidMorphs('auditable')`, change it to the string form and re-run `php artisan migrate:fresh` before implementing this task. (Tests use SQLite and won't catch the uuid/bigint mismatch, so verify the migration source directly.)
 
 **Interfaces:**
 - Consumes: `App\Models\Audit`, `ActorContextManager`.
