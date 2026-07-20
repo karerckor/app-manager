@@ -18,7 +18,7 @@ use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/{team:slug}')
-    ->middleware(['auth:sanctum', 'team.member'])
+    ->middleware(['auth:sanctum', 'team.member', \App\Http\Middleware\SetActorContext::class])
     ->scopeBindings()
     ->name('api.v1.')
     ->group(function () {
