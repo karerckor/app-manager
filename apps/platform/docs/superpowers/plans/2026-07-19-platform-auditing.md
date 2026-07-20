@@ -590,7 +590,8 @@ return new class extends Migration
             // Custom columns populated by App\Support\Audit\Resolvers\*
             $table->foreignUuid('team_id')->nullable()->constrained()->nullOnDelete();
             $table->string('source')->nullable();
-            $table->uuid('api_key_id')->nullable();
+            // personal_access_tokens.id is a bigint auto-increment, NOT a UUID — match it.
+            $table->unsignedBigInteger('api_key_id')->nullable();
 
             $table->timestamps();
 
