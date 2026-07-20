@@ -26,6 +26,8 @@ class WebhookEndpoint extends Model implements Auditable
 {
     use HasFactory, HasUuids, SoftDeletes, AuditableTrait;
 
+    protected array $auditExclude = ['secret'];
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

@@ -38,6 +38,8 @@ class BuildRecord extends Model implements Auditable
 {
     use HasFactory, HasUuids, HasTags, AuditableTrait;
 
+    protected array $auditExclude = ['parameters'];
+
     protected $attributes = [
         'reporting_mode' => 'manual',
     ];
