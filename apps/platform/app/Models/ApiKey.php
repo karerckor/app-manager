@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Database\Factories\ApiKeyFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiKey extends PersonalAccessToken
 {
+    /** @use HasFactory<ApiKeyFactory> */
+    use HasFactory;
+
     protected $table = 'personal_access_tokens';
 
     /**
