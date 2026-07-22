@@ -10,6 +10,7 @@
     $: appsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/apps` : '/dashboard';
     $: apiKeysUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/api-keys` : '/dashboard';
     $: canManageApiKeys = currentTeam?.owner_id === auth.user.id;
+    $: canViewAuditLog = ['owner', 'admin'].includes(auth?.team?.role);
     $: integrationsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/integrations` : '/dashboard';
     $: auditUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/audit` : '/dashboard';
     const switchTeam = (event) => router.put(`/accounts/${event.currentTarget.value}/switch`);
@@ -44,10 +45,12 @@
                     API keys
                 </Link>
             {/if}
-            <Link href={auditUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'audit' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
-                <ScrollText class="h-4.5 w-4.5" strokeWidth={1.8} />
-                Audit log
-            </Link>
+            {#if canViewAuditLog}
+                <Link href={auditUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'audit' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                    <ScrollText class="h-4.5 w-4.5" strokeWidth={1.8} />
+                    Audit log
+                </Link>
+            {/if}
             {#if auth?.team?.permissions?.manage_integrations}
                 <Link href={integrationsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'integrations' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
                     <Blocks class="h-4.5 w-4.5" strokeWidth={1.8} />

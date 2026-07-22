@@ -1,5 +1,5 @@
 <script>
-    import { Link } from '@inertiajs/svelte';
+    import { Link, router } from '@inertiajs/svelte';
     import { ScrollText } from '@lucide/svelte';
     import AppShell from '../../Components/AppShell.svelte';
 
@@ -8,11 +8,23 @@
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let audits = {};
+    export let filters = {};
+    export let filterOptions = { apps: [], users: [], events: [] };
+
+    let selectedApp = filters.app ?? '';
+    let selectedUser = filters.user ?? '';
+    let selectedEvent = filters.event ?? '';
 
     const formatDate = (value) => value
         ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
         : '—';
     const shortId = (value) => typeof value === 'string' && value.length > 8 ? `${value.slice(0, 8)}…` : value;
+    const applyFilters = () => router.get(auditUrl(), {
+        app: selectedApp || undefined,
+        user: selectedUser || undefined,
+        event: selectedEvent || undefined,
+    }, { preserveState: true, preserveScroll: true });
+    const auditUrl = () => `/accounts/${navigationTeam.slug}/audit`;
 </script>
 
 <svelte:head><title>Audit log · App Manager</title></svelte:head>
@@ -30,6 +42,34 @@
         {#if flash?.status}
             <div class="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"><span class="grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-xs text-white">✓</span>{flash.status}</div>
         {/if}
+
+        <form class="card mb-6 grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]" on:submit|preventDefault={applyFilters}>
+            <label>
+                <span class="label">Application</span>
+                <select bind:value={selectedApp}>
+                    <option value="">All applications</option>
+                    {#each filterOptions.apps ?? [] as app}<option value={app.id}>{app.name}</option>{/each}
+                </select>
+            </label>
+            <label>
+                <span class="label">Actor</span>
+                <select bind:value={selectedUser}>
+                    <option value="">All actors</option>
+                    {#each filterOptions.users ?? [] as user}<option value={user.id}>{user.name}</option>{/each}
+                </select>
+            </label>
+            <label>
+                <span class="label">Event</span>
+                <select bind:value={selectedEvent}>
+                    <option value="">All events</option>
+                    {#each filterOptions.events ?? [] as event}<option value={event}>{event}</option>{/each}
+                </select>
+            </label>
+            <div class="flex items-end gap-2">
+                <button type="submit" class="primary">Apply</button>
+                <Link href={auditUrl()} class="secondary">Clear</Link>
+            </div>
+        </form>
 
         <section class="card overflow-hidden p-0">
             <div class="border-b border-slate-100 px-5 py-4">

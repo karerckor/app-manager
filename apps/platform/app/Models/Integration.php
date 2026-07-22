@@ -72,6 +72,9 @@ class Integration extends Model implements Auditable
             'kind' => IntegrationKind::class,
             'provider' => IntegrationProvider::class,
             'status' => IntegrationStatus::class,
+            // NOTE: `settings` is NOT encrypted and is intentionally auditable (non-secret
+            // provider config only). This model is Auditable, so any non-excluded attribute
+            // is copied verbatim into the `audits` table — never store secrets/tokens here.
             'settings' => 'array',
             'last_synced_at' => 'datetime',
             'disabled_at' => 'datetime',
