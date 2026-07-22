@@ -21,7 +21,7 @@
     .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
     .error { @apply mt-1.5 block text-xs font-medium text-rose-600; }
     .muted { @apply text-sm text-slate-500; }
-    .secondary { @apply border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50; }
+    .secondary { @apply inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50; }
     .ghost { @apply bg-transparent text-slate-600 shadow-none hover:bg-slate-100 hover:text-slate-900; }
     .danger { @apply bg-rose-600 hover:bg-rose-700; }
     .eyebrow { @apply text-xs font-semibold tracking-[0.14em] text-slate-400 uppercase; }
