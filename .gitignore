@@ -8,3 +8,6 @@ apps/platform/public/build/
 libs/fastlane-plugin/.bundle/
 libs/fastlane-plugin/pkg/
 libs/fastlane-plugin/*.gem
+
+# Brainstorming visual companion
+.superpowers/
