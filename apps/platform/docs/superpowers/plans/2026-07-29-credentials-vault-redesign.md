@@ -748,7 +748,11 @@ Replace the list `<section>` opening and its header (currently lines 310-317) wi
 
 - [ ] **Step 6: Replace the row markup**
 
-Replace the row `<article>` and its inner grid (currently lines 322-387) with:
+**Replace lines 321-387 only** — that is `{#each …}`, the opening `<article>`, and the inner grid up to and including the `</div>` that closes it.
+
+**Do not touch lines 389-426.** Those are the revealed-secrets block, the delete-confirmation block, and the closing `</article>` / `{/each}`. They stay exactly where they are; Task 5 moves and restyles them. Deleting them here would silently remove the password reveal and the delete confirmation, and Task 5 would have nothing to move.
+
+The replacement below therefore ends at the `</div>` that closes `.vault-grid` — it deliberately has no `</article>` and no `{/each}`.
 
 ```svelte
                     {#each credentialItems as credential (credential.id)}
@@ -818,9 +822,9 @@ Replace the row `<article>` and its inner grid (currently lines 322-387) with:
                                     </button>
                                 </div>
                             </div>
-                        </article>
-                    {/each}
 ```
+
+After this edit the `{#each}` body reads: new `<article>` → new `.vault-grid` → **untouched** reveal block → **untouched** delete block → `</article>` → `{/each}`. Verify that shape before moving on; if the file no longer contains `revealedCredentialId === credential.id`, you deleted too much — restore it from `git diff` before committing.
 
 What changed and why:
 
@@ -959,7 +963,16 @@ The `id` matches the `aria-controls` on both the name button and the chevron fro
 
 - [ ] **Step 3: Move the revealed-secrets panel inside the expanded region**
 
-The existing `{#if revealedCredentialId === credential.id}` block (Task 4 left it in place after the grid) keeps its markup and behaviour — password confirmation modal, `POST reveal_url`, 60-second auto-hide, copy buttons. Only two things change: it renders inside the expanded region's grid as a full-width child (`sm:col-span-2`), and revealing a credential must open its row. Add to `revealCredential`, right where `revealedCredentialId` is set:
+Task 4 left the `{#if revealedCredentialId === credential.id}` block sitting after the grid, as a direct child of `<article>`. Cut that whole block — from `{#if revealedCredentialId === credential.id}` through its matching `{/if}` — and paste it as the **last child of the `sm:grid-cols-2` container inserted in Step 2**, immediately before that container's closing `</div>`.
+
+Then change two things on it and nothing else:
+
+1. On the block's outermost element, replace `mt-4` with `sm:col-span-2` so it spans both columns of the expanded grid.
+2. Its markup and behaviour are otherwise untouched — password confirmation modal, `POST reveal_url`, 60-second auto-hide, copy buttons all keep working as they do today.
+
+The delete-confirmation block stays a direct child of `<article>`, outside the expanded region: a row must be deletable without opening it. Only its copy changes, in Step 4.
+
+Revealing a credential must also open its row. Add to `revealCredential`, right where `revealedCredentialId` is set:
 
 ```js
             revealedCredentialId = revealTarget.id;
