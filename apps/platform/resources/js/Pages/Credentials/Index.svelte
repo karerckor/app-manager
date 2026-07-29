@@ -389,8 +389,8 @@
                                     {#if credential.expiration.status === 'never'}
                                         <div class="border-t border-dashed border-slate-200" aria-hidden="true"></div>
                                     {:else if credential.expiration.status === 'expired'}
-                                        <div class="relative h-1 overflow-hidden rounded-full bg-rose-100" aria-hidden="true">
-                                            <span class="absolute inset-y-0 left-0 w-[2.5px] rounded-full bg-rose-600"></span>
+                                        <div class="h-1 overflow-hidden rounded-full bg-rose-100" aria-hidden="true">
+                                            <span class="block h-full w-full rounded-full bg-rose-500"></span>
                                         </div>
                                     {:else}
                                         <div class="h-1 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
