@@ -406,7 +406,7 @@
                                             <a href={credential.file.download_url} class="icon-btn" title="Download file" aria-label={`Download ${credential.name}`}><Download class="h-4 w-4" strokeWidth={1.9} /></a>
                                         {/if}
                                         {#if canManage}
-                                            <label for={`vault-file-${credential.id}`} class="icon-btn cursor-pointer" title={credential.file ? 'Replace file' : 'Upload file'}><Upload class="h-4 w-4" strokeWidth={1.9} /></label>
+                                            <label for={`vault-file-${credential.id}`} class="icon-btn cursor-pointer" title={credential.file ? 'Replace file' : 'Upload file'} aria-label={credential.file ? 'Replace file' : 'Upload file'}><Upload class="h-4 w-4" strokeWidth={1.9} /></label>
                                             <input id={`vault-file-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />
                                             <button type="button" class="icon-btn" title="Edit credential" aria-label={`Edit ${credential.name}`} on:click={() => openEdit(credential)}><Pencil class="h-4 w-4" strokeWidth={1.9} /></button>
                                             <button type="button" class="icon-btn text-rose-500 hover:bg-rose-50 hover:text-rose-600" title="Delete credential" aria-label={`Delete ${credential.name}`} on:click={() => confirmingDelete = credential.id}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
