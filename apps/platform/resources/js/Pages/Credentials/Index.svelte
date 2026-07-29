@@ -256,7 +256,9 @@
         }
     };
     const toggleExpanded = (credential) => {
-        expandedId = expandedId === credential.id ? null : credential.id;
+        const collapsing = expandedId === credential.id;
+        expandedId = collapsing ? null : credential.id;
+        if (collapsing && revealedCredentialId === credential.id) hideSecrets();
     };
     const copySecret = async (secret) => {
         await navigator.clipboard.writeText(secret.value);
@@ -264,6 +266,9 @@
         window.setTimeout(() => {
             if (copiedSecret === secret.name) copiedSecret = null;
         }, 1800);
+    };
+    const onWindowKeydown = (event) => {
+        if (event.key === 'Escape' && revealTarget) closeReveal();
     };
 
     onDestroy(() => {
@@ -273,6 +278,7 @@
 </script>
 
 <svelte:head><title>Credentials Vault · App Manager</title></svelte:head>
+<svelte:window on:keydown={onWindowKeydown} />
 
 <AppShell {auth} teams={navigationTeams} currentTeam={navigationTeam} active="credentials">
     <main class="mx-auto max-w-[1240px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
@@ -528,11 +534,20 @@
                     {/key}
                 {/if}
             {:else}
-                <div class="px-6 py-16 text-center">
-                    <span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><ShieldCheck class="h-6 w-6" strokeWidth={1.7} /></span>
-                    <h3 class="text-sm font-bold">{hasFilters ? 'No matching credentials' : 'Your team vault is empty'}</h3>
-                    <p class="mx-auto mt-2 max-w-md text-sm text-slate-500">{hasFilters ? 'Try a different search or clear the filters.' : 'Keep signing keys, certificates, Firebase files, and service accounts organized in one secure place.'}</p>
-                    {#if hasFilters}<button class="secondary mt-5" on:click={clearFilters}>Clear filters</button>{:else if canManage && hasConfiguredApps}<button class="mt-5" on:click={openCreate}>Add first credential</button>{/if}
+                <div class="px-6 py-14 text-center">
+                    <span class="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><ShieldCheck class="h-5 w-5" strokeWidth={1.7} /></span>
+                    {#if hasFilters}
+                        <h3 class="text-sm font-bold">No credentials match these filters</h3>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Try a different search, or clear the filters.</p>
+                        <button class="secondary mt-4" on:click={clearFilters}>Clear filters</button>
+                    {:else if !hasConfiguredApps}
+                        <h3 class="text-sm font-bold">Nothing in the vault yet</h3>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Create an application identifier first — credentials attach to identifiers.</p>
+                    {:else}
+                        <h3 class="text-sm font-bold">Nothing in the vault yet</h3>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Add a signing certificate, keystore, or service account to use it in builds.</p>
+                        {#if canManage}<button class="mt-4" on:click={openCreate}>Add first credential</button>{/if}
+                    {/if}
                 </div>
             {/if}
         </section>
