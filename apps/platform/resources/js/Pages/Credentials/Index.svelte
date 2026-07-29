@@ -89,6 +89,14 @@
     const formatBytes = (bytes) => bytes < 1024 * 1024
         ? `${Math.max(1, Math.round(bytes / 1024))} KB`
         : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    const formatRelative = (value) => {
+        if (!value) return 'never';
+        const days = Math.round((Date.now() - new Date(value).getTime()) / 86_400_000);
+        if (days <= 0) return 'today';
+        if (days === 1) return 'yesterday';
+        if (days < 30) return `${days} days ago`;
+        return formatDate(value);
+    };
     const TYPE_ICONS = {
         ios_certificate: ShieldCheck,
         provisioning_profile: FileBadge,
@@ -236,6 +244,7 @@
 
             hideSecrets();
             revealedCredentialId = revealTarget.id;
+            expandedId = revealTarget.id;
             revealedSecrets = payload.secrets ?? [];
             revealTarget = null;
             revealPassword = '';
@@ -418,37 +427,82 @@
                                 </div>
                             </div>
 
-                            {#if revealedCredentialId === credential.id}
-                                <div class="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
-                                    <div class="flex flex-wrap items-start justify-between gap-3">
-                                        <div class="flex items-start gap-2.5">
-                                            <LockKeyhole class="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
-                                            <div>
-                                                <h4 class="text-xs font-bold text-indigo-950">Passwords revealed</h4>
-                                                <p class="mt-0.5 text-[11px] text-indigo-700">They will be hidden automatically after 60 seconds.</p>
+                            {#if expandedId === credential.id}
+                                <div id={`vault-detail-${credential.id}`} class="mt-3 grid gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2">
+                                    <div>
+                                        <p class="vault-head mb-1.5">Used by</p>
+                                        {#if credential.attachments.length}
+                                            <ul class="space-y-1">
+                                                {#each credential.attachments as attachment}
+                                                    <li>
+                                                        <Link href={attachment.url} class="group/att inline-flex max-w-full items-center gap-1.5 text-[11px] text-slate-600 hover:text-indigo-700">
+                                                            <span class="h-1.5 w-1.5 shrink-0 rounded-full {attachment.platform === 'ios' ? 'bg-slate-900' : 'bg-emerald-500'}"></span>
+                                                            <span class="truncate font-semibold">{attachment.app_name}</span>
+                                                            <span class="truncate font-mono text-[10px] text-slate-400">{attachment.identifier}</span>
+                                                            {#if attachment.profile}<span class="rounded bg-indigo-50 px-1 py-0.5 text-[10px] font-bold text-indigo-600">{attachment.profile.label}</span>{/if}
+                                                        </Link>
+                                                    </li>
+                                                {/each}
+                                            </ul>
+                                        {:else}
+                                            <p class="text-[11px] font-medium text-amber-600">Not attached to an application yet. Attach it from an app identifier to use it in builds.</p>
+                                        {/if}
+                                    </div>
+
+                                    <div class="space-y-3">
+                                        <div>
+                                            <p class="vault-head mb-1.5">Secure file</p>
+                                            {#if credential.file}
+                                                <p class="font-mono text-[11px] break-all text-slate-600">{credential.file.name}<span class="text-slate-400"> · {formatBytes(credential.file.size)}</span></p>
+                                            {:else}
+                                                <p class="text-[11px] font-medium text-amber-600">No file uploaded. Upload one to use this credential in builds.</p>
+                                            {/if}
+                                        </div>
+                                        <div>
+                                            <p class="vault-head mb-1.5">Updated</p>
+                                            <p class="text-[11px] text-slate-600">{formatRelative(credential.updated_at)}</p>
+                                        </div>
+                                        {#if credential.reveal_url && revealedCredentialId !== credential.id}
+                                            <button type="button" class="secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" on:click={() => openReveal(credential)}>
+                                                <Eye class="h-3.5 w-3.5" />
+                                                Show password{credential.password_fields_count === 1 ? '' : 's'}
+                                            </button>
+                                        {/if}
+                                    </div>
+
+                                    {#if revealedCredentialId === credential.id}
+                                        <div class="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+                                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                                <div class="flex items-start gap-2.5">
+                                                    <LockKeyhole class="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                                                    <div>
+                                                        <h4 class="text-xs font-bold text-indigo-950">Passwords revealed</h4>
+                                                        <p class="mt-0.5 text-[11px] text-indigo-700">They will be hidden automatically after 60 seconds.</p>
+                                                    </div>
+                                                </div>
+                                                <button type="button" class="ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100" on:click={hideSecrets}><EyeOff class="h-3.5 w-3.5" /> Hide</button>
+                                            </div>
+                                            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                                                {#each revealedSecrets as secret (secret.name)}
+                                                    <div class="rounded-xl border border-indigo-100 bg-white p-3 shadow-sm">
+                                                        <p class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{secret.label}</p>
+                                                        <div class="mt-1.5 flex items-center gap-2">
+                                                            <code class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100">{secret.value}</code>
+                                                            <button type="button" class="secondary grid h-8 w-8 shrink-0 place-items-center p-0" title={`Copy ${secret.label}`} aria-label={`Copy ${secret.label}`} on:click={() => copySecret(secret)}>
+                                                                {#if copiedSecret === secret.name}<Check class="h-4 w-4 text-emerald-600" />{:else}<Copy class="h-4 w-4" />{/if}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                {/each}
                                             </div>
                                         </div>
-                                        <button type="button" class="ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100" on:click={hideSecrets}><EyeOff class="h-3.5 w-3.5" /> Hide</button>
-                                    </div>
-                                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                                        {#each revealedSecrets as secret (secret.name)}
-                                            <div class="rounded-xl border border-indigo-100 bg-white p-3 shadow-sm">
-                                                <p class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{secret.label}</p>
-                                                <div class="mt-1.5 flex items-center gap-2">
-                                                    <code class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100">{secret.value}</code>
-                                                    <button type="button" class="secondary grid h-8 w-8 shrink-0 place-items-center p-0" title={`Copy ${secret.label}`} aria-label={`Copy ${secret.label}`} on:click={() => copySecret(secret)}>
-                                                        {#if copiedSecret === secret.name}<Check class="h-4 w-4 text-emerald-600" />{:else}<Copy class="h-4 w-4" />{/if}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        {/each}
-                                    </div>
+                                    {/if}
                                 </div>
                             {/if}
 
                             {#if confirmingDelete === credential.id}
                                 <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                    <span class="text-xs font-medium text-rose-700">{credential.attachments.length > 1 ? `Delete this credential permanently? It is used by ${credential.attachments.length} targets.` : 'Delete this credential permanently?'}</span>
+                                    <span class="text-[11px] font-medium text-rose-700">{credential.attachments.length > 1 ? `Delete this credential permanently? ${credential.attachments.length} build targets use it.` : 'Delete this credential permanently?'}</span>
                                     <span class="flex gap-2">
                                         <button type="button" class="ghost px-2.5 py-1.5 text-xs" on:click={() => confirmingDelete = null}>Cancel</button>
                                         <button type="button" class="danger px-2.5 py-1.5 text-xs" on:click={() => deleteCredential(credential)}>Delete</button>
