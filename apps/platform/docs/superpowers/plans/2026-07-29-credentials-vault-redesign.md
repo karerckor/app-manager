@@ -346,13 +346,17 @@ Then add a reactive class string after the existing `$: canEdit = …` line:
 
 - [ ] **Step 5: Apply it to the two editing affordances**
 
-On the per-tag remove button (currently line 136), append `{toolClass}` to the class attribute:
+On the per-tag remove button (currently line 136), append `{toolClass}` **and make the resting `opacity-50` conditional**:
 
 ```svelte
-                <button type="button" class="-mr-0.5 rounded p-0 leading-none opacity-50 shadow-none hover:opacity-100 group-hover/tag:opacity-80 {toolClass}" style="background:transparent;color:inherit" aria-label={`Remove ${tag[0]}`} disabled={saving} on:click={() => removeTag(i)}>
+                <button type="button" class="-mr-0.5 rounded p-0 leading-none {quiet ? '' : 'opacity-50'} shadow-none hover:opacity-100 group-hover/tag:opacity-80 {toolClass}" style="background:transparent;color:inherit" aria-label={`Remove ${tag[0]}`} disabled={saving} on:click={() => removeTag(i)}>
 ```
 
-On the dashed add button (currently line 147), append `{toolClass}` to the class attribute in the same way.
+**Why `opacity-50` must be conditional, not merely accompanied by `{toolClass}`:** Tailwind 4 emits `@layer components` before `@layer utilities`, and per the CSS cascade-layers spec a later layer beats an earlier one regardless of specificity. `.row-tools` lives in `components`; `opacity-50` lives in `utilities`. So an unconditional `opacity-50` on the same element permanently overrides `.row-tools`'s `opacity:0` and all of its reveal variants — the `✕` would sit at 50% opacity forever and never hide. Emitting no `opacity-50` at all in quiet mode removes the collision instead of trying to win it.
+
+On the dashed add button (currently line 147), append `{toolClass}` to the class attribute in the same way. Read its full class list first and confirm it sets no unconditional `opacity` utility; if it does, give it the same conditional treatment.
+
+**General rule this establishes:** never put `.row-tools` on an element that also carries an unconditional opacity utility. Tasks 4 and 5 apply `.row-tools` to action-icon containers — keep those containers free of bare `opacity-*` classes.
 
 `.row-tools` sets `opacity-0` plus `group-hover` / `group-focus-within` / `hover:none` overrides. It only takes effect when an ancestor carries Tailwind's `group` class, which Task 4 puts on each row. Because `quiet` defaults to `false`, every existing caller — the app identifier page, the audit log — is untouched.
 
@@ -744,7 +748,11 @@ Replace the list `<section>` opening and its header (currently lines 310-317) wi
                 </div>
 ```
 
+…and keep the existing `<div class="divide-y divide-slate-100">` wrapper that follows, unchanged.
+
 `overflow-clip` rounds the card's corners without establishing a scroll container, so the header row can stick to the viewport. `overflow-hidden` here would silently break it.
+
+**Row separators: one mechanism, not two.** The parent wrapper already carries `divide-y divide-slate-100`, which draws a line between rows and none after the last — exactly what a per-row `border-b … last:border-0` would reimplement. Keep the wrapper and give the `<article>` no border of its own; two mechanisms would double the hairline.
 
 - [ ] **Step 6: Replace the row markup**
 
@@ -756,7 +764,7 @@ The replacement below therefore ends at the `</div>` that closes `.vault-grid` �
 
 ```svelte
                     {#each credentialItems as credential (credential.id)}
-                        <article class="group border-b border-slate-100 px-5 py-2.5 transition last:border-0 hover:bg-slate-50/60">
+                        <article class="group px-5 py-2.5 transition hover:bg-slate-50/60">
                             <div class="vault-grid">
                                 <div class="flex min-w-0 items-start gap-3">
                                     <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg {markClass(credential)}">
@@ -794,8 +802,8 @@ The replacement below therefore ends at the `</div>` that closes `.vault-grid` �
                                     {#if credential.expiration.status === 'never'}
                                         <div class="border-t border-dashed border-slate-200" aria-hidden="true"></div>
                                     {:else if credential.expiration.status === 'expired'}
-                                        <div class="relative h-1 overflow-hidden rounded-full bg-rose-100" aria-hidden="true">
-                                            <span class="absolute inset-y-0 left-0 w-[2.5px] rounded-full bg-rose-600"></span>
+                                        <div class="h-1 overflow-hidden rounded-full bg-rose-100" aria-hidden="true">
+                                            <span class="block h-full w-full rounded-full bg-rose-500"></span>
                                         </div>
                                     {:else}
                                         <div class="h-1 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">

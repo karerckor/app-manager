@@ -186,9 +186,11 @@ The thesis of a credential vault is that **everything in it dies on a schedule**
 | `valid`, days ≥ 90 | `slate-100` | 100%, `slate-300` | `+284d`, `slate-500` |
 | `valid`, days < 90 | `slate-100` | `days/90`, `slate-400` | `+62d`, `slate-500` |
 | `expiring` | `slate-100` | `days/90`, `amber-500` | `+12d`, `amber-700` |
-| `expired` | `rose-100` | none | `−76d · expired`, `rose-700` |
+| `expired` | `rose-100` | **100%, `rose-500`** | `−76d · expired`, `rose-700` |
 
-Expired draws a 2.5px `rose-600` cap at the left edge of an otherwise empty rose track: the runway is spent. Fill width is `clamp(days / 90, 0, 1) * 100%`.
+Fill width is `clamp(days / 90, 0, 1) * 100%` for the live states.
+
+**Why expired is full rather than empty.** The first draft of this spec drew expired as an *empty* rose track with a small cap at the left edge — "the runway is spent". Built and viewed against real data, that reads as *nothing*, and it inverts the severity ordering: a credential 76 days dead looked calmer than one with 10 days left, because the latter at least had a visible amber stub. Emptiness reads as absence, not as exhaustion. A fully-flooded rose track is unambiguous and restores the correct visual order: **full rose (dead) > short amber (dying) > long grey (healthy)**.
 
 The label keeps today's special-cased copy for the near cases rather than a bare number: `expires today` at day 0 and `expires tomorrow` at day 1, both amber. Everything else uses the signed mono day count.
 
