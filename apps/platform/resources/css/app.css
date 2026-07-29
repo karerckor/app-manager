@@ -7,6 +7,7 @@
 @theme {
     --font-sans: 'Inter', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 @layer base {
@@ -27,4 +28,9 @@
     .eyebrow { @apply text-xs font-semibold tracking-[0.14em] text-slate-400 uppercase; }
     .modal-backdrop { @apply fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-[2px]; }
     .modal { @apply max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl shadow-slate-950/20; }
+    .vault-grid { @apply grid gap-3 lg:grid-cols-[minmax(0,1fr)_172px_118px_104px] lg:items-center lg:gap-4; }
+    .vault-head { @apply text-[10px] font-bold tracking-[0.1em] text-slate-400 uppercase; }
+    .icon-btn { @apply grid h-8 w-8 place-items-center rounded-lg bg-transparent p-0 text-slate-500 shadow-none transition hover:bg-indigo-50 hover:text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:outline-none; }
+    .row-tools { @apply opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100; }
+    .chip { @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold shadow-none transition disabled:cursor-default; }
 }

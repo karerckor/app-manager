@@ -9,6 +9,7 @@
     export let suggestions = [];
     export let align = 'left';
     export let emptyLabel = '';
+    export let quiet = false;
 
     const PALETTE = [
         { name: 'None', value: null },
@@ -32,6 +33,7 @@
 
     $: working = (tags || []).map((t) => [t[0], t[1] ?? null]);
     $: canEdit = !disabled && !!url;
+    $: toolClass = quiet ? 'row-tools' : '';
     $: available = (suggestions || [])
         .map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]))
         .filter((t) => t[0] && !working.some((w) => w[0].toLowerCase() === t[0].toLowerCase()))
@@ -133,7 +135,7 @@
             <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background-color:${tag[1] || '#94a3b8'}`}></span>
             {tag[0]}
             {#if canEdit}
-                <button type="button" class="-mr-0.5 rounded p-0 leading-none opacity-50 shadow-none hover:opacity-100 group-hover/tag:opacity-80" style="background:transparent;color:inherit" aria-label={`Remove ${tag[0]}`} disabled={saving} on:click={() => removeTag(i)}>
+                <button type="button" class="-mr-0.5 rounded p-0 leading-none opacity-50 shadow-none hover:opacity-100 group-hover/tag:opacity-80 {toolClass}" style="background:transparent;color:inherit" aria-label={`Remove ${tag[0]}`} disabled={saving} on:click={() => removeTag(i)}>
                     <X class="h-3 w-3" strokeWidth={2.6} />
                 </button>
             {/if}
@@ -144,7 +146,7 @@
         <button
             type="button"
             bind:this={anchorEl}
-            class="inline-flex items-center gap-1 rounded-md border border-dashed border-slate-300 bg-transparent px-1.5 py-0.5 text-[11px] font-medium text-slate-400 shadow-none transition hover:border-indigo-400 hover:bg-indigo-50/60 hover:text-indigo-600 {open ? 'border-indigo-400 text-indigo-600' : ''}"
+            class="inline-flex items-center gap-1 rounded-md border border-dashed border-slate-300 bg-transparent px-1.5 py-0.5 text-[11px] font-medium text-slate-400 shadow-none transition hover:border-indigo-400 hover:bg-indigo-50/60 hover:text-indigo-600 {open ? 'border-indigo-400 text-indigo-600' : ''} {toolClass}"
             aria-label="Add tag"
             aria-expanded={open}
             on:click={() => (open ? closePop() : openPop())}
