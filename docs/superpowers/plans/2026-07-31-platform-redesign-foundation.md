@@ -1054,8 +1054,11 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
 {#snippet nav()}
     <Link href={url('/apps')} class="mb-6 flex items-center gap-2.5 px-2">
         <span class="grid h-8 w-8 grid-cols-2 gap-0.5 rounded-sm bg-brand p-1.5">
-            <i class="rounded-[1px] bg-brand-fg"></i><i class="rounded-[1px] bg-brand-fg/60"></i>
-            <i class="rounded-[1px] bg-brand-fg/60"></i><i class="rounded-[1px] bg-brand-fg"></i>
+            <!-- Square tiles, no radius: at ~10px a 1px rounding is invisible, an
+                 arbitrary bracket radius fails design:lint, and a technical-drawing
+                 grid is the right read for this mark anyway. -->
+            <i class="bg-brand-fg"></i><i class="bg-brand-fg/60"></i>
+            <i class="bg-brand-fg/60"></i><i class="bg-brand-fg"></i>
         </span>
         <span class="min-w-0">
             <strong class="block font-condensed text-xs font-semibold tracking-[0.06em] text-nav-strong uppercase">App Manager</strong>
