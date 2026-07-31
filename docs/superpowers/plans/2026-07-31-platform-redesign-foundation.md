@@ -1312,8 +1312,14 @@ Create `resources/js/Components/ui/PageHeader.svelte`:
      * The one page header. Every workspace page uses this — the two competing
      * header implementations it replaces differed in title size, weight, margin,
      * and whether a description was possible at all.
+     *
+     * `titleArea` replaces the eyebrow/title/description block for the rare page
+     * needing custom heading content, while this component keeps ownership of the
+     * breadcrumbs slot, the wrapper, the margins, and the actions row. That is
+     * what stops the escape hatch from becoming a second header implementation:
+     * the wrapper markup exists once, here, and no caller can drift from it.
      */
-    let { eyebrow = '', title = '', description = '', breadcrumbs, actions } = $props();
+    let { eyebrow = '', title = '', description = '', breadcrumbs, actions, titleArea } = $props();
 </script>
 
 {#if breadcrumbs}
@@ -1322,12 +1328,16 @@ Create `resources/js/Components/ui/PageHeader.svelte`:
 
 <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
     <div class="min-w-0">
-        {#if eyebrow}
-            <p class="font-condensed text-2xs font-semibold tracking-[0.18em] text-faint uppercase">{eyebrow}</p>
-        {/if}
-        <h1 class="mt-1.5 font-condensed text-3xl font-semibold text-text uppercase">{title}</h1>
-        {#if description}
-            <p class="mt-1.5 max-w-[46ch] text-base text-muted">{description}</p>
+        {#if titleArea}
+            {@render titleArea()}
+        {:else}
+            {#if eyebrow}
+                <p class="font-condensed text-2xs font-semibold tracking-[0.18em] text-faint uppercase">{eyebrow}</p>
+            {/if}
+            <h1 class="mt-1.5 font-condensed text-3xl font-semibold text-text uppercase">{title}</h1>
+            {#if description}
+                <p class="mt-1.5 max-w-[46ch] text-base text-muted">{description}</p>
+            {/if}
         {/if}
     </div>
     {#if actions}
@@ -1374,15 +1384,10 @@ Replace the entire contents of `resources/js/Components/WorkspacePage.svelte`:
 
 <AppShell {auth} teams={navigationTeams} currentTeam={navigationTeam} {active}>
     <main class="mx-auto {shell} px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
-        {#if heading}
-            {#if breadcrumbs}<div class="mb-4">{@render breadcrumbs()}</div>{/if}
-            <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
-                <div class="min-w-0">{@render heading()}</div>
-                {#if actions}<div class="flex flex-wrap items-center gap-2">{@render actions()}</div>{/if}
-            </div>
-        {:else}
-            <PageHeader {eyebrow} {title} {description} {breadcrumbs} {actions} />
-        {/if}
+        <!-- One header, one code path. `heading` is forwarded as PageHeader's
+             titleArea rather than branching into a locally-rewritten wrapper:
+             duplicating the wrapper here is the very defect this task removes. -->
+        <PageHeader {eyebrow} {title} {description} {breadcrumbs} {actions} titleArea={heading} />
 
         {#if flash?.status}
             <div class="mb-5 flex items-center gap-2.5 rounded-md border border-ok/30 bg-ok/10 px-4 py-3 text-sm font-medium text-ok" role="status">
@@ -1396,7 +1401,13 @@ Replace the entire contents of `resources/js/Components/WorkspacePage.svelte`:
 </AppShell>
 ```
 
-The `heading` snippet escape hatch is kept because `Tools/PushNotifications` renders a title with an inline badge; it is not a second header implementation, since it reuses the same wrapper, margins, and actions row.
+The `heading` snippet escape hatch is kept because `Tools/PushNotifications` renders a
+title with an inline badge. It is genuinely not a second header implementation:
+`WorkspacePage` forwards it to `PageHeader` as `titleArea`, so the wrapper, the
+margins, the breadcrumbs slot, and the actions row exist in exactly one file. An
+earlier draft of this plan branched in `WorkspacePage` and rewrote the wrapper
+inline — which would have recreated, in the very component built to remove it, two
+copies of the same layout kept in sync by hand.
 
 - [ ] **Step 3: Migrate the five existing consumers' slot syntax**
 
