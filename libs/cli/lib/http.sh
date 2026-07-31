@@ -326,3 +326,43 @@ api_delete() {
   reset_request
   perform_request DELETE "$url" || return 1
 }
+
+fetch_build_status() {
+  local build_url="$1"
+  local response_file
+  local status
+  local curl_status
+
+  response_file=$(new_temp_file status-response) || return 1
+  curl_status=$(
+    "$CURL_BIN" \
+      --silent \
+      --show-error \
+      --request GET \
+      --output "$response_file" \
+      --write-out '%{http_code}' \
+      --header "Authorization: Bearer $API_KEY" \
+      --header "Accept: application/json" \
+      "$build_url" 2>/dev/null
+  ) || { rm -f "$response_file"; return 1; }
+
+  case "$curl_status" in
+    [0-9][0-9][0-9]) ;;
+    *) rm -f "$response_file"; return 1 ;;
+  esac
+
+  if [ "$curl_status" -lt 200 ] || [ "$curl_status" -ge 300 ]; then
+    rm -f "$response_file"
+    return 1
+  fi
+
+  status=$("$JQ_BIN" -r '.data.status // empty' "$response_file" 2>/dev/null)
+  rm -f "$response_file"
+
+  if [ -z "$status" ]; then
+    return 1
+  fi
+
+  printf '%s' "$status"
+  return 0
+}

@@ -13,6 +13,8 @@ Actions:
   create              Create a manual build
   cancel              Cancel a build
   patch               Update build status or metadata
+  wait                Poll build status until terminal
+  when-running        Run a command only if build is active
 
 Options:
   --app APP           App slug (default: APP_MANAGER_APP)
@@ -22,6 +24,7 @@ Options:
   --request-uuid UUID Idempotency key (create)
   --context JSON      Build context metadata (create)
   --page N            Page number (list)
+  --timeout SECONDS   Maximum wait time (wait, when-running)
 
 Run "appmctl builds <action> --help" for action-specific help.
 EOF
@@ -98,6 +101,50 @@ Examples:
 EOF
 }
 
+builds_wait_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds wait [--app APP] <build-id> [--timeout SECONDS]
+
+Poll build status until it reaches a terminal state (completed, failed, cancelled).
+
+Exit codes:
+  0    Build completed successfully
+  1    Build failed
+  130  Build was cancelled
+  124  Timeout exceeded (if --timeout specified)
+
+Options:
+  --timeout SECONDS   Maximum time to wait (default: unlimited)
+
+Examples:
+  appmctl builds wait bld-abc123
+  appmctl builds wait bld-abc123 --timeout 3600
+EOF
+}
+
+builds_when_running_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds when-running [--app APP] <build-id> [--timeout SECONDS] -- COMMAND [ARG ...]
+
+Run COMMAND only if the build is currently active (pending or running).
+While COMMAND runs, polls build status and aborts if cancelled.
+
+Exit codes:
+  0    Command completed successfully
+  1    Command failed or build is not active
+  130  Build was cancelled during execution
+
+Options:
+  --timeout SECONDS   Maximum time to wait for build to become active
+
+Examples:
+  appmctl builds when-running bld-abc123 -- npm run build
+  appmctl builds when-running bld-abc123 --timeout 300 -- make deploy
+EOF
+}
+
 command_builds() {
   local action="${1:-}"
   shift 2>/dev/null || true
@@ -108,8 +155,10 @@ command_builds() {
     create) _builds_create "$@" ;;
     cancel) _builds_cancel "$@" ;;
     patch) _builds_patch "$@" ;;
+    wait) _builds_wait "$@" ;;
+    when-running) _builds_when_running "$@" ;;
     -h|--help|"") builds_usage; [ -z "$action" ] && return 1; return 0 ;;
-    *) die "unknown builds action: $action (use list, get, create, cancel, patch)" ;;
+    *) die "unknown builds action: $action (use list, get, create, cancel, patch, wait, when-running)" ;;
   esac
 }
 
@@ -372,4 +421,271 @@ _builds_patch() {
   api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
   printf 'Build %s updated to %s\n' "$build_id" "$new_status"
+}
+
+_builds_wait() {
+  local app="${APP:-}"
+  local build_id=""
+  local timeout=""
+  local start_time
+  local elapsed
+  local status
+  local api_root
+  local build_url
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --timeout) require_value "$1" "$2"; timeout="$2"; shift 2 ;;
+      --timeout=*) timeout=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      -h|--help) builds_wait_usage; return 0 ;;
+      -*) die "unknown builds wait option: $1" ;;
+      *)
+        [ -z "$build_id" ] || die "unexpected argument: $1"
+        build_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "build ID is required"
+  validate_slug "build ID" "$build_id"
+  validate_polling_interval
+
+  if [ -n "$timeout" ]; then
+    case "$timeout" in
+      ''|*[!0-9]*) die "--timeout must be a positive integer" ;;
+    esac
+    if [ "$timeout" -lt 1 ]; then
+      die "--timeout must be a positive integer"
+    fi
+  fi
+
+  local path="apps/$APP/builds/$build_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET (polling)\n'
+    printf 'url: %s\n' "$url"
+    printf 'interval: %s seconds\n' "$POLLING_INTERVAL"
+    if [ -n "$timeout" ]; then
+      printf 'timeout: %s seconds\n' "$timeout"
+    fi
+    return 0
+  fi
+
+  require_config
+  require_curl
+  require_jq
+  ensure_tmpdir
+  api_root=$(normalize_api_root) || return 1
+  build_url="$api_root/$TEAM/apps/$APP/builds/$build_id"
+
+  start_time=$(date +%s)
+
+  while :; do
+    status=$(fetch_build_status "$build_url") || {
+      sleep "$POLLING_INTERVAL"
+      continue
+    }
+
+    case "$status" in
+      completed)
+        printf 'Build %s completed\n' "$build_id"
+        return 0
+        ;;
+      failed)
+        printf 'Build %s failed\n' "$build_id"
+        return 1
+        ;;
+      cancelled)
+        printf 'Build %s cancelled\n' "$build_id"
+        return 130
+        ;;
+    esac
+
+    if [ -n "$timeout" ]; then
+      elapsed=$(( $(date +%s) - start_time ))
+      if [ "$elapsed" -ge "$timeout" ]; then
+        say_error "timeout exceeded after ${elapsed}s (last status: $status)"
+        return 124
+      fi
+    fi
+
+    sleep "$POLLING_INTERVAL"
+  done
+}
+
+_builds_when_running() {
+  local app="${APP:-}"
+  local build_id=""
+  local timeout=""
+  local run_command=()
+  local start_time
+  local elapsed
+  local status
+  local api_root
+  local build_url
+  local stream_dir
+  local cancelled_file
+  local track_pid=""
+  local command_pid
+  local exit_file
+  local command_status
+  local build_was_cancelled=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --timeout) require_value "$1" "$2"; timeout="$2"; shift 2 ;;
+      --timeout=*) timeout=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --)
+        shift
+        run_command=("$@")
+        set --
+        ;;
+      --command)
+        shift
+        run_command=("$@")
+        set --
+        ;;
+      -h|--help) builds_when_running_usage; return 0 ;;
+      -*) die "unknown builds when-running option: $1" ;;
+      *)
+        [ -z "$build_id" ] || die "unexpected argument: $1"
+        build_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "build ID is required"
+  [ "${#run_command[@]}" -gt 0 ] || die "when-running requires a command after -- or --command"
+  validate_slug "build ID" "$build_id"
+  validate_polling_interval
+
+  if [ -n "$timeout" ]; then
+    case "$timeout" in
+      ''|*[!0-9]*) die "--timeout must be a positive integer" ;;
+    esac
+    if [ "$timeout" -lt 1 ]; then
+      die "--timeout must be a positive integer"
+    fi
+  fi
+
+  local path="apps/$APP/builds/$build_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET (check + polling)\n'
+    printf 'url: %s\n' "$url"
+    printf 'interval: %s seconds\n' "$POLLING_INTERVAL"
+    if [ -n "$timeout" ]; then
+      printf 'timeout: %s seconds\n' "$timeout"
+    fi
+    printf 'command:'
+    printf ' %q' "${run_command[@]}"
+    printf '\n'
+    return 0
+  fi
+
+  require_config
+  require_curl
+  require_jq
+  ensure_tmpdir
+  api_root=$(normalize_api_root) || return 1
+  build_url="$api_root/$TEAM/apps/$APP/builds/$build_id"
+
+  status=$(fetch_build_status "$build_url") || {
+    say_error "could not fetch build status"
+    return 1
+  }
+
+  case "$status" in
+    completed|failed|cancelled)
+      printf 'Build %s is already %s, not running command\n' "$build_id" "$status"
+      return 1
+      ;;
+    pending|running|cancel_requested)
+      printf 'Build %s is %s, running command\n' "$build_id" "$status"
+      ;;
+    *)
+      say_error "unknown build status: $status"
+      return 1
+      ;;
+  esac
+
+  stream_dir=$(mktemp -d "$APPMCTL_TMPDIR/when-running.XXXXXX") || die "could not create temp directory"
+  cancelled_file="$stream_dir/cancelled"
+  exit_file="$stream_dir/exit_code"
+
+  (
+    trap - EXIT INT TERM
+    while :; do
+      sleep "$POLLING_INTERVAL"
+
+      if [ -f "$cancelled_file" ]; then
+        return 0
+      fi
+
+      status=$(fetch_build_status "$build_url") || continue
+
+      case "$status" in
+        cancelled|cancel_requested|completed|failed)
+          : > "$cancelled_file"
+          return 0
+          ;;
+      esac
+    done
+  ) &
+  track_pid=$!
+
+  (
+    "${run_command[@]}" 2>&1
+    echo $? > "$exit_file"
+  ) &
+  command_pid=$!
+
+  while kill -0 "$command_pid" 2>/dev/null; do
+    if [ -f "$cancelled_file" ]; then
+      build_was_cancelled=1
+      kill -TERM "$command_pid" 2>/dev/null
+      sleep 0.5
+      kill -KILL "$command_pid" 2>/dev/null
+      break
+    fi
+    sleep 0.5
+  done
+
+  wait "$command_pid" 2>/dev/null
+
+  : > "$cancelled_file" 2>/dev/null || true
+  kill "$track_pid" 2>/dev/null || true
+  wait "$track_pid" 2>/dev/null || true
+
+  if [ "$build_was_cancelled" -eq 1 ]; then
+    say_error "build was cancelled, aborting"
+    return 130
+  fi
+
+  if [ -f "$exit_file" ]; then
+    command_status=$(cat "$exit_file")
+    return "$command_status"
+  fi
+
+  return 1
 }

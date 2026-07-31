@@ -31,6 +31,7 @@ Required environment:
 Optional environment:
   APP_MANAGER_INSTANCE_URL  Server URL; defaults to http://localhost:8000
   APP_MANAGER_APP           Default app slug for app-scoped commands
+  APP_MANAGER_POLLING_INTERVAL  Polling interval in seconds (default: 10)
 
 Global options:
   --instance-url URL        Override APP_MANAGER_INSTANCE_URL

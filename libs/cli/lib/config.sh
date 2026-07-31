@@ -12,6 +12,7 @@ API_KEY="${APP_MANAGER_API_KEY:-}"
 APP="${APP_MANAGER_APP:-}"
 CURL_BIN="${APP_MANAGER_CURL_BIN:-curl}"
 JQ_BIN="${APP_MANAGER_JQ_BIN:-jq}"
+POLLING_INTERVAL="${APP_MANAGER_POLLING_INTERVAL:-10}"
 
 validate_slug() {
   local label="$1"
@@ -83,4 +84,13 @@ require_jq() {
 require_app() {
   [ -n "$APP" ] || die "--app or APP_MANAGER_APP is required"
   validate_slug "app" "$APP"
+}
+
+validate_polling_interval() {
+  case "$POLLING_INTERVAL" in
+    ''|*[!0-9]*) die "APP_MANAGER_POLLING_INTERVAL must be a positive integer" ;;
+  esac
+  if [ "$POLLING_INTERVAL" -lt 1 ]; then
+    die "APP_MANAGER_POLLING_INTERVAL must be a positive integer"
+  fi
 }
