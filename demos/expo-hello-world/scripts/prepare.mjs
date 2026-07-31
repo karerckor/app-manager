@@ -27,8 +27,10 @@ export async function prepare({
 
   const config = readConfig(env);
   const appEndpoint = endpoint(config, 'apps', config.appSlug);
-  const request = (url) => authorizedRequest(url, config, fetchImpl);
+  const request = (url, options) => authorizedRequest(url, config, fetchImpl, options);
 
+  // ── Step 1: Fetch app info ──────────────────────────────────────────────
+  logger.log('[1/7] Fetching app info from Platform...');
   const [appResponse, identifiersResponse, credentialsResponse] = await Promise.all([
     request(appEndpoint).then((response) => readJson(response, 'app')),
     request(`${appEndpoint}/identifiers`).then((response) => readJson(response, 'app identifiers')),
@@ -44,12 +46,24 @@ export async function prepare({
     credentialsResponse.data,
     'App Manager returned an invalid credentials response.',
   );
+
+  const metadata = app.metadata && typeof app.metadata === 'object' ? app.metadata : null;
+  logger.log(`  App: ${app.name} (${app.slug})`);
+  logger.log(`  Metadata: ${metadata ? Object.keys(metadata).join(', ') : 'none'}`);
+
+  // ── Step 2: Resolve identifiers ─────────────────────────────────────────
+  logger.log('[2/7] Resolving platform identifiers...');
   const androidIdentifier = selectIdentifier(
     identifiers,
     'android',
     config.androidIdentifier,
   );
   const iosIdentifier = selectIdentifier(identifiers, 'ios', config.iosIdentifier);
+  logger.log(`  Android: ${androidIdentifier.identifier}`);
+  logger.log(`  iOS: ${iosIdentifier.identifier}`);
+
+  // ── Step 3: Select credentials ──────────────────────────────────────────
+  logger.log(`[3/7] Selecting credentials (${credentials.length} found)...`);
   const androidCredential = selectProfileCredential(
     credentials,
     'android_keystore',
@@ -77,6 +91,8 @@ export async function prepare({
   const androidPayload = validateKeystorePayload(androidCredential.payload);
   const iosCertificatePayload = validateIosCertificatePayload(iosCertificate.payload);
 
+  // ── Step 4: Download signing credentials ────────────────────────────────
+  logger.log('[4/7] Downloading signing credentials...');
   const [keystore, certificate, provisioningProfileContents] = await Promise.all([
     downloadCredential(request, appEndpoint, androidCredential, 'Android keystore'),
     downloadCredential(request, appEndpoint, iosCertificate, 'iOS certificate'),
@@ -92,6 +108,7 @@ export async function prepare({
   const certificateRelativePath = 'credentials/ios/distribution.p12';
   const provisioningProfileRelativePath = 'credentials/ios/profile.mobileprovision';
 
+  // Firebase client configs.
   const androidFirebase = selectIdentifierCredential(
     credentials,
     'google_services_json',
@@ -119,21 +136,7 @@ export async function prepare({
     firebaseWiring.iosGoogleServicesFile = './GoogleService-Info.plist';
   }
 
-  const assets = app.assets && typeof app.assets === 'object' ? app.assets : {};
-  const assetWiring = {};
-  if (assets.icon && typeof assets.icon.url === 'string') {
-    const contents = await downloadAsset(request, assets.icon, 'App icon');
-    const relativePath = `assets/icon.${assetExtension(assets.icon.mime_type)}`;
-    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
-    assetWiring.icon = `./${relativePath}`;
-  }
-  if (assets.splashscreen && typeof assets.splashscreen.url === 'string') {
-    const contents = await downloadAsset(request, assets.splashscreen, 'Splash screen');
-    const relativePath = `assets/splash.${assetExtension(assets.splashscreen.mime_type)}`;
-    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
-    assetWiring.splash = `./${relativePath}`;
-  }
-
+  // Store submission keys.
   const googlePlayKey = selectIdentifierCredential(
     credentials,
     'google_play_service_account',
@@ -168,6 +171,34 @@ export async function prepare({
     appleApiKeyContext = { path, keyId: payload.key_id, issuerId: payload.issuer_id };
   }
 
+  // ── Step 5: Download assets (icon, splash) ─────────────────────────────
+  logger.log('[5/7] Downloading assets...');
+  const assets = app.assets && typeof app.assets === 'object' ? app.assets : {};
+  const assetWiring = {};
+  if (assets.icon && typeof assets.icon.url === 'string') {
+    const contents = await downloadAsset(request, assets.icon, 'App icon');
+    const relativePath = `assets/icon.${assetExtension(assets.icon.mime_type)}`;
+    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
+    assetWiring.icon = `./${relativePath}`;
+    logger.log(`  icon: ${relativePath}`);
+  }
+  if (assets.splashscreen && typeof assets.splashscreen.url === 'string') {
+    const contents = await downloadAsset(request, assets.splashscreen, 'Splash screen');
+    const relativePath = `assets/splash.${assetExtension(assets.splashscreen.mime_type)}`;
+    await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
+    assetWiring.splash = `./${relativePath}`;
+    logger.log(`  splash: ${relativePath}`);
+  }
+
+  // ── Step 6: Download project files ──────────────────────────────────────
+  // Project files are arbitrary files attached to the app in Platform,
+  // distinct from signing credentials. They can include config files,
+  // release notes, or any build-time resources.
+  logger.log('[6/7] Downloading project files...');
+  const projectFiles = await downloadProjectFiles(request, appEndpoint, cwd, logger);
+
+  // ── Step 7: Write generated configs ─────────────────────────────────────
+  logger.log('[7/7] Writing generated configs...');
   const appJson = buildAppJson(app, androidIdentifier, iosIdentifier, { ...firebaseWiring, ...assetWiring });
   const credentialsJson = {
     android: {
@@ -217,14 +248,52 @@ export async function prepare({
   };
   await writeJsonAtomically(join(cwd, 'fastlane', 'context.json'), context, 0o600);
 
+  // Platform metadata: app-level config that flows into the mobile app.
+  if (metadata) {
+    await writeJsonAtomically(join(cwd, 'platform-metadata.json'), metadata, 0o644);
+  }
+
+  // Platform manifest: summary of everything prepare downloaded.
+  const credentialFiles = [
+    keystoreRelativePath,
+    certificateRelativePath,
+    provisioningProfileRelativePath,
+  ];
+  if (googlePlayKeyPath) credentialFiles.push(googlePlayKeyPath);
+  if (appleApiKeyContext) credentialFiles.push(appleApiKeyContext.path);
+  if (androidFirebase) credentialFiles.push('google-services.json');
+  if (iosFirebase) credentialFiles.push('GoogleService-Info.plist');
+
+  const manifest = {
+    team: config.teamSlug,
+    app: { name: app.name, slug: app.slug, description: app.description ?? null },
+    apiUrl: `${config.apiRoot}/${config.teamSlug}`,
+    identifiers: {
+      android: { identifier: androidIdentifier.identifier, version: androidIdentifier.version ?? null },
+      ios: { identifier: iosIdentifier.identifier, version: iosIdentifier.version ?? null },
+    },
+    downloadedFiles: {
+      credentials: credentialFiles,
+      assets: Object.values(assetWiring).map((p) => p.replace('./', '')),
+      projectFiles,
+    },
+    metadata,
+  };
+  await writeJsonAtomically(join(cwd, 'platform-manifest.json'), manifest, 0o644);
+
+  logger.log('');
   logger.log(`Prepared ${appJson.expo.name} from App Manager.`);
   logger.log(`  Android: ${androidIdentifier.identifier}`);
   logger.log(`  iOS: ${iosIdentifier.identifier}`);
   logger.log(`  app.json: ${appJsonPath}`);
   logger.log(`  credentials.json: ${credentialsJsonPath}`);
-  logger.log(`  Android keystore: ${keystorePath}`);
-  logger.log(`  iOS certificate: ${certificatePath}`);
-  logger.log(`  iOS provisioning profile: ${provisioningProfilePath}`);
+  logger.log(`  platform-manifest.json: ${join(cwd, 'platform-manifest.json')}`);
+  if (metadata) {
+    logger.log(`  platform-metadata.json: ${join(cwd, 'platform-metadata.json')}`);
+  }
+  if (projectFiles.length > 0) {
+    logger.log(`  project files: ${projectFiles.length} file(s) in platform-files/`);
+  }
 
   return {
     appJson,
@@ -296,13 +365,13 @@ function endpoint(config, ...segments) {
   return `${config.apiRoot}/${encodedSegments.join('/')}`;
 }
 
-async function authorizedRequest(url, config, fetchImpl) {
+async function authorizedRequest(url, config, fetchImpl, { accept = 'application/json' } = {}) {
   let response;
 
   try {
     response = await fetchImpl(url, {
       headers: {
-        Accept: 'application/json',
+        Accept: accept,
         Authorization: `Bearer ${config.apiKey}`,
         'User-Agent': 'expo-hello-world-prepare/1.0',
       },
@@ -541,6 +610,55 @@ async function downloadAsset(request, asset, label) {
   }
 
   return contents;
+}
+
+async function downloadProjectFiles(request, appEndpoint, cwd, logger) {
+  let filesResponse;
+
+  try {
+    const response = await request(`${appEndpoint}/files`);
+    filesResponse = await readJson(response, 'project files');
+  } catch {
+    logger.log('  No project files API (skipping).');
+    return [];
+  }
+
+  const files = expectArray(filesResponse.data, 'App Manager returned an invalid files response.');
+
+  if (files.length === 0) {
+    logger.log('  No project files attached.');
+    return [];
+  }
+
+  const downloaded = [];
+
+  for (const file of files) {
+    if (typeof file.name !== 'string' || !file.name.trim()) {
+      continue;
+    }
+
+    try {
+      const response = await request(
+        `${appEndpoint}/files/${encodeURIComponent(file.name)}/content`,
+        { accept: '*/*' },
+      );
+      const contents = Buffer.from(await response.arrayBuffer());
+
+      if (contents.byteLength === 0) {
+        logger.log(`  Skipped ${file.name} (empty).`);
+        continue;
+      }
+
+      const relativePath = `platform-files/${file.name}`;
+      await writeAtomically(join(cwd, ...relativePath.split('/')), contents, 0o644);
+      downloaded.push(file.name);
+      logger.log(`  ${file.name} (${contents.byteLength} bytes)`);
+    } catch (error) {
+      logger.log(`  Failed to download ${file.name}: ${error.message}`);
+    }
+  }
+
+  return downloaded;
 }
 
 function assetExtension(mimeType) {

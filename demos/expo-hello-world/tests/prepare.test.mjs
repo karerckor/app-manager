@@ -21,6 +21,10 @@ test('prepare builds Expo config and Android/iOS credentials from App Manager', 
       return json({
         data: {
           description: 'Demo application for local development.',
+          metadata: {
+            environment: 'development',
+            features: { push_notifications: true, analytics: false },
+          },
           name: 'Example App',
           slug: 'example-app',
         },
@@ -128,6 +132,10 @@ test('prepare builds Expo config and Android/iOS credentials from App Manager', 
       });
     }
 
+    if (requestUrl.pathname === '/api/v1/demo-users-team/apps/example-app/files') {
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }
+
     return new Response(null, { status: 404, statusText: 'Not Found' });
   };
 
@@ -204,7 +212,21 @@ test('prepare builds Expo config and Android/iOS credentials from App Manager', 
       0o777,
     0o600,
   );
-  assert.equal(requests.length, 6);
+
+  const metadata = JSON.parse(await readFile(join(workspace, 'platform-metadata.json'), 'utf8'));
+  assert.equal(metadata.environment, 'development');
+  assert.equal(metadata.features.push_notifications, true);
+  assert.equal(metadata.features.analytics, false);
+
+  const manifest = JSON.parse(await readFile(join(workspace, 'platform-manifest.json'), 'utf8'));
+  assert.equal(manifest.team, 'demo-users-team');
+  assert.equal(manifest.app.name, 'Example App');
+  assert.equal(manifest.identifiers.android.identifier, 'com.example.app');
+  assert.equal(manifest.identifiers.ios.identifier, 'com.example.app');
+  assert.deepEqual(manifest.metadata, metadata);
+  assert.ok(manifest.downloadedFiles.credentials.length > 0);
+
+  assert.equal(requests.length, 7);
   assert.ok(requests.every((request) => request.authorization === 'Bearer demo-api-key'));
   assert.equal('owner' in appJson.expo, false);
   assert.equal('updates' in appJson.expo, false);
@@ -327,6 +349,90 @@ test('prepare writes context.json with null store keys when absent', async (t) =
   assert.equal(context.ios.appStoreApiKey, null);
 });
 
+test('prepare downloads project files and writes platform-manifest.json', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-files-'));
+  const releaseNotes = Buffer.from('# Release notes\n- v1.0.0 initial');
+  const appConfig = Buffer.from('{"api":{"timeout":5000}}');
+  const fetchImpl = buildFetch({
+    projectFiles: ['release-notes.md', 'app-config.json'],
+    projectFileContents: {
+      'release-notes.md': releaseNotes,
+      'app-config.json': appConfig,
+    },
+  });
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  assert.deepEqual(
+    await readFile(join(workspace, 'platform-files/release-notes.md')),
+    releaseNotes,
+  );
+  assert.deepEqual(
+    await readFile(join(workspace, 'platform-files/app-config.json')),
+    appConfig,
+  );
+
+  const manifest = JSON.parse(await readFile(join(workspace, 'platform-manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.downloadedFiles.projectFiles, ['release-notes.md', 'app-config.json']);
+});
+
+test('prepare writes platform-metadata.json from app metadata', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-meta-'));
+  const metadata = {
+    environment: 'staging',
+    features: { dark_mode: true },
+    remote_config: { api_timeout_ms: 3000 },
+  };
+  const fetchImpl = buildFetch({ metadata });
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  const written = JSON.parse(await readFile(join(workspace, 'platform-metadata.json'), 'utf8'));
+  assert.equal(written.environment, 'staging');
+  assert.equal(written.features.dark_mode, true);
+  assert.equal(written.remote_config.api_timeout_ms, 3000);
+
+  const manifest = JSON.parse(await readFile(join(workspace, 'platform-manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.metadata, metadata);
+});
+
+test('prepare skips project files when API returns 404', async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-nofiles-'));
+  const fetchImpl = buildFetch({});
+
+  t.after(async () => {
+    await rm(workspace, { force: true, recursive: true });
+  });
+
+  await prepare({
+    cwd: workspace,
+    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
+    fetchImpl,
+    logger: { log() {} },
+  });
+
+  const manifest = JSON.parse(await readFile(join(workspace, 'platform-manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.downloadedFiles.projectFiles, []);
+});
+
 function json(body) {
   return Response.json(body);
 }
@@ -353,6 +459,10 @@ function buildFetch(extras = {}) {
         data: {
           assets: extras.assets ?? { icon: null, splashscreen: null },
           description: 'Demo application for local development.',
+          metadata: extras.metadata ?? {
+            environment: 'development',
+            features: { push_notifications: true, analytics: false },
+          },
           name: 'Example App',
           slug: 'example-app',
         },
@@ -400,6 +510,21 @@ function buildFetch(extras = {}) {
     }
     if (extras.assetBody && pathname === '/assets/splash') {
       return new Response(extras.assetBody.splash, { headers: { 'Content-Type': 'image/png' }, status: 200 });
+    }
+
+    if (pathname === `${base}/files`) {
+      if (extras.projectFiles) {
+        return json({ data: extras.projectFiles.map((name) => ({ name })) });
+      }
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }
+
+    if (extras.projectFileContents) {
+      for (const [name, body] of Object.entries(extras.projectFileContents)) {
+        if (pathname === `${base}/files/${encodeURIComponent(name)}/content`) {
+          return new Response(body, { headers: { 'Content-Type': 'application/octet-stream' }, status: 200 });
+        }
+      }
     }
 
     return new Response(null, { status: 404, statusText: 'Not Found' });
