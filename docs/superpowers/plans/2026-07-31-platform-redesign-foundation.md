@@ -1155,7 +1155,12 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
                 role="presentation"
                 onclick={closeDrawer}
             ></div>
-            <aside
+            <!-- A div, not an <aside>: <aside> is a non-interactive landmark and
+                 Svelte rejects an interactive role on it
+                 (a11y_no_noninteractive_element_to_interactive_role). A modal
+                 navigation drawer is a dialog, not a complementary landmark, and the
+                 nav snippet inside already carries its own <nav aria-label="Main">. -->
+            <div
                 class="fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col bg-nav px-3 py-4 lg:hidden"
                 role="dialog"
                 aria-modal="true"
@@ -1171,7 +1176,7 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
                     <X class="h-4 w-4" strokeWidth={1.9} />
                 </button>
                 {@render nav('mobile')}
-            </aside>
+            </div>
         {/if}
     </div>
 </div>
