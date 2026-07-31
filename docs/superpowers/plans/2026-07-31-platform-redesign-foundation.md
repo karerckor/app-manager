@@ -297,8 +297,15 @@ Create `resources/css/tokens.css`:
 Add to `package.json` scripts:
 
 ```json
-"test:design": "node --test tests/design/"
+"test:design": "node --test tests/design/*.test.js"
 ```
+
+The glob rather than the bare directory is deliberate. In this environment
+(Node 22.22.3) `node --test tests/design/` resolves the directory as a CJS
+module and throws `Cannot find module`, instead of discovering the test files
+inside it. Verified directly. The glob is non-recursive, which is sufficient:
+`tests/design/` holds exactly two flat files — this task's `contrast.test.js`
+and Task 4's `design-lint.test.js` — and no subdirectory is planned.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
