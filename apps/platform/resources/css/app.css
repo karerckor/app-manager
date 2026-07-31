@@ -1,17 +1,82 @@
 @import 'tailwindcss';
+@import './tokens.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../js/**/*.svelte';
 
+/* Class-driven dark mode: the no-flash script in app.blade.php puts .dark on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-    --font-sans: 'Inter', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
-    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+    --font-condensed: 'IBM Plex Sans Condensed', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+    /* Seven steps. Arbitrary text-[Npx] is prohibited — design:lint enforces it. */
+    --text-2xs: 0.625rem;        /* 10px — structural labels, table heads */
+    --text-2xs--line-height: 0.875rem;
+    --text-xs: 0.71875rem;       /* 11.5px — monospace values, metadata */
+    --text-xs--line-height: 1rem;
+    --text-sm: 0.8125rem;        /* 13px — default body inside tables */
+    --text-sm--line-height: 1.1875rem;
+    --text-base: 0.875rem;       /* 14px — prose */
+    --text-base--line-height: 1.3125rem;
+    --text-lg: 1rem;             /* 16px — section headings */
+    --text-lg--line-height: 1.375rem;
+    --text-xl: 1.25rem;          /* 20px — modal and detail titles */
+    --text-xl--line-height: 1.5625rem;
+    --text-3xl: 1.875rem;        /* 30px — page titles, condensed uppercase */
+    --text-3xl--line-height: 2rem;
+
+    /* Three steps. sm for controls, md for containers, full for avatars and dots. */
+    --radius-sm: 2px;
+    --radius-md: 3px;
+}
+
+/* `inline` so the generated utilities reference var(--token) and follow .dark at runtime. */
+@theme inline {
+    --color-surface: var(--surface);
+    --color-surface-raised: var(--surface-raised);
+    --color-surface-sunken: var(--surface-sunken);
+    --color-border: var(--border);
+    --color-border-subtle: var(--border-subtle);
+    --color-border-control: var(--border-control);
+    --color-text: var(--text);
+    --color-muted: var(--text-muted);
+    --color-faint: var(--text-faint);
+    --color-brand: var(--brand);
+    --color-brand-fg: var(--brand-fg);
+    --color-brand-soft: var(--brand-soft);
+    --color-brand-soft-line: var(--brand-soft-line);
+    --color-ok: var(--ok);
+    --color-warn-text: var(--warn-text);
+    --color-warn-fill: var(--warn-fill);
+    --color-danger: var(--danger);
+    --color-nav: var(--nav);
+    --color-nav-text: var(--nav-text);
+    --color-nav-strong: var(--nav-text-strong);
+    --color-nav-border: var(--nav-border);
 }
 
 @layer base {
-    body { @apply min-h-screen bg-[#f6f7fb] text-slate-950 antialiased; }
+    :focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 2px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+@layer base {
+    body { @apply min-h-screen bg-surface text-text antialiased; }
     input, select, textarea { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10; }
     textarea { @apply min-h-24 resize-y; }
     button { @apply inline-flex cursor-pointer items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50; }
