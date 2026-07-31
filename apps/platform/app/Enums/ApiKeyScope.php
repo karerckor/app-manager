@@ -10,6 +10,8 @@ enum ApiKeyScope: string
     case IdentifiersWrite = 'identifiers:write';
     case AssetsRead = 'assets:read';
     case AssetsWrite = 'assets:write';
+    case FilesRead = 'files:read';
+    case FilesWrite = 'files:write';
     case CredentialsRead = 'credentials:read';
     case CredentialsWrite = 'credentials:write';
     case BuildsRead = 'builds:read';
@@ -69,10 +71,10 @@ enum ApiKeyScope: string
     {
         return match ($this) {
             self::AppsRead, self::IdentifiersRead, self::AssetsRead,
-            self::CredentialsRead, self::BuildsRead, self::LogsRead,
+            self::FilesRead, self::CredentialsRead, self::BuildsRead, self::LogsRead,
             self::ArtifactsRead => TeamPermission::View,
             self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
-            self::BuildsWrite, self::LogsWrite,
+            self::FilesWrite, self::BuildsWrite, self::LogsWrite,
             self::ArtifactsWrite => TeamPermission::ManageApplications,
             self::CredentialsWrite => TeamPermission::ManageCredentials,
             self::IntegrationsRead, self::IntegrationsWrite, self::IntegrationsProxy,
@@ -96,6 +98,7 @@ enum ApiKeyScope: string
             'apps' => 'Applications',
             'identifiers' => 'App identifiers',
             'assets' => 'Assets',
+            'files' => 'App files',
             'credentials' => 'Credentials',
             'builds' => 'Builds',
             'logs' => 'Build logs',
@@ -127,6 +130,8 @@ enum ApiKeyScope: string
             self::IdentifiersWrite => 'Create, update and delete platform identifiers.',
             self::AssetsRead => 'View and download application assets.',
             self::AssetsWrite => 'Upload, replace and delete application assets.',
+            self::FilesRead => 'View and download files attached to an application.',
+            self::FilesWrite => 'Upload, update and delete files attached to an application.',
             self::CredentialsRead => 'View credential metadata, secrets and files.',
             self::CredentialsWrite => 'Create, rotate and delete credentials.',
             self::BuildsRead => 'View build history and build details.',

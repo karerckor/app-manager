@@ -25,6 +25,8 @@ class ApiKeyScopeTest extends TestCase
             'identifiers:write',
             'assets:read',
             'assets:write',
+            'files:read',
+            'files:write',
             'credentials:read',
             'credentials:write',
             'builds:read',
