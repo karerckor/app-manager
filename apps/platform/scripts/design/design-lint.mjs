@@ -2,7 +2,9 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'indigo', 'violet', 'purple', 'rose', 'red', 'emerald', 'green', 'teal', 'amber', 'yellow', 'orange', 'blue', 'sky', 'cyan'];
+// All 22 of Tailwind's default ramps. Omitting any of them leaves a silent hole:
+// `fuchsia` and `pink` are in live use in Pages/Apps/Media/Index.svelte today.
+const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose'];
 const UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'divide', 'from', 'via', 'to', 'outline', 'shadow', 'accent', 'fill', 'stroke', 'decoration', 'placeholder', 'caret'];
 const RADIUS_STEPS = new Set(['none', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', 'full']);
 const ALLOWED_RADII = new Set(['sm', 'md', 'full', 'none']);
@@ -17,6 +19,16 @@ const RULES = [
         name: 'raw-palette',
         pattern: new RegExp(`\\b(?:${UTILITY_PREFIXES.join('|')})-(?:${RAW_PALETTES.join('|')})-\\d{2,3}\\b`, 'g'),
         hint: 'use a semantic token: surface, surface-raised, surface-sunken, border, border-subtle, border-control, text, muted, faint, brand, brand-fg, brand-soft, brand-soft-line, ok, warn-text, warn-fill, danger, nav, nav-text',
+    },
+    {
+        // The radius counterpart of arbitrary-type-size. `rounded-[2px]` appears four
+        // times in AppShell.svelte and `rounded-[22%]` three times in Media/Index.svelte,
+        // so this is an active hole, not a hypothetical one. Note this pattern requires
+        // a bracket, so it never double-counts with off-scale-radius below, whose own
+        // pattern backs off to a bare `rounded` match on the same text.
+        name: 'arbitrary-radius',
+        pattern: /\brounded(?:-[a-z]+)?-\[[^\]]+\]/g,
+        hint: 'radius is three steps: rounded-sm (controls), rounded-md (containers), rounded-full (avatars and dots)',
     },
     {
         name: 'off-scale-radius',
