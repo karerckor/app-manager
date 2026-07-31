@@ -1,0 +1,294 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI (appmctl)" activeNav="/guides/cli">
+  <h1>CLI — <code>appmctl</code></h1>
+  <p>
+    <code>appmctl</code> is a dependency-light command-line client for the App Manager API.
+    It is distributed as a single Bash 3.2-compatible executable, making it suitable for
+    CI runners, minimal build images, and local automation without a language-specific SDK.
+  </p>
+
+  <h2>Requirements</h2>
+  <table>
+    <thead>
+      <tr><th>Tool</th><th>Required for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Bash 3.2+</td><td>All commands</td></tr>
+      <tr><td><code>curl</code></td><td>API requests</td></tr>
+      <tr><td><code>jq</code></td><td><code>--json</code> output, <code>stream</code>, and subcommand formatted output</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Install</h2>
+
+  <h3>curl + bash (recommended for CI)</h3>
+  <CodeBlock lang="bash" code={`curl -fsSL \\
+  https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | bash
+
+export PATH="$HOME/.local/bin:$PATH"
+appmctl --version`} />
+
+  <p>Install to a custom directory:</p>
+  <CodeBlock lang="bash" code={`curl -fsSL \\
+  https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | \\
+  APPMCTL_INSTALL_DIR="$PWD/.appmctl-bin" bash
+
+export PATH="$PWD/.appmctl-bin:$PATH"`} />
+
+  <h3>Pin to a specific commit</h3>
+  <CodeBlock lang="bash" code={`APPMCTL_REF='FULL_GIT_COMMIT_SHA'
+
+curl -fsSL \\
+  "https://raw.githubusercontent.com/karerckor/app-manager/$&#123;APPMCTL_REF&#125;/libs/cli/install.sh" | \\
+  APPMCTL_REF="$APPMCTL_REF" \\
+  APPMCTL_SHA256="expected-sha256-hash" \\
+  bash`} />
+
+  <h3>From a local checkout</h3>
+  <CodeBlock lang="bash" code={`libs/cli/bin/appmctl --help`} />
+
+  <h2>Configuration</h2>
+  <p>The API key and team slug are required. Set them via environment variables:</p>
+  <CodeBlock lang="bash" code={`export APP_MANAGER_API_KEY='1|plain-text-api-key'
+export APP_MANAGER_TEAM='mobile-team'
+export APP_MANAGER_APP='customer-app'            # optional default app
+export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
+
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>CLI override</th><th>Required</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>APP_MANAGER_API_KEY</code></td><td>—</td><td>Yes</td><td>Bearer API key</td></tr>
+      <tr><td><code>APP_MANAGER_TEAM</code></td><td><code>--team</code></td><td>Yes</td><td>Team slug</td></tr>
+      <tr><td><code>APP_MANAGER_INSTANCE_URL</code></td><td><code>--instance-url</code></td><td>No</td><td>Server URL (default: <code>http://localhost:8000</code>)</td></tr>
+      <tr><td><code>APP_MANAGER_APP</code></td><td><code>--app</code></td><td>No</td><td>Default app slug for scoped commands</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The API key is accepted <strong>only</strong> through the environment variable, never as a CLI argument.
+    The CLI never prints the API key in dry-run output.
+  </p>
+
+  <h2>Global options</h2>
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--json</code></td><td>Pretty-print JSON responses with <code>jq</code></td></tr>
+      <tr><td><code>--dry-run</code></td><td>Print the request plan without sending it</td></tr>
+      <tr><td><code>-o, --output FILE</code></td><td>Write response to a file instead of stdout</td></tr>
+      <tr><td><code>--force</code></td><td>Allow <code>--output</code> to overwrite an existing file</td></tr>
+      <tr><td><code>--team TEAM</code></td><td>Override <code>APP_MANAGER_TEAM</code></td></tr>
+      <tr><td><code>--instance-url URL</code></td><td>Override <code>APP_MANAGER_INSTANCE_URL</code></td></tr>
+      <tr><td><code>--app APP</code></td><td>Override <code>APP_MANAGER_APP</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Commands</h2>
+  <p>
+    All subcommands support <code>--help</code> for detailed usage and
+    <code>--dry-run</code> to preview the request without sending it.
+  </p>
+
+  <h3><code>appmctl builds</code></h3>
+  <CodeBlock lang="bash" code={`# List builds for an app
+appmctl builds list --app customer-app --status running
+
+# Show build details
+appmctl builds get bld-abc123
+
+# Create a manual build
+appmctl builds create --app customer-app --profile production
+
+# Cancel a build
+appmctl builds cancel bld-abc123
+
+# Update build status (manual builds with force-status)
+appmctl builds patch bld-abc123 --status completed`} />
+
+  <h3><code>appmctl logs</code></h3>
+  <CodeBlock lang="bash" code={`# Fetch build logs
+appmctl logs get --build-id bld-abc123
+
+# Append log content
+appmctl logs post --build-id bld-abc123 --content "compile: finished\\n"`} />
+
+  <h3><code>appmctl artifacts</code></h3>
+  <CodeBlock lang="bash" code={`# List artifacts for a build
+appmctl artifacts list --build-id bld-abc123
+
+# Download an artifact
+appmctl artifacts get --build-id bld-abc123 art-001 -o app.aab
+
+# Upload an artifact
+appmctl artifacts upload --build-id bld-abc123 \\
+  --name app-release.aab \\
+  --metadata '{"channel":"internal"}' \\
+  --file build/app-release.aab
+
+# Delete an artifact
+appmctl artifacts delete --build-id bld-abc123 art-001`} />
+
+  <h3><code>appmctl apps</code></h3>
+  <CodeBlock lang="bash" code={`# List team apps
+appmctl apps list
+
+# Show app details
+appmctl apps get customer-app
+
+# Create an app
+appmctl apps create --name "Customer App" --slug customer-app
+
+# Update an app
+appmctl apps update customer-app --name "Updated Name"
+
+# Delete an app
+appmctl apps delete customer-app`} />
+
+  <h3><code>appmctl credentials</code></h3>
+  <CodeBlock lang="bash" code={`# List credentials for an app
+appmctl credentials list --app customer-app
+
+# List available credential types
+appmctl credentials types
+
+# Create a credential
+appmctl credentials create --app customer-app \\
+  --type android_keystore --profile production \\
+  --data '{"keystore_password":"secret"}'
+
+# Download a credential file
+appmctl credentials download --app customer-app cred-001 -o keystore.jks`} />
+
+  <h3><code>appmctl integrations</code></h3>
+  <CodeBlock lang="bash" code={`# List integrations
+appmctl integrations list
+
+# List repositories for an integration
+appmctl integrations repos --integration-id int-001
+
+# List workflows
+appmctl integrations workflows --integration-id int-001`} />
+
+  <h3><code>appmctl pipelines</code></h3>
+  <CodeBlock lang="bash" code={`# List pipelines for an integration
+appmctl pipelines list --integration-id int-001
+
+# Trigger a pipeline run
+appmctl pipelines run --integration-id int-001 pipe-001
+
+# Get required inputs for a pipeline
+appmctl pipelines inputs --integration-id int-001 pipe-001`} />
+
+  <h3><code>appmctl webhooks</code></h3>
+  <CodeBlock lang="bash" code={`# List webhook endpoints
+appmctl webhooks list
+
+# Create a webhook
+appmctl webhooks create --url https://example.com/hook \\
+  --events '["build.completed","build.failed"]'
+
+# Send a test delivery
+appmctl webhooks test wh-001
+
+# Rotate the HMAC signing secret
+appmctl webhooks rotate wh-001
+
+# List deliveries
+appmctl webhooks deliveries wh-001`} />
+
+  <h3><code>appmctl request</code> (legacy)</h3>
+  <p>Generic access to any API endpoint. Useful for endpoints not yet covered by dedicated subcommands.</p>
+  <CodeBlock lang="bash" code={`# List apps with pretty JSON
+appmctl --json request GET apps
+
+# Create an app with inline JSON
+appmctl request POST apps \\
+  --data '{"name":"Customer App"}' --json
+
+# Upload a multipart file
+appmctl request POST apps/customer-app/assets/icon \\
+  --file file=icon.png --json`} />
+
+  <h3><code>appmctl stream</code> (legacy)</h3>
+  <p>Run a command locally while uploading its combined stdout/stderr to a manual build log.</p>
+  <CodeBlock lang="bash" code={`# Stream a build step
+appmctl stream \\
+  --app customer-app \\
+  --build-id "$APP_MANAGER_BUILD_ID" \\
+  --step 'JavaScript build' \\
+  -- pnpm build
+
+# Multiple steps on the same build
+appmctl stream --build-id BUILD_ID --step Install -- pnpm install
+appmctl stream --build-id BUILD_ID --step Test -- pnpm test
+appmctl stream --build-id BUILD_ID --step Build -- pnpm build`} />
+
+  <h2>CI/CD examples</h2>
+
+  <h3>GitHub Actions</h3>
+  <CodeBlock lang="yaml" code={`- name: Install App Manager CLI
+  shell: bash
+  run: |
+    curl -fsSL \\
+      https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | \\
+      APPMCTL_INSTALL_DIR="$RUNNER_TEMP/appmctl-bin" bash
+    echo "$RUNNER_TEMP/appmctl-bin" >> "$GITHUB_PATH"
+
+- name: Build and stream logs
+  env:
+    APP_MANAGER_API_KEY: $\&#123;&#123; secrets.APP_MANAGER_API_KEY &#125;&#125;
+    APP_MANAGER_TEAM: mobile-team
+    APP_MANAGER_APP: customer-app
+    APP_MANAGER_INSTANCE_URL: $\&#123;&#123; vars.APP_MANAGER_INSTANCE_URL &#125;&#125;
+    APP_MANAGER_BUILD_ID: $\&#123;&#123; inputs.app_manager_build_id &#125;&#125;
+  run: |
+    appmctl stream \\
+      --build-id "$APP_MANAGER_BUILD_ID" \\
+      --step Build \\
+      -- pnpm build`} />
+
+  <h3>GitLab CI</h3>
+  <CodeBlock lang="yaml" code={`before_script:
+  - curl -fsSL https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
+  - export PATH="$CI_PROJECT_DIR/.appmctl-bin:$PATH"
+
+build:
+  script:
+    - appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --step Build -- pnpm build`} />
+
+  <h3>Full manual build lifecycle</h3>
+  <CodeBlock lang="bash" code={`# 1. Create the build
+BUILD_ID=$(
+  appmctl --json builds create \\
+    --app "$APP_MANAGER_APP" \\
+    --profile production \\
+    --context '{"runner":"ci"}' |
+    jq -er '.data.id'
+)
+export BUILD_ID
+
+# 2. Stream build steps
+appmctl stream --build-id "$BUILD_ID" --manage-status --step Install -- pnpm install
+appmctl stream --build-id "$BUILD_ID" --step Build -- pnpm build
+
+# 3. Upload the artifact
+appmctl artifacts upload \\
+  --build-id "$BUILD_ID" \\
+  --name app-release.aab \\
+  --file build/app-release.aab`} />
+
+  <h2>Security</h2>
+  <ul>
+    <li>The API key is accepted only through <code>APP_MANAGER_API_KEY</code>, never as a CLI argument</li>
+    <li>Authorization headers are written to mode-<code>0600</code> files in a mode-<code>0700</code> temporary directory</li>
+    <li>Dry-run output redacts all sensitive headers</li>
+    <li>Use HTTPS outside local development and pin installer revisions in production CI</li>
+  </ul>
+</DocsLayout>

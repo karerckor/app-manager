@@ -1,0 +1,115 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Webhooks" activeNav="/guides/webhooks">
+  <h1>Outbound Webhooks</h1>
+  <p>
+    Webhook endpoints receive HTTP POST requests when events occur in your team.
+    Each delivery is signed with HMAC-SHA256 and includes retry logic.
+  </p>
+
+  <h2>Creating an endpoint</h2>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/webhooks \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "name": "Production failures",
+    "url": "https://automation.example.com/app-manager",
+    "events": ["build.completed", "artifact.created"],
+    "filters": {
+      "mobile_app_ids": ["019f..."],
+      "tags": ["release", "customer-a"],
+      "build_statuses": ["failed"],
+      "profile_types": ["production"]
+    }
+  }'`} />
+
+  <p>
+    The <code>secret</code> is returned only in the creation response.
+    Save it immediately — it cannot be retrieved later. Use <strong>Rotate secret</strong> to get a new one.
+  </p>
+
+  <h2>Subscribable events</h2>
+  <table>
+    <thead>
+      <tr><th>Event</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>mobile_app.created</code></td><td>Application created</td></tr>
+      <tr><td><code>mobile_app.updated</code></td><td>Application updated</td></tr>
+      <tr><td><code>mobile_app.deleted</code></td><td>Application deleted</td></tr>
+      <tr><td><code>app_identifier.created</code></td><td>Identifier created</td></tr>
+      <tr><td><code>app_identifier.updated</code></td><td>Identifier updated</td></tr>
+      <tr><td><code>app_identifier.deleted</code></td><td>Identifier deleted</td></tr>
+      <tr><td><code>credential.created</code></td><td>Credential created</td></tr>
+      <tr><td><code>credential.updated</code></td><td>Credential updated</td></tr>
+      <tr><td><code>credential.deleted</code></td><td>Credential deleted</td></tr>
+      <tr><td><code>build.created</code></td><td>Build created</td></tr>
+      <tr><td><code>build.started</code></td><td>Build started</td></tr>
+      <tr><td><code>build.cancel_requested</code></td><td>Build cancellation requested</td></tr>
+      <tr><td><code>build.completed</code></td><td>Build completed</td></tr>
+      <tr><td><code>artifact.created</code></td><td>Build artifact uploaded</td></tr>
+      <tr><td><code>artifact.deleted</code></td><td>Build artifact deleted</td></tr>
+      <tr><td><code>team.invitation.created</code></td><td>Team invitation created</td></tr>
+      <tr><td><code>team.invitation.accepted</code></td><td>Team invitation accepted</td></tr>
+      <tr><td><code>team.invitation.revoked</code></td><td>Team invitation revoked</td></tr>
+      <tr><td><code>team.member.role_changed</code></td><td>Team member role changed</td></tr>
+      <tr><td><code>team.member.removed</code></td><td>Team member removed</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Filtering</h2>
+  <p>
+    Optional <code>filters</code> narrow delivery to specific apps, tags, build statuses, or profile types.
+    Empty filter groups don't restrict delivery. Non-empty groups are joined with AND; values within a group are joined with OR.
+  </p>
+
+  <CodeBlock lang="json" code={`{
+  "filters": {
+    "mobile_app_ids": ["019f..."],
+    "tags": ["release"],
+    "build_statuses": ["failed"],
+    "profile_types": ["production"]
+  }
+}`} />
+
+  <h2>Request verification</h2>
+  <p>Each delivery includes these headers:</p>
+  <table>
+    <thead>
+      <tr><th>Header</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>X-App-Manager-Event</code></td><td>Event type</td></tr>
+      <tr><td><code>X-App-Manager-Delivery</code></td><td>Delivery ID</td></tr>
+      <tr><td><code>X-App-Manager-Timestamp</code></td><td>Unix timestamp</td></tr>
+      <tr><td><code>X-App-Manager-Signature</code></td><td>HMAC-SHA256 signature</td></tr>
+    </tbody>
+  </table>
+
+  <p>The <code>v1</code> signature is computed as:</p>
+  <CodeBlock lang="text" code={`HMAC-SHA256({timestamp}.{raw_body}, {signing_secret})`} />
+
+  <p>
+    Always verify the timestamp and signature before parsing the JSON body.
+    Handle deliveries idempotently — retries preserve the delivery ID.
+  </p>
+
+  <h2>Testing</h2>
+  <p>
+    Use the <strong>Test</strong> endpoint to queue a test delivery. It is always sent
+    regardless of subscriptions and filters.
+  </p>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/webhooks/ENDPOINT_ID/test \\
+  -H 'Authorization: Bearer YOUR_API_KEY'`} />
+
+  <h2>Redelivery</h2>
+  <p>
+    Manual redelivery creates a new delivery record linked to the original via <code>redelivery_of_id</code>.
+  </p>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/webhooks/ENDPOINT_ID/deliveries/DELIVERY_ID/redeliver \\
+  -H 'Authorization: Bearer YOUR_API_KEY'`} />
+</DocsLayout>

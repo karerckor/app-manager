@@ -1,0 +1,77 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Builds" activeNav="/guides/builds">
+  <h1>Builds</h1>
+  <p>
+    Builds support two reporting modes: <strong>automatic</strong> (App Manager triggers CI/CD pipelines)
+    and <strong>manual</strong> (your own runner manages the lifecycle).
+  </p>
+
+  <h2>Build lifecycle</h2>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Description</th><th>Terminal?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>pending</code></td><td>Build created, waiting to start</td><td>No</td></tr>
+      <tr><td><code>running</code></td><td>Build in progress</td><td>No</td></tr>
+      <tr><td><code>cancel_requested</code></td><td>Cancellation requested from UI</td><td>No</td></tr>
+      <tr><td><code>completed</code></td><td>Build finished successfully</td><td>Yes</td></tr>
+      <tr><td><code>failed</code></td><td>Build failed</td><td>Yes</td></tr>
+      <tr><td><code>cancelled</code></td><td>Build cancelled</td><td>Yes</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Creating a manual build</h2>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/builds \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "request_uuid": "598a349f-b526-40ba-8e54-247772bce160",
+    "profile_type": "production",
+    "app_identifier_id": "019f...",
+    "context": {"commit": "abc123", "runner": "self-hosted"},
+    "parameters": {"channel": "internal", "minify": true}
+  }'`} />
+
+  <p>Creation is idempotent per team + <code>request_uuid</code> pair. Repeated requests return the same build.</p>
+
+  <h2>Updating build status</h2>
+  <CodeBlock lang="bash" code={`curl -X PATCH http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_ID \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"status": "running"}'`} />
+
+  <h2>Writing build logs</h2>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_ID/logs \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"content": "compile: started\\n"}'`} />
+
+  <p>Log chunks are limited to 256 KiB. Total log size is limited to 5 MiB.</p>
+
+  <h2>Automatic builds</h2>
+  <p>
+    For automatic builds, App Manager triggers the CI/CD pipeline, monitors its status,
+    and downloads the journal. Manual status or log writes for automatic builds return <code>409</code>.
+  </p>
+
+  <h2>Parameters</h2>
+  <p>
+    The <code>parameters</code> field is an arbitrary JSON object up to 64 KB.
+    App Manager stores it with the build, returns it in the API, and includes it in all webhook payloads.
+  </p>
+
+  <h2>Cancellation</h2>
+  <p>
+    Requesting cancellation transitions a manual build to <code>cancel_requested</code>.
+    The runner then confirms <code>cancelled</code> or reports the actual status.
+    If the runner stops responding, a user with pipeline permissions can force the status from the UI.
+  </p>
+</DocsLayout>

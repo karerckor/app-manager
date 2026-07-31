@@ -1,0 +1,80 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Introduction" activeNav="/">
+  <h1>App Manager Platform</h1>
+  <p>
+    A multi-tenant mobile app management platform with a REST API for managing
+    applications, builds, credentials, CI/CD pipelines, Expo integration, and outbound webhooks.
+  </p>
+
+  <h2>Quick links</h2>
+  <ul>
+    <li><a href="/getting-started">Getting Started</a> — set up your first API key and make your first request</li>
+    <li><a href="/guides/cli">CLI (appmctl)</a> — install and use the command-line client for CI/CD and automation</li>
+    <li><a href="/api-reference">API Reference</a> — interactive documentation with request testing</li>
+    <li><a href="/guides/authentication">Authentication</a> — API keys, scopes, and permissions</li>
+  </ul>
+
+  <h2>Base URL</h2>
+  <CodeBlock lang="text" code={`http://localhost:8000/api/v1/{team_slug}`} />
+  <p>
+    All endpoints are scoped to a team via the <code>team_slug</code> path parameter.
+    Resources from one team are never exposed to another.
+  </p>
+
+  <h2>Authentication</h2>
+  <p>Every request requires a Bearer token (API key) and an Accept header:</p>
+  <CodeBlock lang="http" code={`Authorization: Bearer {api-key}
+Accept: application/json`} />
+  <p>
+    API keys are created in the team settings panel. The plaintext key is shown only once at creation time.
+    Each key belongs to exactly one team and is scoped to specific permissions.
+  </p>
+
+  <h2>Key concepts</h2>
+  <table>
+    <thead>
+      <tr><th>Concept</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Mobile Apps</strong></td><td>Core entity — a mobile application with metadata, assets, identifiers, and credentials</td></tr>
+      <tr><td><strong>App Identifiers</strong></td><td>Platform-specific identifiers (iOS bundle ID, Android package name, Web domain)</td></tr>
+      <tr><td><strong>Credentials</strong></td><td>Signing certificates, keystores, provisioning profiles with encrypted payloads</td></tr>
+      <tr><td><strong>Builds</strong></td><td>Build records with lifecycle management (manual and automatic modes)</td></tr>
+      <tr><td><strong>Artifacts</strong></td><td>Build output files (IPA, APK, AAB)</td></tr>
+      <tr><td><strong>CI/CD Pipelines</strong></td><td>GitHub Actions and GitLab CI/CD workflow configurations</td></tr>
+      <tr><td><strong>Integrations</strong></td><td>External services (GitHub, GitLab, Expo, webhooks)</td></tr>
+      <tr><td><strong>Webhooks</strong></td><td>Outbound webhook endpoints with HMAC-SHA256 signed deliveries</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Response format</h2>
+  <p>All responses use a standard envelope:</p>
+  <CodeBlock lang="json" code={`{
+  "data": { /* resource or array */ },
+  "links": { /* pagination links */ },
+  "meta": { /* pagination metadata */ }
+}`} />
+
+  <h2>HTTP status codes</h2>
+  <table>
+    <thead>
+      <tr><th>Code</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>200</code></td><td>Success (read/update)</td></tr>
+      <tr><td><code>201</code></td><td>Created</td></tr>
+      <tr><td><code>202</code></td><td>Accepted (queued)</td></tr>
+      <tr><td><code>204</code></td><td>No Content (delete)</td></tr>
+      <tr><td><code>401</code></td><td>Unauthenticated</td></tr>
+      <tr><td><code>403</code></td><td>Forbidden</td></tr>
+      <tr><td><code>404</code></td><td>Not Found (including cross-team access)</td></tr>
+      <tr><td><code>409</code></td><td>Conflict (invalid state transition)</td></tr>
+      <tr><td><code>422</code></td><td>Validation Error</td></tr>
+      <tr><td><code>502/503</code></td><td>Upstream provider error (Expo)</td></tr>
+    </tbody>
+  </table>
+</DocsLayout>

@@ -1,0 +1,93 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import '@scalar/api-reference/style.css';
+import '@scalar/api-reference/vue-styles.css';
+---
+
+<DocsLayout title="API Reference" activeNav="/api-reference">
+  <h1>API Reference</h1>
+  <p>
+    Interactive API documentation powered by
+    <a href="https://scalar.com/" target="_blank">Scalar</a>.
+    Enter your API server URL and API key to test requests directly from the browser.
+  </p>
+
+  <div id="scalar-api-reference"></div>
+
+  <script>
+    import { createApiReference } from '@scalar/api-reference';
+
+    function init() {
+      const el = document.getElementById('scalar-api-reference');
+      if (!el) return;
+
+      createApiReference(el, {
+        url: '/openapi.yaml',
+        proxyUrl: 'https://proxy.scalar.com',
+        persistAuth: true,
+        darkMode: true,
+        layout: 'modern',
+        authentication: {
+          preferredSecurityScheme: 'bearerAuth',
+          securitySchemes: {
+            bearerAuth: {
+              token: '',
+            },
+          },
+        },
+        servers: [
+          {
+            url: 'https://app.example.com/api/v1/{team_slug}',
+            description: 'Production',
+            variables: {
+              team_slug: {
+                default: 'demo-users-team',
+                description: 'Your team slug',
+              },
+            },
+          },
+          {
+            url: 'http://localhost:8000/api/v1/{team_slug}',
+            description: 'Local development',
+            variables: {
+              team_slug: {
+                default: 'demo-users-team',
+                description: 'Your team slug',
+              },
+            },
+          },
+        ],
+        defaultHttpClient: {
+          targetKey: 'shell',
+          clientKey: 'curl',
+        },
+        metaData: {
+          title: 'App Manager API Reference',
+          description: 'Interactive API documentation for the App Manager Platform.',
+        },
+        showOperationId: true,
+      });
+    }
+
+    // Scalar needs DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+
+  <style is:global>
+    .content {
+      max-width: none;
+    }
+
+    #scalar-api-reference {
+      margin-top: 24px;
+    }
+
+    #scalar-api-reference .t-editor-wrapper {
+      min-height: 600px;
+    }
+  </style>
+</DocsLayout>

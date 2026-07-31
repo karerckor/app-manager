@@ -5,6 +5,9 @@ apps/platform/.env
 apps/platform/vendor/
 apps/platform/node_modules/
 apps/platform/public/build/
+apps/docs/dist/
+apps/docs/node_modules/
+apps/docs/.astro/
 libs/fastlane-plugin/.bundle/
 libs/fastlane-plugin/pkg/
 libs/fastlane-plugin/*.gem

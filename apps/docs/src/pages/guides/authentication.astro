@@ -1,0 +1,71 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Authentication" activeNav="/guides/authentication">
+  <h1>Authentication</h1>
+  <p>
+    All API requests require a Bearer token (API key) tied to a specific team.
+    Keys are created by the team owner in the <strong>Settings → API Keys</strong> panel.
+  </p>
+
+  <h2>Request format</h2>
+  <CodeBlock lang="http" code={`Authorization: Bearer {api-key}
+Accept: application/json`} />
+
+  <h2>API key behavior</h2>
+  <ul>
+    <li>Each key belongs to exactly one team — membership across teams does not expand access</li>
+    <li>The plaintext key is shown only once at creation time</li>
+    <li>Deleting a team revokes all its keys automatically</li>
+    <li>Keys have no default expiration</li>
+  </ul>
+
+  <h2>Scopes</h2>
+  <p>
+    Scopes grant fine-grained permissions. Read and write scopes are independent —
+    for example, a CI runner can get <code>builds:write</code> and <code>logs:write</code>
+    without access to read history or logs.
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Scope</th><th>Access</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>apps:read</code> / <code>apps:write</code></td><td>View / manage applications</td></tr>
+      <tr><td><code>identifiers:read</code> / <code>identifiers:write</code></td><td>View / manage platform identifiers</td></tr>
+      <tr><td><code>assets:read</code> / <code>assets:write</code></td><td>Download / upload and delete icon and splashscreen</td></tr>
+      <tr><td><code>credentials:read</code> / <code>credentials:write</code></td><td>Read secrets and files / create, rotate, and delete credentials</td></tr>
+      <tr><td><code>builds:read</code> / <code>builds:write</code></td><td>Build history and details / create and modify builds</td></tr>
+      <tr><td><code>logs:read</code> / <code>logs:write</code></td><td>Read / append build logs</td></tr>
+      <tr><td><code>artifacts:read</code> / <code>artifacts:write</code></td><td>View and download / upload and delete build artifacts</td></tr>
+      <tr><td><code>integrations:read</code> / <code>integrations:write</code></td><td>View / connect, sync, and manage integrations</td></tr>
+      <tr><td><code>integrations:proxy</code></td><td>Forward authenticated requests to provider APIs</td></tr>
+      <tr><td><code>pipelines:read</code> / <code>pipelines:write</code> / <code>pipelines:run</code></td><td>View / configure / dispatch CI/CD pipelines</td></tr>
+      <tr><td><code>webhooks:read</code> / <code>webhooks:write</code></td><td>View / manage webhook endpoints</td></tr>
+      <tr><td><code>deliveries:read</code></td><td>View webhook delivery history</td></tr>
+      <tr><td><code>api-keys:read</code> / <code>api-keys:write</code></td><td>List / create and revoke team API keys</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Error responses</h2>
+  <p>If the key is missing or invalid, the API responds with <code>401</code>.
+  If the key belongs to another team or lacks the required scope, the API responds with <code>403</code>.
+  Resources belonging to other teams are never exposed — they return <code>404</code>.</p>
+
+  <h2>Recommended scopes by use case</h2>
+  <table>
+    <thead>
+      <tr><th>Use case</th><th>Scopes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>CI/CD runner (manual builds)</td><td><code>builds:write</code>, <code>logs:write</code></td></tr>
+      <tr><td>CI/CD runner (read status)</td><td><code>builds:read</code>, <code>logs:read</code></td></tr>
+      <tr><td>Dashboard / admin UI</td><td><code>apps:read</code>, <code>identifiers:read</code>, <code>credentials:read</code>, <code>builds:read</code></td></tr>
+      <tr><td>Credential management</td><td><code>credentials:read</code>, <code>credentials:write</code></td></tr>
+      <tr><td>Full access</td><td>All scopes</td></tr>
+    </tbody>
+  </table>
+</DocsLayout>

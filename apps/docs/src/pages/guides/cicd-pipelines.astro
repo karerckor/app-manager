@@ -1,0 +1,90 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CI/CD Pipelines" activeNav="/guides/cicd-pipelines">
+  <h1>CI/CD Pipelines</h1>
+  <p>
+    Configure and dispatch CI/CD pipelines for GitHub Actions and GitLab CI/CD.
+    Pipelines link a repository workflow to a mobile app and build profile.
+  </p>
+
+  <h2>Discovery</h2>
+  <p>Before creating a pipeline, discover available resources through an integration:</p>
+
+  <h3>Repositories</h3>
+  <CodeBlock lang="bash" code={`curl http://localhost:8000/api/v1/acme/integrations/INTEGRATION_ID/repositories \\
+  -H 'Authorization: Bearer YOUR_API_KEY'`} />
+
+  <h3>Workflows</h3>
+  <CodeBlock lang="bash" code={`curl "http://localhost:8000/api/v1/acme/integrations/INTEGRATION_ID/workflows?repository_full_name=owner/repo" \\
+  -H 'Authorization: Bearer YOUR_API_KEY'`} />
+
+  <h3>Git refs</h3>
+  <CodeBlock lang="bash" code={`curl "http://localhost:8000/api/v1/acme/integrations/INTEGRATION_ID/refs?repository_full_name=owner/repo" \\
+  -H 'Authorization: Bearer YOUR_API_KEY'`} />
+
+  <h2>Creating a pipeline</h2>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/integrations/INTEGRATION_ID/pipelines \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "name": "Production Build",
+    "mobile_app_id": "019f...",
+    "profile_type": "production",
+    "repository_full_name": "org/repo",
+    "workflow_id": "build.yml",
+    "default_ref": "main",
+    "input_defaults": {
+      "environment": "production"
+    }
+  }'`} />
+
+  <h2>Dispatching a run</h2>
+  <CodeBlock lang="bash" code={`curl -X POST http://localhost:8000/api/v1/acme/integrations/INTEGRATION_ID/pipelines/PIPELINE_ID/runs \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    "request_uuid": "598a349f-b526-40ba-8e54-247772bce160",
+    "ref": "main",
+    "inputs": {
+      "environment": "staging"
+    }
+  }'`} />
+
+  <p>
+    The response includes a <code>BuildRecord</code> with the pipeline's build ID.
+    The runner can use this ID to report status and logs.
+  </p>
+
+  <h2>Pipeline configuration</h2>
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>name</code></td><td>Pipeline name</td></tr>
+      <tr><td><code>mobile_app_id</code></td><td>Target application</td></tr>
+      <tr><td><code>profile_type</code></td><td>Build profile (e.g. <code>production</code>)</td></tr>
+      <tr><td><code>repository_full_name</code></td><td>Repository (e.g. <code>org/repo</code>)</td></tr>
+      <tr><td><code>workflow_id</code></td><td>Workflow file or ID</td></tr>
+      <tr><td><code>default_ref</code></td><td>Default git ref (e.g. <code>main</code>)</td></tr>
+      <tr><td><code>input_defaults</code></td><td>Default input values for the workflow</td></tr>
+      <tr><td><code>reporting_mode</code></td><td><code>manual</code> or <code>automatic</code></td></tr>
+      <tr><td><code>enabled</code></td><td>Whether the pipeline is active</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Reporting modes</h2>
+  <p>
+    <strong>Automatic:</strong> App Manager triggers the workflow, monitors its status,
+    and downloads the log. Manual status or log writes return <code>409</code>.
+  </p>
+  <p>
+    <strong>Manual:</strong> The runner manages the build lifecycle and writes status and logs
+    through the API.
+  </p>
+</DocsLayout>

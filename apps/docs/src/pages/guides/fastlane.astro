@@ -1,0 +1,419 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Fastlane Plugin" activeNav="/guides/fastlane">
+  <h1>Fastlane Plugin</h1>
+  <p>
+    <code>fastlane-plugin-app_manager</code> connects <a href="https://fastlane.tools" target="_blank">Fastlane</a> lanes
+    to the App Manager API. It provides composable actions for downloading signing credentials, managing build lifecycle,
+    uploading artifacts, and inspecting app metadata &mdash; all from your <code>Fastfile</code>.
+  </p>
+  <p>
+    The plugin does not own the build itself. Every download action writes to the exact <code>output_path</code> you specify,
+    so the result can be combined with native Xcode/Gradle lanes, Flutter, React Native, Expo, or a custom pipeline.
+  </p>
+
+  <h2>Requirements</h2>
+  <table>
+    <thead>
+      <tr><th>Dependency</th><th>Version</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Ruby</td><td>&ge; 3.1</td></tr>
+      <tr><td>Fastlane</td><td>&ge; 2.220, &lt; 3</td></tr>
+      <tr><td>App Manager instance</td><td>Accessible via HTTPS (or HTTP for local dev)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Installation</h2>
+  <p>The plugin is consumed as a local Bundler dependency from the monorepo. Add it to your mobile project's <code>Gemfile</code> or <code>fastlane/Pluginfile</code>:</p>
+  <CodeBlock lang="ruby" code={`gem "fastlane-plugin-app_manager", path: "../libs/fastlane-plugin"`} />
+  <p>Then install and verify:</p>
+  <CodeBlock lang="bash" code={`bundle install
+bundle exec fastlane action app_manager_configure`} />
+
+  <h2>Configuration</h2>
+  <p>Configure the API once near the start of a lane. All subsequent actions reuse these settings:</p>
+  <CodeBlock lang="ruby" code={`app_manager_configure(
+  api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+  base_url: "https://manager.example.com",  # optional, defaults to http://localhost:8000
+  team: "mobile-team",
+  app: "customer-app"
+)`} />
+
+  <p>Alternatively, configure via environment variables (the configure action becomes optional):</p>
+  <CodeBlock lang="bash" code={`export APP_MANAGER_API_KEY='1|plain-text-api-key'
+export APP_MANAGER_BASE_URL='https://manager.example.com'
+export APP_MANAGER_TEAM='mobile-team'
+export APP_MANAGER_APP='customer-app'`} />
+
+  <h3>Timeout and retry settings</h3>
+  <p>
+    The HTTP client automatically retries transient errors (HTTP 429, 502, 503, 504 and network failures)
+    with exponential backoff. Customize timeouts and retry count:
+  </p>
+  <CodeBlock lang="ruby" code={`app_manager_configure(
+  api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+  team: "mobile-team",
+  app: "customer-app",
+  connect_timeout: 30,   # seconds, default: 10
+  read_timeout: 120,     # seconds, default: 60
+  max_retries: 5         # default: 3
+)`} />
+
+  <h3>Required API scopes</h3>
+  <table>
+    <thead>
+      <tr><th>Operation</th><th>Minimum scopes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>app_manager_app_info</code></td><td><code>apps:read</code>, <code>identifiers:read</code></td></tr>
+      <tr><td><code>app_manager_list_builds</code>, <code>show_build</code></td><td><code>builds:read</code></td></tr>
+      <tr><td><code>app_manager_cancel_build</code></td><td><code>pipelines:run</code></td></tr>
+      <tr><td><code>app_manager_list_credentials</code></td><td><code>credentials:read</code></td></tr>
+      <tr><td><code>app_manager_list_identifiers</code></td><td><code>identifiers:read</code></td></tr>
+      <tr><td><code>app_manager_download_artifact</code></td><td><code>artifacts:read</code></td></tr>
+      <tr><td>Icon or splash-screen download</td><td><code>assets:read</code></td></tr>
+      <tr><td>Credential download</td><td><code>credentials:read</code> (+ <code>identifiers:read</code> when <code>app_identifier</code> is omitted)</td></tr>
+      <tr><td>Create/start/finish a manual build</td><td><code>builds:write</code></td></tr>
+      <tr><td>Append a build log</td><td><code>logs:write</code></td></tr>
+      <tr><td>Upload a build artifact</td><td><code>artifacts:write</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Actions reference</h2>
+  <p>All 22 actions provided by the plugin:</p>
+  <table>
+    <thead>
+      <tr><th>Action</th><th>Description</th><th>Platforms</th></tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="3"><strong>Configuration &amp; metadata</strong></td></tr>
+      <tr><td><code>app_manager_configure</code></td><td>Configure API connection</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_app_info</code></td><td>Fetch app name, metadata and identifiers</td><td>iOS, Android</td></tr>
+
+      <tr><td colspan="3"><strong>Build management</strong></td></tr>
+      <tr><td><code>app_manager_create_build</code></td><td>Create a manual build in <code>pending</code> status</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_build_start</code></td><td>Mark build as <code>running</code></td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_build_log</code></td><td>Append plain-text log output</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_build_finish</code></td><td>Finish as <code>completed</code>, <code>failed</code>, or <code>cancelled</code></td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_list_builds</code></td><td>List builds with optional status filter</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_show_build</code></td><td>Show build details</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_cancel_build</code></td><td>Request build cancellation</td><td>iOS, Android</td></tr>
+
+      <tr><td colspan="3"><strong>Artifacts</strong></td></tr>
+      <tr><td><code>app_manager_add_artifact</code></td><td>Upload and attach a file to a build</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_download_artifact</code></td><td>Download a build artifact</td><td>iOS, Android</td></tr>
+
+      <tr><td colspan="3"><strong>Assets</strong></td></tr>
+      <tr><td><code>app_manager_download_icon</code></td><td>Download app icon</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_download_splashscreen</code></td><td>Download splash screen</td><td>iOS, Android</td></tr>
+
+      <tr><td colspan="3"><strong>Credentials &amp; identifiers</strong></td></tr>
+      <tr><td><code>app_manager_list_credentials</code></td><td>List all credentials for the app</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_list_identifiers</code></td><td>List app identifiers (bundle IDs, package names)</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_download_ios_certificate</code></td><td>Download iOS signing certificate (.p12)</td><td>iOS</td></tr>
+      <tr><td><code>app_manager_download_provisioning_profile</code></td><td>Download provisioning profile</td><td>iOS</td></tr>
+      <tr><td><code>app_manager_download_android_keystore</code></td><td>Download Android keystore</td><td>Android</td></tr>
+      <tr><td><code>app_manager_download_firebase_config</code></td><td>Download Firebase service-account JSON</td><td>iOS, Android</td></tr>
+      <tr><td><code>app_manager_download_apns_key</code></td><td>Download APNs authentication key (.p8)</td><td>iOS</td></tr>
+      <tr><td><code>app_manager_download_google_play_service_account</code></td><td>Download Google Play service-account JSON</td><td>Android</td></tr>
+      <tr><td><code>app_manager_download_apple_api_key</code></td><td>Download App Store Connect API key (.p8)</td><td>iOS</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Shared lane context</h2>
+  <p>Several actions store their result in Fastlane's lane context for use by subsequent actions:</p>
+  <table>
+    <thead>
+      <tr><th>SharedValue</th><th>Set by</th><th>Type</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>APP_MANAGER_APP_INFO</code></td><td><code>app_manager_app_info</code></td><td>App metadata hash</td></tr>
+      <tr><td><code>APP_MANAGER_BUILD_ID</code></td><td><code>app_manager_create_build</code></td><td>Build UUID string</td></tr>
+      <tr><td><code>APP_MANAGER_BUILDS</code></td><td><code>app_manager_list_builds</code></td><td>Array of build hashes</td></tr>
+      <tr><td><code>APP_MANAGER_BUILD_INFO</code></td><td><code>app_manager_show_build</code></td><td>Build hash</td></tr>
+      <tr><td><code>APP_MANAGER_CREDENTIALS</code></td><td><code>app_manager_list_credentials</code></td><td>Array of credential hashes</td></tr>
+      <tr><td><code>APP_MANAGER_IDENTIFIERS</code></td><td><code>app_manager_list_identifiers</code></td><td>Array of identifier hashes</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Build lifecycle actions (<code>build_start</code>, <code>build_log</code>, <code>build_finish</code>,
+    <code>add_artifact</code>, <code>cancel_build</code>) automatically resolve the build ID from:
+  </p>
+  <ol>
+    <li>The action's explicit <code>build_id</code> parameter</li>
+    <li><code>APP_MANAGER_BUILD_ID</code> in lane context (set by <code>create_build</code>)</li>
+    <li>The <code>APP_MANAGER_BUILD_ID</code> environment variable (injected by CI)</li>
+  </ol>
+
+  <h2>iOS example</h2>
+  <CodeBlock lang="ruby" code={`lane :ios_release do
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+    team: "mobile-team",
+    app: "customer-app"
+  )
+
+  # Fetch app metadata
+  info = app_manager_app_info
+  ios_id = info[:default_app_identifiers].fetch(:ios).fetch(:identifier)
+
+  # Download signing assets
+  certificate = app_manager_download_ios_certificate(
+    profile_type: "appstore",
+    output_path: "build/signing/distribution.p12"
+  )
+
+  profile = app_manager_download_provisioning_profile(
+    profile_type: "appstore",
+    output_path: "build/signing/appstore.mobileprovision"
+  )
+
+  apple_key = app_manager_download_apple_api_key(
+    output_path: "build/submission/AuthKey.p8"
+  )
+
+  # Configure signing
+  import_certificate(
+    certificate_path: certificate[:path],
+    certificate_password: certificate[:payload]["password"]
+  )
+
+  api_key = app_store_connect_api_key(
+    key_id: apple_key[:payload]["key_id"],
+    issuer_id: apple_key[:payload]["issuer_id"],
+    key_filepath: apple_key[:path]
+  )
+
+  install_provisioning_profile(path: profile[:path])
+
+  # Build and upload
+  build_app(
+    export_options: {
+      provisioningProfiles: &#123; ios_id => "Customer App Store Profile" &#125;
+    }
+  )
+  upload_to_testflight(api_key: api_key)
+end`} />
+
+  <h2>Android example</h2>
+  <CodeBlock lang="ruby" code={`lane :android_release do
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+    team: "mobile-team",
+    app: "customer-app"
+  )
+
+  keystore = app_manager_download_android_keystore(
+    profile_type: "production",
+    output_path: "android/app/release.jks"
+  )
+
+  play = app_manager_download_google_play_service_account(
+    output_path: "build/submission/google-play.json"
+  )
+
+  gradle(
+    task: "bundle",
+    build_type: "Release",
+    properties: &#123;
+      "android.injected.signing.store.file" => keystore[:path],
+      "android.injected.signing.store.password" => keystore[:payload]["store_password"],
+      "android.injected.signing.key.alias" => keystore[:payload]["key_alias"],
+      "android.injected.signing.key.password" => keystore[:payload]["key_password"]
+    &#125;
+  )
+
+  upload_to_play_store(json_key: play[:path])
+end`} />
+
+  <h2>Manual build lifecycle</h2>
+  <p>
+    Use manual reporting when App Manager cannot poll the CI provider.
+    A self-hosted runner creates and owns the complete build lifecycle:
+  </p>
+  <CodeBlock lang="ruby" code={`lane :build_with_reporting do
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+    team: "mobile-team",
+    app: "customer-app"
+  )
+
+  build = app_manager_create_build(
+    profile_type: "production",
+    context: &#123; commit: ENV["GITHUB_SHA"], runner: "self-hosted" &#125;
+  )
+
+  app_manager_build_start
+  app_manager_build_log(message: "Resolving dependencies")
+
+  begin
+    # Your actual build steps here
+    gradle(task: "bundle", build_type: "Release")
+
+    app_manager_add_artifact(
+      file: "app/build/outputs/bundle/release/app-release.aab",
+      name: "app-release.aab",
+      metadata: &#123; git_sha: ENV["GITHUB_SHA"] &#125;
+    )
+
+    app_manager_build_finish(status: "completed")
+  rescue StandardError => error
+    app_manager_build_log(message: "Build failed: #&#123;error.message&#125;")
+    app_manager_build_finish(status: "failed")
+    raise
+  end
+end`} />
+
+  <h2>Listing and inspecting</h2>
+  <p>Query builds, credentials, and identifiers from your lane:</p>
+  <CodeBlock lang="ruby" code={`# List recent failed builds
+builds = app_manager_list_builds(status: "failed", limit: 10)
+# => [{ "id" => "...", "status" => "failed", ... }, ...]
+
+# Show details of a specific build
+build = app_manager_show_build(build_id: "build-uuid")
+
+# Cancel a running build
+app_manager_cancel_build(build_id: "build-uuid")
+
+# List all credentials
+credentials = app_manager_list_credentials
+# => [{ "id" => "...", "type" => "ios_certificate", "name" => "..." }, ...]
+
+# List all identifiers
+identifiers = app_manager_list_identifiers
+# => [{ "id" => "...", "platform" => "ios", "identifier" => "com.example.app" }, ...]
+
+# Download an artifact from a previous build
+app_manager_download_artifact(
+  artifact_id: "artifact-uuid",
+  output_path: "build/release.apk",
+  build_id: "build-uuid"
+)`} />
+
+  <h2>White-label configuration</h2>
+  <p>
+    <code>app_manager_app_info</code> combines the configured app with its identifiers.
+    The first identifier for each platform is marked as <code>default: true</code>:
+  </p>
+  <CodeBlock lang="ruby" code={`info = app_manager_app_info
+
+info[:name]          # "Customer App"
+info[:metadata]      # { "owner" => "mobile-team", "channel" => "production" }
+info[:app_identifiers]
+# [
+#   { platform: :ios, identifier: "com.example.customer", default: true, ... },
+#   { platform: :android, identifier: "com.example.customer", default: true, ... },
+#   { platform: :ios, identifier: "com.example.customer.beta", default: false, ... }
+# ]
+
+# Use default identifiers directly
+info[:default_app_identifiers][:ios][:identifier]
+info[:default_app_identifiers][:android][:version_code]`} />
+  <p>
+    This makes it easy to build white-label apps: fetch the metadata once, then apply names
+    and identifiers to your Xcode project or Gradle configuration.
+  </p>
+
+  <h2>CI/CD integration</h2>
+
+  <h3>GitHub Actions</h3>
+  <CodeBlock lang="yaml" code={`name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      app_manager_build_id:
+        required: false
+        type: string
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    env:
+      APP_MANAGER_BUILD_ID: $\&#123;&#123; inputs.app_manager_build_id &#125;&#125;
+      APP_MANAGER_API_KEY: $\&#123;&#123; secrets.APP_MANAGER_API_KEY &#125;&#125;
+      APP_MANAGER_TEAM: mobile-team
+      APP_MANAGER_APP: customer-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - run: bundle exec fastlane ios release`} />
+
+  <h3>Bitrise</h3>
+  <CodeBlock lang="yaml" code={`workflows:
+  build:
+    envs:
+      - APP_MANAGER_API_KEY: $APP_MANAGER_API_KEY
+      - APP_MANAGER_TEAM: mobile-team
+      - APP_MANAGER_APP: customer-app
+    steps:
+      - bundle@1:
+          inputs:
+            - command: exec fastlane android release`} />
+
+  <h2>Return values</h2>
+  <p>Asset actions return an absolute destination path. Credential actions return a hash:</p>
+  <CodeBlock lang="ruby" code={`# Credential return shape
+&#123;
+  path: "/absolute/path/to/file",
+  id: "credential-uuid",
+  type: "android_keystore",
+  name: "Production keystore",
+  payload: &#123; "store_password" => "...", "key_alias" => "...", "key_password" => "..." &#125;,
+  expires_at: "2027-07-14T00:00:00Z",
+  profile_type: "production",
+  app_identifier: "com.example.customer"
+&#125;`} />
+  <p>
+    Parent directories are created automatically. Downloads use atomic writes (temp file + rename).
+    Asset files use mode <code>0644</code>; credentials use mode <code>0600</code>.
+  </p>
+
+  <h2>Error handling</h2>
+  <p>Actions stop the lane with a Fastlane user error when configuration is missing, the API is unreachable, or a response has an unexpected shape.</p>
+  <table>
+    <thead>
+      <tr><th>HTTP code</th><th>Likely cause</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>401</code></td><td>Missing, invalid, or revoked API key</td></tr>
+      <tr><td><code>403</code></td><td>Key lacks a required scope, or creator lacks team permission</td></tr>
+      <tr><td><code>404</code></td><td>Wrong team/app slug, cross-team resource, or missing file</td></tr>
+      <tr><td><code>409</code></td><td>Build is automatic or has a conflicting terminal state</td></tr>
+      <tr><td><code>422</code></td><td>Invalid build profile, payload, or artifact metadata</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The plugin automatically retries on transient errors (429, 502, 503, 504) and network failures
+    with exponential backoff. Use <code>app_manager_configure</code> to adjust <code>max_retries</code>.
+  </p>
+  <p>Common non-HTTP errors:</p>
+  <table>
+    <thead>
+      <tr><th>Symptom</th><th>Fix</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>Multiple App Manager credentials match</code></td><td>Add <code>credential_id</code> or a unique <code>credential_name</code></td></tr>
+      <tr><td>No platform identifier</td><td>Create an identifier in App Manager or pass <code>app_identifier</code> explicitly</td></tr>
+      <tr><td><code>Refusing to overwrite</code></td><td>Set <code>overwrite: true</code> or choose a fresh destination</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Troubleshooting</h2>
+  <CodeBlock lang="bash" code={`# Inspect available options for any action
+bundle exec fastlane action app_manager_download_android_keystore
+
+# Check plugin installation
+bundle exec fastlane action app_manager_configure
+
+# Run tests locally
+cd libs/fastlane-plugin
+bundle install
+bundle exec rspec`} />
+</DocsLayout>

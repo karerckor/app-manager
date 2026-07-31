@@ -1,0 +1,48 @@
+---
+import { codeToHtml } from 'shiki';
+
+interface Props {
+  code: string;
+  lang?: string;
+}
+
+const { code, lang = 'bash' } = Astro.props;
+
+const decoded = code
+  .replace(/&#123;/g, '{')
+  .replace(/&#125;/g, '}')
+  .replace(/&lt;/g, '<')
+  .replace(/&gt;/g, '>')
+  .replace(/&amp;/g, '&');
+
+const raw = await codeToHtml(decoded, {
+  lang,
+  theme: 'github-dark',
+});
+
+// Merge our class into Shiki's existing class attribute
+const html = raw.replace(
+  /<pre([^>]*)class="([^"]*)"([^>]*)>/,
+  '<pre$1class="code-block $2"$3>'
+);
+---
+
+<Fragment set:html={html} />
+
+<style is:global>
+  .code-block {
+    background: var(--bg-code) !important;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px !important;
+    overflow-x: auto;
+    margin-bottom: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .code-block code,
+  .code-block code span {
+    font-family: var(--font-mono) !important;
+  }
+</style>

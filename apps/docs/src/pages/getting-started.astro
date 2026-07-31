@@ -1,0 +1,55 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Getting Started" activeNav="/getting-started">
+  <h1>Getting Started</h1>
+  <p>Set up your API key and make your first request in under 5 minutes.</p>
+
+  <h2>1. Create an API key</h2>
+  <p>
+    Navigate to <strong>Settings → API Keys</strong> in the App Manager dashboard.
+    Click <strong>Create API key</strong>, give it a name, and select the scopes you need.
+  </p>
+  <p>
+    <strong>Important:</strong> The plaintext key is shown only once at creation time. Copy it immediately.
+  </p>
+
+  <h2>2. Make your first request</h2>
+  <p>List all applications for your team:</p>
+  <CodeBlock lang="bash" code={`curl http://localhost:8000/api/v1/{team_slug}/apps \\
+  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Accept: application/json'`} />
+
+  <h2>3. Response</h2>
+  <CodeBlock lang="json" code={`{
+  "data": [],
+  "links": { "first": "...", "last": "...", "prev": null, "next": null },
+  "meta": {
+    "current_page": 1,
+    "from": null,
+    "last_page": 1,
+    "per_page": 25,
+    "to": null,
+    "total": 0
+  }
+}`} />
+
+  <h2>Demo account</h2>
+  <p>After running <code>php artisan db:seed</code>, a demo account is available:</p>
+  <ul>
+    <li>Team slug: <code>demo-users-team</code></li>
+    <li>API key: <code>demo-api-key</code></li>
+  </ul>
+  <CodeBlock lang="bash" code={`curl http://localhost:8000/api/v1/demo-users-team/apps \\
+  -H 'Authorization: Bearer demo-api-key' \\
+  -H 'Accept: application/json'`} />
+
+  <h2>Next steps</h2>
+  <ul>
+    <li><a href="/guides/authentication">Authentication</a> — learn about scopes and permissions</li>
+    <li><a href="/guides/builds">Builds</a> — create and manage builds</li>
+    <li><a href="/api-reference">API Reference</a> — explore all endpoints interactively</li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,3586 @@
+openapi: 3.1.0
+info:
+  title: App Manager Platform API
+  version: 1.0.0
+  description: |
+    Multi-tenant mobile app management platform API.
+
+    Manage applications, builds, credentials, CI/CD pipelines, Expo integration, and outbound webhooks.
+    All endpoints are scoped to a team via the `{team_slug}` path parameter.
+
+    ## Authentication
+
+    Every request requires a Bearer token (API key) tied to the team:
+
+    ```
+    Authorization: Bearer <api-key>
+    Accept: application/json
+    ```
+
+    API keys are created in the team settings panel. The plaintext key is shown only once at creation time.
+
+    ## Base URL
+
+    ```
+    http://localhost:8000/api/v1/{team_slug}
+    ```
+  contact:
+    name: App Manager
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000/api/v1/{team_slug}
+    description: Local development
+    variables:
+      team_slug:
+        default: demo-users-team
+        description: Team slug
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Mobile Apps
+    description: CRUD operations on mobile applications
+  - name: Assets
+    description: Icon and splashscreen management
+  - name: Identifiers
+    description: Platform identifiers (iOS bundle ID, Android package name, Web domain)
+  - name: Credentials
+    description: Signing credentials, certificates, and keystores
+  - name: Credential Types
+    description: Supported credential type metadata
+  - name: Builds & Logs
+    description: Build lifecycle and log streaming
+  - name: Artifacts
+    description: Build artifact files (IPA, APK, AAB)
+  - name: CI/CD Pipelines
+    description: Pipeline configurations for GitHub Actions and GitLab CI/CD
+  - name: Integrations
+    description: External integrations (GitHub, GitLab, Expo)
+  - name: Expo Integration
+    description: Expo EAS lifecycle — connect, sync, import, proxy
+  - name: API Keys
+    description: Team API key management
+  - name: Webhooks
+    description: Outbound webhook endpoints and delivery history
+
+paths:
+  /apps:
+    get:
+      operationId: listApps
+      summary: List applications
+      description: Returns a paginated list of all applications for the team.
+      tags: [Mobile Apps]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of applications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MobileApp'
+      security:
+        - bearerAuth: [apps:read]
+
+    post:
+      operationId: createApp
+      summary: Create application
+      description: Create a new mobile application for the team.
+      tags: [Mobile Apps]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMobileApp'
+      responses:
+        '201':
+          description: Application created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MobileApp'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [apps:write]
+
+  /apps/{app_slug}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: getApp
+      summary: Get application
+      description: Get details of a specific application.
+      tags: [Mobile Apps]
+      responses:
+        '200':
+          description: Application details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MobileApp'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [apps:read]
+
+    patch:
+      operationId: updateApp
+      summary: Update application
+      description: Update application fields. Pass `null` for `metadata` to clear it.
+      tags: [Mobile Apps]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMobileApp'
+      responses:
+        '200':
+          description: Application updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MobileApp'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [apps:write]
+
+    delete:
+      operationId: deleteApp
+      summary: Delete application
+      description: Delete a mobile application and all its associated data.
+      tags: [Mobile Apps]
+      responses:
+        '204':
+          description: Application deleted
+      security:
+        - bearerAuth: [apps:write]
+
+  /apps/{app_slug}/assets:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: getAssets
+      summary: Get asset URLs
+      description: |
+        Returns a flat JSON map of available asset files and their download URLs.
+        Only uploaded originals and ready conversions are included.
+      tags: [Assets]
+      responses:
+        '200':
+          description: Asset URL map
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    example:
+                      icon.original: http://localhost:8000/api/v1/acme/apps/customer-app/assets/icon/files/original
+                      icon.ios-icon-40: http://localhost:8000/api/v1/acme/apps/customer-app/assets/icon/files/ios-icon-40
+      security:
+        - bearerAuth: [assets:read]
+
+  /apps/{app_slug}/assets/{asset}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/AssetType'
+
+    get:
+      operationId: getAsset
+      summary: Get asset metadata
+      description: Get metadata for an asset (icon or splashscreen).
+      tags: [Assets]
+      responses:
+        '200':
+          description: Asset metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AssetMetadata'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [assets:read]
+
+    post:
+      operationId: uploadAsset
+      summary: Upload or replace asset
+      description: |
+        Upload a new icon or splashscreen. Use `POST` (recommended) since not all PHP SAPIs parse multipart body for `PUT`.
+        The file must be an image, max 10 MB.
+      tags: [Assets]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file (max 10 MB)
+      responses:
+        '200':
+          description: Asset uploaded, returns updated application
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MobileApp'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [assets:write]
+
+  /apps/{app_slug}/assets/{asset}/files/{file}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/AssetType'
+      - name: file
+        in: path
+        required: true
+        schema:
+          type: string
+        description: File conversion name (e.g. `original`, `ios-icon-40`)
+
+    get:
+      operationId: downloadAssetFile
+      summary: Download asset file
+      description: Download an asset file as attachment.
+      tags: [Assets]
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [assets:read]
+
+  /apps/{app_slug}/identifiers:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: listIdentifiers
+      summary: List identifiers
+      description: Returns a paginated list of platform identifiers for the application.
+      tags: [Identifiers]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of identifiers
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AppIdentifier'
+      security:
+        - bearerAuth: [identifiers:read]
+
+    post:
+      operationId: createIdentifier
+      summary: Create identifier
+      description: |
+        Create a new platform identifier for the application.
+        For Web, the identifier must be a valid domain (no scheme, port, or path). It is normalized to lowercase.
+        `version_code` is only available for Android.
+      tags: [Identifiers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppIdentifier'
+      responses:
+        '201':
+          description: Identifier created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppIdentifier'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [identifiers:write]
+
+  /apps/{app_slug}/identifiers/{identifier}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/IdentifierId'
+
+    get:
+      operationId: getIdentifier
+      summary: Get identifier
+      tags: [Identifiers]
+      responses:
+        '200':
+          description: Identifier details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppIdentifier'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [identifiers:read]
+
+    patch:
+      operationId: updateIdentifier
+      summary: Update identifier
+      description: |
+        Update platform identifier fields. If changing platform, `identifier` becomes required.
+        Cannot change platform to `web` if the identifier has attached credentials or profiles.
+      tags: [Identifiers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAppIdentifier'
+      responses:
+        '200':
+          description: Identifier updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppIdentifier'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [identifiers:write]
+
+    delete:
+      operationId: deleteIdentifier
+      summary: Delete identifier
+      tags: [Identifiers]
+      responses:
+        '204':
+          description: Identifier deleted
+      security:
+        - bearerAuth: [identifiers:write]
+
+  /apps/{app_slug}/credentials:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: listCredentials
+      summary: List credentials
+      description: Returns a paginated list of signing credentials for the application.
+      tags: [Credentials]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of credentials
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Credential'
+      security:
+        - bearerAuth: [credentials:read]
+
+    post:
+      operationId: createCredential
+      summary: Create credential
+      description: |
+        Create a signing credential and attach it to an identifier.
+        Profile-scoped types (`ios_certificate`, `provisioning_profile`, `android_keystore`) require `profile_type`.
+        Service credential types attach directly to the identifier and do not accept `profile_type`.
+        Payload fields are encrypted at rest.
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateCredential'
+      responses:
+        '201':
+          description: Credential created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:write]
+
+  /apps/{app_slug}/credentials/{credential}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+
+    get:
+      operationId: getCredential
+      summary: Get credential
+      tags: [Credentials]
+      responses:
+        '200':
+          description: Credential details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [credentials:read]
+
+    patch:
+      operationId: updateCredential
+      summary: Update credential
+      description: |
+        Update credential name, expires_at, payload, or file. Type and profile_type are immutable — recreate the credential to change them.
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UpdateCredential'
+      responses:
+        '200':
+          description: Credential updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:write]
+
+    delete:
+      operationId: deleteCredential
+      summary: Delete credential
+      tags: [Credentials]
+      responses:
+        '204':
+          description: Credential deleted
+      security:
+        - bearerAuth: [credentials:write]
+
+  /apps/{app_slug}/credentials/{credential}/file:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+
+    get:
+      operationId: downloadCredentialFile
+      summary: Download credential file
+      tags: [Credentials]
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [credentials:read]
+
+    post:
+      operationId: uploadCredentialFile
+      summary: Upload or replace credential file
+      description: Upload a new file for the credential (max 20 MB).
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:write]
+
+    delete:
+      operationId: deleteCredentialFile
+      summary: Delete credential file
+      tags: [Credentials]
+      responses:
+        '204':
+          description: File deleted
+      security:
+        - bearerAuth: [credentials:write]
+
+  /credential-types:
+    get:
+      operationId: listCredentialTypes
+      summary: List credential types
+      description: |
+        Returns all supported credential types with their platforms, allowed extensions,
+        required payload fields, attachment binding, and available build profiles.
+      tags: [Credential Types]
+      responses:
+        '200':
+          description: List of credential types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CredentialTypeMetadata'
+      security:
+        - bearerAuth: [credentials:read]
+
+  /apps/{app_slug}/builds:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: listBuilds
+      summary: List builds
+      description: Returns a paginated list of recent builds for the application.
+      tags: [Builds & Logs]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of builds
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BuildRecord'
+      security:
+        - bearerAuth: [builds:read]
+
+    post:
+      operationId: createBuild
+      summary: Create build
+      description: |
+        Create a manual build in `pending` status.
+        Creation is idempotent per team + `request_uuid` pair.
+        `parameters` is an arbitrary JSON object up to 64 KB.
+      tags: [Builds & Logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBuild'
+      responses:
+        '201':
+          description: Build created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BuildRecord'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [builds:write]
+
+  /apps/{app_slug}/builds/{build}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    get:
+      operationId: getBuild
+      summary: Get build
+      tags: [Builds & Logs]
+      responses:
+        '200':
+          description: Build details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BuildRecord'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [builds:read]
+
+    patch:
+      operationId: updateBuild
+      summary: Update build status
+      description: |
+        Update build status. Only allowed for manual builds.
+        Automatic builds return 409 for manual status writes.
+        Terminal transitions (to completed/failed/cancelled) on already-finished builds return 409.
+      tags: [Builds & Logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBuild'
+      responses:
+        '200':
+          description: Build updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BuildRecord'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [builds:write]
+
+  /apps/{app_slug}/builds/{build}/logs:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    get:
+      operationId: getBuildLogs
+      summary: Read build logs
+      description: |
+        Read the full build log. Supports byte-range pagination via `offset` and `limit` query parameters.
+        Without offset/limit, returns the complete log content.
+      tags: [Builds & Logs]
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Byte offset to start from
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Maximum bytes to return
+      responses:
+        '200':
+          description: Build logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildLog'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [logs:read]
+
+    post:
+      operationId: appendBuildLogs
+      summary: Append build log
+      description: "Append a plain-text chunk to the build log. Max chunk size: 256 KiB, total log: 5 MiB."
+      tags: [Builds & Logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: Plain-text log content to append
+      responses:
+        '200':
+          description: Log appended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildLogAppendResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+        - bearerAuth: [logs:write]
+
+  /apps/{app_slug}/builds/{build}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    post:
+      operationId: cancelBuild
+      summary: Request build cancellation
+      description: |
+        Request cancellation of a build. Transitions manual builds to `cancel_requested`.
+        The runner then confirms `cancelled` or reports the actual status.
+      tags: [Builds & Logs]
+      responses:
+        '202':
+          description: Cancellation requested
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+        - bearerAuth: [pipelines:run]
+
+  /apps/{app_slug}/builds/{build}/artifacts:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    get:
+      operationId: listArtifacts
+      summary: List build artifacts
+      tags: [Artifacts]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of artifacts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Artifact'
+      security:
+        - bearerAuth: [artifacts:read]
+
+    post:
+      operationId: uploadArtifact
+      summary: Upload build artifact
+      description: Upload a build artifact file (max 500 MB).
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, file]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Artifact name
+                file:
+                  type: string
+                  format: binary
+                  description: Artifact file (max 500 MB)
+                metadata:
+                  type: string
+                  description: JSON string or object with arbitrary metadata
+      responses:
+        '201':
+          description: Artifact uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Artifact'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [artifacts:write]
+
+  /apps/{app_slug}/builds/{build}/artifacts/{artifact}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+      - $ref: '#/components/parameters/ArtifactId'
+
+    get:
+      operationId: getArtifact
+      summary: Get artifact details
+      tags: [Artifacts]
+      responses:
+        '200':
+          description: Artifact details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Artifact'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [artifacts:read]
+
+    delete:
+      operationId: deleteArtifact
+      summary: Delete artifact
+      tags: [Artifacts]
+      responses:
+        '204':
+          description: Artifact deleted
+      security:
+        - bearerAuth: [artifacts:write]
+
+  /apps/{app_slug}/builds/{build}/artifacts/{artifact}/file:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+      - $ref: '#/components/parameters/ArtifactId'
+
+    get:
+      operationId: downloadArtifact
+      summary: Download artifact file
+      tags: [Artifacts]
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [artifacts:read]
+
+  /integrations:
+    get:
+      operationId: listIntegrations
+      summary: List integrations
+      description: Returns all integrations for the team.
+      tags: [Integrations]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of integrations
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Integration'
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/{integration}:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: getIntegration
+      summary: Get integration
+      tags: [Integrations]
+      responses:
+        '200':
+          description: Integration details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Integration'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/expo:
+    post:
+      operationId: connectExpo
+      summary: Connect Expo account
+      description: |
+        Connect an Expo account or replace the token of an existing connection.
+        If the token grants access to multiple Expo accounts, provide `account_name`.
+        Returns 201 for new connections, 200 for reconnects.
+        If the account connects but the initial inventory sync fails, the integration is saved in `degraded` state.
+      tags: [Expo Integration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access_token]
+              properties:
+                access_token:
+                  type: string
+                  maxLength: 10000
+                  description: Expo access token
+                account_name:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                  description: Expo account name (required if token grants access to multiple accounts)
+      responses:
+        '201':
+          description: Expo account connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Integration'
+                  meta:
+                    type: object
+                    properties:
+                      projects_count:
+                        type: integer
+                      sync_error:
+                        type: string
+                        nullable: true
+        '200':
+          description: Token replaced for existing connection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Integration'
+                  meta:
+                    type: object
+                    properties:
+                      projects_count:
+                        type: integer
+                      sync_error:
+                        type: string
+                        nullable: true
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [integrations:write]
+
+  /integrations/{integration}/expo/sync:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    post:
+      operationId: syncExpo
+      summary: Sync Expo account
+      description: Refresh account metadata and project inventory from Expo.
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Integration'
+                  meta:
+                    type: object
+                    properties:
+                      projects_count:
+                        type: integer
+      security:
+        - bearerAuth: [integrations:write]
+
+  /integrations/{integration}/expo/projects:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: listExpoProjects
+      summary: List Expo projects
+      description: Get synchronized Expo projects.
+      tags: [Expo Integration]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of Expo projects
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExpoProject'
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/{integration}/expo:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    delete:
+      operationId: disconnectExpo
+      summary: Disconnect Expo account
+      description: Disconnect the Expo account while preserving project links and remote history.
+      tags: [Expo Integration]
+      responses:
+        '204':
+          description: Account disconnected
+      security:
+        - bearerAuth: [integrations:write]
+
+  /integrations/{integration}/expo/projects/{project_id}/import:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+      - name: project_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Expo project ID
+
+    post:
+      operationId: importExpoProject
+      summary: Import Expo project
+      description: Import an Expo project as a new application with identifiers and EAS credentials.
+      tags: [Expo Integration]
+      responses:
+        '201':
+          description: Project imported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MobileApp'
+                  meta:
+                    type: object
+                    properties:
+                      identifiers_imported:
+                        type: integer
+                      credentials_imported:
+                        type: integer
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [integrations:write, apps:write, credentials:write]
+
+  /integrations/{integration}/repositories:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: listIntegrationRepositories
+      summary: List integration repositories
+      description: Discover repositories available through this integration.
+      tags: [Integrations]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of repositories
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            full_name:
+                              type: string
+                            name:
+                              type: string
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/{integration}/workflows:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: listIntegrationWorkflows
+      summary: List integration workflows
+      description: Discover CI/CD workflows available in the repository.
+      tags: [Integrations]
+      parameters:
+        - name: repository_full_name
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Repository full name (e.g. `owner/repo`)
+        - name: ref
+          in: query
+          schema:
+            type: string
+            default: main
+          description: Git ref to query
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        path:
+                          type: string
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/{integration}/refs:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: listIntegrationRefs
+      summary: List git refs
+      description: Discover available git refs (branches, tags) for a repository.
+      tags: [Integrations]
+      parameters:
+        - name: repository_full_name
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search query to filter refs
+      responses:
+        '200':
+          description: List of refs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        ref:
+                          type: string
+      security:
+        - bearerAuth: [integrations:read]
+
+  /integrations/{integration}/pipelines:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    get:
+      operationId: listPipelines
+      summary: List CI/CD pipelines
+      tags: [CI/CD Pipelines]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of pipelines
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CiCdPipeline'
+      security:
+        - bearerAuth: [pipelines:read]
+
+    post:
+      operationId: createPipeline
+      summary: Create pipeline
+      description: Create a new CI/CD pipeline configuration.
+      tags: [CI/CD Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCiCdPipeline'
+      responses:
+        '201':
+          description: Pipeline created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CiCdPipeline'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [pipelines:write]
+
+  /integrations/{integration}/pipelines/{pipeline}:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+      - $ref: '#/components/parameters/PipelineId'
+
+    get:
+      operationId: getPipeline
+      summary: Get pipeline
+      tags: [CI/CD Pipelines]
+      responses:
+        '200':
+          description: Pipeline details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CiCdPipeline'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [pipelines:read]
+
+    patch:
+      operationId: updatePipeline
+      summary: Update pipeline
+      tags: [CI/CD Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCiCdPipeline'
+      responses:
+        '200':
+          description: Pipeline updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CiCdPipeline'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [pipelines:write]
+
+    delete:
+      operationId: deletePipeline
+      summary: Delete pipeline
+      tags: [CI/CD Pipelines]
+      responses:
+        '204':
+          description: Pipeline deleted
+      security:
+        - bearerAuth: [pipelines:write]
+
+  /integrations/{integration}/pipelines/{pipeline}/inputs:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+      - $ref: '#/components/parameters/PipelineId'
+
+    get:
+      operationId: getPipelineInputs
+      summary: Get pipeline workflow inputs
+      description: |
+        Returns the inputs defined in the remote CI/CD workflow configuration.
+        Used to populate the pipeline input form.
+      tags: [CI/CD Pipelines]
+      responses:
+        '200':
+          description: Workflow inputs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowInput'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [pipelines:read]
+
+  /integrations/{integration}/pipelines/{pipeline}/runs:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+      - $ref: '#/components/parameters/PipelineId'
+
+    post:
+      operationId: dispatchPipeline
+      summary: Dispatch pipeline run
+      description: |
+        Dispatch a CI/CD pipeline run. Creates a build record and triggers the remote workflow.
+        `ref` overrides the pipeline default git ref. `inputs` are passed to the workflow.
+      tags: [CI/CD Pipelines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_uuid]
+              properties:
+                request_uuid:
+                  type: string
+                  format: uuid
+                  description: Idempotency key
+                ref:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                  description: Git ref override
+                inputs:
+                  type: object
+                  maxProperties: 25
+                  additionalProperties:
+                    type: string
+                  description: Workflow input key-value pairs
+      responses:
+        '201':
+          description: Pipeline dispatched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BuildRecord'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [pipelines:run]
+
+  /apps/{mobileApp_slug}/expo:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: getExpoProject
+      summary: Get Expo project link
+      description: |
+        Get the Expo project link and live metadata, builds, and submissions.
+        Use `build_limit`, `build_offset`, `submission_limit`, `submission_offset` query params to paginate nested resources.
+      tags: [Expo Integration]
+      parameters:
+        - name: build_limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: build_offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: submission_limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+        - name: submission_offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Expo project details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      project:
+                        $ref: '#/components/schemas/ExpoProject'
+                      remote:
+                        type: object
+                        description: Raw Expo API response
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [apps:read, integrations:read]
+
+    post:
+      operationId: linkExpoProject
+      summary: Link or create Expo project
+      description: |
+        Create a new Expo project or link an existing one.
+        `mode: create` — creates a new remote project.
+        `mode: existing` — links to an existing project by `expo_project_id`.
+      tags: [Expo Integration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LinkExpoProject'
+      responses:
+        '201':
+          description: Project created on Expo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ExpoProject'
+                  meta:
+                    type: object
+                    properties:
+                      created_on_expo:
+                        type: boolean
+                      identifiers_pushed:
+                        type: integer
+                      credentials_pushed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+        '200':
+          description: Linked to existing project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ExpoProject'
+                  meta:
+                    type: object
+                    properties:
+                      created_on_expo:
+                        type: boolean
+                      identifiers_pushed:
+                        type: integer
+                      credentials_pushed:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [apps:write, credentials:write, integrations:write]
+
+    delete:
+      operationId: unlinkExpoProject
+      summary: Unlink Expo project
+      description: Remove the local Expo project link without deleting the remote project.
+      tags: [Expo Integration]
+      responses:
+        '204':
+          description: Project unlinked
+      security:
+        - bearerAuth: [apps:write, integrations:write]
+
+  /apps/{mobileApp_slug}/expo/sync:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    post:
+      operationId: syncExpoProject
+      summary: Sync Expo project
+      description: |
+        Synchronize metadata, identifiers, and EAS credentials with Expo.
+        Returns the updated app and project data along with sync counts.
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      app:
+                        $ref: '#/components/schemas/MobileApp'
+                      project:
+                        $ref: '#/components/schemas/ExpoProject'
+                  meta:
+                    type: object
+                    properties:
+                      identifiers_synced:
+                        type: integer
+                      credentials_synced:
+                        type: integer
+      security:
+        - bearerAuth: [apps:write, credentials:write, integrations:write]
+
+  /apps/{mobileApp_slug}/expo/identifiers:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: listExpoIdentifiers
+      summary: Compare Expo identifiers
+      description: Compare identifiers between App Manager and Expo.
+      tags: [Expo Integration]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Identifier comparison
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+      security:
+        - bearerAuth: [identifiers:read, integrations:read]
+
+    post:
+      operationId: syncExpoIdentifiers
+      summary: Sync Expo identifiers
+      description: Import Expo-only identifiers and create remote identifiers for local ones.
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Identifiers synced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    type: object
+                    properties:
+                      imported:
+                        type: integer
+                      created:
+                        type: integer
+      security:
+        - bearerAuth: [identifiers:write, integrations:write]
+
+  /apps/{mobileApp_slug}/expo/identifiers/{identifier_id}/provision:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - name: identifier_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: App identifier ID
+
+    post:
+      operationId: provisionExpoIdentifier
+      summary: Provision Expo identifier
+      description: |
+        Create a remote Expo identifier and provision the selected credentials.
+        Without `credential_ids`, sends all supported credentials with uploaded files.
+        With `credential_ids`, sends only the specified credentials (each must be attached to the identifier).
+      tags: [Expo Integration]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                credential_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Specific credential IDs to provision (optional)
+      responses:
+        '200':
+          description: Identifier provisioned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpoCredentialLink'
+                  meta:
+                    type: object
+                    properties:
+                      errors:
+                        type: array
+                        items:
+                          type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [identifiers:write, credentials:write, integrations:write]
+
+  /apps/{mobileApp_slug}/expo/identifiers/{identifier_id}/credentials/{credential_id}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - name: identifier_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: credential_id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      operationId: pushExpoCredential
+      summary: Push Expo credential
+      description: |
+        Push or re-sync a single credential to Expo.
+        Remote credential resources are immutable — a repeated push creates a new resource and updates the local link.
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Credential pushed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ExpoCredentialLink'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:write, integrations:write]
+
+  /integrations/{integration}/expo/graphql:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+
+    post:
+      operationId: expoGraphQLProxy
+      summary: Expo GraphQL proxy
+      description: |
+        Forward a GraphQL request to Expo's API.
+        The `Authorization` header is replaced with the saved Expo token.
+        Always requires `integrations:proxy` scope, even for queries — a single GraphQL document can contain multiple operations.
+      tags: [Expo Integration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                  description: GraphQL query document
+                variables:
+                  type: object
+                  description: Query variables
+                operation_name:
+                  type: string
+                  description: Operation name to execute
+      responses:
+        '200':
+          description: GraphQL response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  errors:
+                    type: array
+                    items:
+                      type: object
+        '502':
+          description: Expo upstream error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpoUpstreamError'
+        '503':
+          description: Expo unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpoUpstreamError'
+      security:
+        - bearerAuth: [integrations:proxy]
+
+  /integrations/{integration}/expo/proxy/{expo_api_path}:
+    parameters:
+      - $ref: '#/components/parameters/IntegrationId'
+      - name: expo_api_path
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Expo API path to proxy
+
+    get:
+      operationId: expoRestProxyGet
+      summary: Expo REST proxy (GET)
+      description: |
+        Forward a GET request to Expo's REST API. The `Authorization` header is replaced with the saved Expo token.
+        Preserves upstream status, body, and safe response headers.
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Upstream response
+        '502':
+          description: Expo upstream error
+        '503':
+          description: Expo unavailable
+      security:
+        - bearerAuth: [integrations:proxy]
+
+    post:
+      operationId: expoRestProxyPost
+      summary: Expo REST proxy (POST)
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Upstream response
+        '502':
+          description: Expo upstream error
+        '503':
+          description: Expo unavailable
+      security:
+        - bearerAuth: [integrations:proxy]
+
+    put:
+      operationId: expoRestProxyPut
+      summary: Expo REST proxy (PUT)
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Upstream response
+        '502':
+          description: Expo upstream error
+        '503':
+          description: Expo unavailable
+      security:
+        - bearerAuth: [integrations:proxy]
+
+    patch:
+      operationId: expoRestProxyPatch
+      summary: Expo REST proxy (PATCH)
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Upstream response
+        '502':
+          description: Expo upstream error
+        '503':
+          description: Expo unavailable
+      security:
+        - bearerAuth: [integrations:proxy]
+
+    delete:
+      operationId: expoRestProxyDelete
+      summary: Expo REST proxy (DELETE)
+      tags: [Expo Integration]
+      responses:
+        '200':
+          description: Upstream response
+        '502':
+          description: Expo upstream error
+        '503':
+          description: Expo unavailable
+      security:
+        - bearerAuth: [integrations:proxy]
+
+  /webhooks:
+    get:
+      operationId: listWebhookEndpoints
+      summary: List webhook endpoints
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of webhook endpoints
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WebhookEndpoint'
+      security:
+        - bearerAuth: [webhooks:read]
+
+    post:
+      operationId: createWebhookEndpoint
+      summary: Create webhook endpoint
+      description: |
+        Create a webhook endpoint. The `secret` is returned only in this response — save it immediately.
+        Subscribable events exclude `webhook.test`.
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookEndpoint'
+      responses:
+        '201':
+          description: Webhook endpoint created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/WebhookEndpoint'
+                      - type: object
+                        properties:
+                          secret:
+                            type: string
+                            description: Signing secret (shown only once)
+                            example: whsec_abc123...
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [webhooks:write]
+
+  /webhooks/{webhookEndpoint}:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+
+    get:
+      operationId: getWebhookEndpoint
+      summary: Get webhook endpoint
+      description: Get webhook endpoint details without the secret.
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: Webhook endpoint details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WebhookEndpoint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [webhooks:read]
+
+    patch:
+      operationId: updateWebhookEndpoint
+      summary: Update webhook endpoint
+      tags: [Webhooks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookEndpoint'
+      responses:
+        '200':
+          description: Webhook endpoint updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WebhookEndpoint'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [webhooks:write]
+
+    delete:
+      operationId: deleteWebhookEndpoint
+      summary: Delete webhook endpoint
+      tags: [Webhooks]
+      responses:
+        '204':
+          description: Endpoint deleted
+      security:
+        - bearerAuth: [webhooks:write]
+
+  /webhooks/{webhookEndpoint}/rotate-secret:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+
+    post:
+      operationId: rotateWebhookSecret
+      summary: Rotate webhook secret
+      description: Immediately replace the signing secret. The new secret is returned in the response.
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: Secret rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/WebhookEndpoint'
+                      - type: object
+                        properties:
+                          secret:
+                            type: string
+                            description: New signing secret (shown only once)
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [webhooks:write]
+
+  /webhooks/{webhookEndpoint}/test:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+
+    post:
+      operationId: testWebhookEndpoint
+      summary: Test webhook endpoint
+      description: |
+        Queue a test webhook delivery. The test is always sent to the endpoint regardless of subscriptions and filters.
+      tags: [Webhooks]
+      responses:
+        '202':
+          description: Test delivery queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [queued]
+      security:
+        - bearerAuth: [webhooks:write]
+
+  /webhooks/{webhookEndpoint}/deliveries:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+
+    get:
+      operationId: listWebhookDeliveries
+      summary: List webhook deliveries
+      description: Returns a cursor-paginated list of webhook deliveries.
+      tags: [Webhooks]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Paginated list of deliveries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WebhookDelivery'
+      security:
+        - bearerAuth: [deliveries:read]
+
+  /webhooks/{webhookEndpoint}/deliveries/{delivery}:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+      - $ref: '#/components/parameters/DeliveryId'
+
+    get:
+      operationId: getWebhookDelivery
+      summary: Get webhook delivery
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: Delivery details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WebhookDelivery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [deliveries:read]
+
+  /webhooks/{webhookEndpoint}/deliveries/{delivery}/redeliver:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+      - $ref: '#/components/parameters/DeliveryId'
+
+    post:
+      operationId: redeliverWebhook
+      summary: Redeliver webhook
+      description: Create a manual redelivery. Gets a new delivery ID linked to the original via `redelivery_of_id`.
+      tags: [Webhooks]
+      responses:
+        '201':
+          description: Redelivery created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WebhookDelivery'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [webhooks:write]
+
+  /api-keys:
+    get:
+      operationId: listApiKeys
+      summary: List API keys
+      description: Returns all API keys for the team.
+      tags: [API Keys]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of API keys
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ApiKey'
+      security:
+        - bearerAuth: [api-keys:read]
+
+    post:
+      operationId: createApiKey
+      summary: Create API key
+      description: |
+        Create a new API key. Only the team owner can create keys.
+        The plaintext token is returned only in this response.
+      tags: [API Keys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Key name
+                scopes:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    enum:
+                      - apps:read
+                      - apps:write
+                      - identifiers:read
+                      - identifiers:write
+                      - assets:read
+                      - assets:write
+                      - credentials:read
+                      - credentials:write
+                      - builds:read
+                      - builds:write
+                      - logs:read
+                      - logs:write
+                      - artifacts:read
+                      - artifacts:write
+                      - integrations:read
+                      - integrations:write
+                      - integrations:proxy
+                      - pipelines:read
+                      - pipelines:write
+                      - pipelines:run
+                      - webhooks:read
+                      - webhooks:write
+                      - deliveries:read
+                      - api-keys:read
+                      - api-keys:write
+                  uniqueItems: true
+                  description: Key scopes
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+                      token:
+                        type: string
+                        description: Plain-text API key (shown only once)
+                      created_at:
+                        type: string
+                        format: date-time
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [api-keys:write]
+
+  /api-keys/{apiKey}:
+    parameters:
+      - $ref: '#/components/parameters/ApiKeyId'
+
+    get:
+      operationId: getApiKey
+      summary: Get API key
+      tags: [API Keys]
+      responses:
+        '200':
+          description: API key details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [api-keys:read]
+
+    delete:
+      operationId: revokeApiKey
+      summary: Revoke API key
+      tags: [API Keys]
+      responses:
+        '204':
+          description: API key revoked
+      security:
+        - bearerAuth: [api-keys:write]
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key (plain text) passed as Bearer token
+
+  parameters:
+    TeamSlug:
+      name: team_slug
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Team URL slug
+    AppSlug:
+      name: app_slug
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Application slug
+    AssetType:
+      name: asset
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [icon, splashscreen]
+      description: Asset type
+    IdentifierId:
+      name: identifier
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Identifier ID
+    CredentialId:
+      name: credential
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Credential ID
+    BuildId:
+      name: build
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Build record ID
+    ArtifactId:
+      name: artifact
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Artifact ID
+    IntegrationId:
+      name: integration
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Integration ID
+    PipelineId:
+      name: pipeline
+      in: path
+      required: true
+      schema:
+        type: string
+      description: CI/CD pipeline ID
+    WebhookEndpointId:
+      name: webhookEndpoint
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Webhook endpoint ID
+    DeliveryId:
+      name: delivery
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Webhook delivery ID
+    ApiKeyId:
+      name: apiKey
+      in: path
+      required: true
+      schema:
+        type: string
+      description: API key ID
+    PerPageParam:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+      description: Items per page
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number
+
+  schemas:
+    MobileApp:
+      type: object
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        description:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        assets:
+          type: object
+          properties:
+            icon:
+              $ref: '#/components/schemas/AppAsset'
+            splashscreen:
+              $ref: '#/components/schemas/AppAsset'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AppAsset:
+      type: object
+      nullable: true
+      properties:
+        name:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+
+    CreateMobileApp:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          maxLength: 255
+          pattern: '^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$'
+          description: Auto-generated from name if omitted
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    UpdateMobileApp:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          maxLength: 255
+          pattern: '^[a-zA-Z0-9]+(?:[._-][a-zA-Z0-9]+)*$'
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    AssetMetadata:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AppIdentifier:
+      type: object
+      properties:
+        id:
+          type: integer
+        platform:
+          $ref: '#/components/schemas/Platform'
+        identifier:
+          type: string
+        name:
+          type: string
+          nullable: true
+        version:
+          type: string
+          nullable: true
+        version_code:
+          type: integer
+          nullable: true
+          description: Android only
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateAppIdentifier:
+      type: object
+      required: [platform, identifier]
+      properties:
+        platform:
+          $ref: '#/components/schemas/Platform'
+        identifier:
+          type: string
+          maxLength: 255
+        name:
+          type: string
+          maxLength: 255
+          nullable: true
+        version:
+          type: string
+          maxLength: 255
+          nullable: true
+        version_code:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: Android only
+
+    UpdateAppIdentifier:
+      type: object
+      properties:
+        platform:
+          $ref: '#/components/schemas/Platform'
+        identifier:
+          type: string
+          maxLength: 255
+        name:
+          type: string
+          maxLength: 255
+          nullable: true
+        version:
+          type: string
+          maxLength: 255
+          nullable: true
+        version_code:
+          type: integer
+          minimum: 1
+          nullable: true
+
+    Credential:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: '#/components/schemas/CredentialType'
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        payload:
+          type: object
+          nullable: true
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        app_identifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AppIdentifier'
+          description: Present when loaded
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialProfile'
+          description: Present when loaded
+        file:
+          $ref: '#/components/schemas/FileMetadata'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CredentialProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: '#/components/schemas/ProfileType'
+        name:
+          type: string
+        app_identifier:
+          type: object
+          properties:
+            id:
+              type: integer
+            platform:
+              $ref: '#/components/schemas/Platform'
+            identifier:
+              type: string
+
+    CreateCredential:
+      type: object
+      required: [app_identifier_id, name, type]
+      properties:
+        app_identifier_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 255
+        type:
+          $ref: '#/components/schemas/CredentialType'
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        expires_at:
+          type: string
+          format: date
+          nullable: true
+        file:
+          type: string
+          format: binary
+          description: Credential file (max 20 MB)
+        payload:
+          type: object
+          additionalProperties: true
+          description: Type-specific payload fields
+
+    UpdateCredential:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        expires_at:
+          type: string
+          format: date
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        file:
+          type: string
+          format: binary
+
+    FileMetadata:
+      type: object
+      nullable: true
+      properties:
+        name:
+          type: string
+        mime_type:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+
+    CredentialTypeMetadata:
+      type: object
+      properties:
+        type:
+          type: string
+        platform:
+          $ref: '#/components/schemas/Platform'
+        extensions:
+          type: array
+          items:
+            type: string
+        payload_fields:
+          type: array
+          items:
+            type: string
+        profile_scoped:
+          type: boolean
+        profiles:
+          type: array
+          items:
+            type: string
+
+    BuildRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        request_uuid:
+          type: string
+          format: uuid
+        app_id:
+          type: integer
+        app_identifier_id:
+          type: integer
+          nullable: true
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        status:
+          $ref: '#/components/schemas/BuildStatus'
+        reporting_mode:
+          $ref: '#/components/schemas/BuildReportingMode'
+        parameters:
+          type: object
+          default: {}
+        context:
+          type: object
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        dispatch_status:
+          $ref: '#/components/schemas/CiCdDispatchStatus'
+        external_run_url:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancel_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        logs_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateBuild:
+      type: object
+      required: [request_uuid, profile_type]
+      properties:
+        request_uuid:
+          type: string
+          format: uuid
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        app_identifier_id:
+          type: string
+          format: uuid
+          nullable: true
+        context:
+          type: object
+          additionalProperties: true
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Arbitrary JSON up to 64 KB
+
+    UpdateBuild:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [running, completed, failed, cancelled]
+
+    BuildLog:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            build_id:
+              type: integer
+            content:
+              type: string
+            updated_at:
+              type: string
+              format: date-time
+            meta:
+              type: object
+              description: Present when offset/limit query params are used
+              properties:
+                offset:
+                  type: integer
+                next_offset:
+                  type: integer
+                  nullable: true
+                returned_bytes:
+                  type: integer
+                total_bytes:
+                  type: integer
+
+    BuildLogAppendResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            build_id:
+              type: integer
+            bytes:
+              type: integer
+            updated_at:
+              type: string
+              format: date-time
+
+    Artifact:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        build_record_id:
+          type: integer
+        file:
+          $ref: '#/components/schemas/FileMetadata'
+        created_at:
+          type: string
+          format: date-time
+
+    Integration:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/IntegrationKind'
+        provider:
+          $ref: '#/components/schemas/IntegrationProvider'
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/IntegrationStatus'
+        external_account_name:
+          type: string
+          nullable: true
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CiCdPipeline:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        enabled:
+          type: boolean
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        reporting_mode:
+          $ref: '#/components/schemas/BuildReportingMode'
+        repository_full_name:
+          type: string
+        workflow_id:
+          type: string
+        workflow_name:
+          type: string
+          nullable: true
+        workflow_path:
+          type: string
+          nullable: true
+        default_ref:
+          type: string
+        input_defaults:
+          type: object
+          default: {}
+        mobile_app_id:
+          type: integer
+        app_identifier_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateCiCdPipeline:
+      type: object
+      required: [name, mobile_app_id, profile_type, repository_full_name, workflow_id, default_ref]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        mobile_app_id:
+          type: string
+          format: uuid
+        app_identifier_id:
+          type: string
+          format: uuid
+          nullable: true
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        repository_full_name:
+          type: string
+          maxLength: 255
+        workflow_id:
+          type: string
+          maxLength: 255
+        default_ref:
+          type: string
+          maxLength: 255
+        input_defaults:
+          type: object
+          maxProperties: 25
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        reporting_mode:
+          $ref: '#/components/schemas/BuildReportingMode'
+        build_id_input:
+          type: string
+          maxLength: 255
+          nullable: true
+
+    UpdateCiCdPipeline:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        mobile_app_id:
+          type: string
+          format: uuid
+        app_identifier_id:
+          type: string
+          format: uuid
+          nullable: true
+        profile_type:
+          $ref: '#/components/schemas/ProfileType'
+        repository_full_name:
+          type: string
+          maxLength: 255
+        workflow_id:
+          type: string
+          maxLength: 255
+        default_ref:
+          type: string
+          maxLength: 255
+        input_defaults:
+          type: object
+          maxProperties: 25
+          additionalProperties:
+            type: string
+        enabled:
+          type: boolean
+        reporting_mode:
+          $ref: '#/components/schemas/BuildReportingMode'
+        build_id_input:
+          type: string
+          maxLength: 255
+          nullable: true
+
+    WorkflowInput:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          default: string
+        required:
+          type: boolean
+        default:
+          nullable: true
+        options:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+          nullable: true
+
+    ExpoProject:
+      type: object
+      properties:
+        id:
+          type: integer
+        integration_id:
+          type: integer
+        mobile_app:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            slug:
+              type: string
+            name:
+              type: string
+        external_id:
+          type: string
+        account:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        slug:
+          type: string
+        name:
+          type: string
+        full_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        sync_metadata:
+          type: boolean
+        exists_on_expo:
+          type: boolean
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    LinkExpoProject:
+      type: object
+      required: [integration_id, mode]
+      properties:
+        integration_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [create, existing]
+        expo_project_id:
+          type: string
+          format: uuid
+          description: Required when mode is 'existing'
+        sync_metadata:
+          type: boolean
+
+    ExpoCredentialLink:
+      type: object
+      properties:
+        id:
+          type: integer
+        expo_project_id:
+          type: integer
+        credential_id:
+          type: integer
+        app_identifier_id:
+          type: integer
+        remote_resource_type:
+          type: string
+        remote_resource_id:
+          type: string
+        metadata:
+          type: object
+          default: {}
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ExpoUpstreamError:
+      type: object
+      properties:
+        message:
+          type: string
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [expo_upstream_error]
+            upstream_status:
+              type: integer
+            details:
+              type: array
+              items:
+                type: object
+
+    WebhookEndpoint:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        url:
+          type: string
+        secret_hint:
+          type: string
+          description: Last 4 characters of the secret
+        subscribed_events:
+          type: array
+          items:
+            type: string
+        filters:
+          $ref: '#/components/schemas/WebhookFilters'
+        enabled:
+          type: boolean
+        consecutive_failures:
+          type: integer
+        last_delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WebhookFilters:
+      type: object
+      properties:
+        mobile_app_ids:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        build_statuses:
+          type: array
+          items:
+            type: string
+        profile_types:
+          type: array
+          items:
+            type: string
+
+    CreateWebhookEndpoint:
+      type: object
+      required: [name, url, events]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        url:
+          type: string
+          maxLength: 2048
+          format: uri
+        events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - mobile_app.created
+              - mobile_app.updated
+              - mobile_app.deleted
+              - app_identifier.created
+              - app_identifier.updated
+              - app_identifier.deleted
+              - credential.created
+              - credential.updated
+              - credential.deleted
+              - build.created
+              - build.started
+              - build.cancel_requested
+              - build.completed
+              - artifact.created
+              - artifact.deleted
+              - team.invitation.created
+              - team.invitation.accepted
+              - team.invitation.revoked
+              - team.member.role_changed
+              - team.member.removed
+          uniqueItems: true
+        filters:
+          $ref: '#/components/schemas/WebhookFilterInput'
+
+    UpdateWebhookEndpoint:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        url:
+          type: string
+          maxLength: 2048
+          format: uri
+        events:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          uniqueItems: true
+        enabled:
+          type: boolean
+        filters:
+          $ref: '#/components/schemas/WebhookFilterInput'
+
+    WebhookFilterInput:
+      type: object
+      properties:
+        mobile_app_ids:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        tags:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        build_statuses:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            enum: [pending, running, cancel_requested, completed, failed, cancelled]
+        profile_types:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            enum: [development, adhoc, appstore, enterprise, preview, production]
+
+    WebhookDelivery:
+      type: object
+      properties:
+        id:
+          type: integer
+        event_type:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/WebhookDeliveryStatus'
+        attempt_count:
+          type: integer
+        response_status:
+          type: integer
+          nullable: true
+        duration_ms:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        redelivery_of_id:
+          type: integer
+          nullable: true
+        next_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+        delivered_at:
+          type: string
+          format: date-time
+          nullable: true
+        response_preview:
+          type: string
+          nullable: true
+          description: First 512 characters of response body
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        created_by:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            email:
+              type: string
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedResponse:
+      type: object
+      properties:
+        links:
+          type: object
+          properties:
+            first:
+              type: string
+            last:
+              type: string
+            prev:
+              type: string
+              nullable: true
+            next:
+              type: string
+              nullable: true
+        meta:
+          type: object
+          properties:
+            current_page:
+              type: integer
+            from:
+              type: integer
+              nullable: true
+            last_page:
+              type: integer
+            per_page:
+              type: integer
+            to:
+              type: integer
+              nullable: true
+            total:
+              type: integer
+
+    Platform:
+      type: string
+      enum: [ios, android, web]
+
+    BuildStatus:
+      type: string
+      enum: [pending, running, cancel_requested, completed, failed, cancelled]
+
+    BuildReportingMode:
+      type: string
+      enum: [manual, automatic]
+
+    ProfileType:
+      type: string
+      enum: [development, adhoc, appstore, enterprise, preview, production]
+
+    CredentialType:
+      type: string
+      enum:
+        - ios_certificate
+        - provisioning_profile
+        - apns_key
+        - apple_api_key
+        - android_keystore
+        - firebase_config
+        - google_play_service_account
+        - google_services_json
+        - google_service_info_plist
+
+    IntegrationKind:
+      type: string
+      enum: [ci_cd, app_service, webhook]
+
+    IntegrationProvider:
+      type: string
+      enum: [github, gitlab, expo, http]
+
+    IntegrationStatus:
+      type: string
+      enum: [pending, active, degraded, disabled, disconnected]
+
+    CiCdDispatchStatus:
+      type: string
+      enum: [created, dispatching, accepted, unknown, failed]
+
+    WebhookDeliveryStatus:
+      type: string
+      enum: [pending, delivering, retry_scheduled, delivered, exhausted]
+
+    ApiKeyScope:
+      type: string
+      enum:
+        - apps:read
+        - apps:write
+        - identifiers:read
+        - identifiers:write
+        - assets:read
+        - assets:write
+        - credentials:read
+        - credentials:write
+        - builds:read
+        - builds:write
+        - logs:read
+        - logs:write
+        - artifacts:read
+        - artifacts:write
+        - integrations:read
+        - integrations:write
+        - integrations:proxy
+        - pipelines:read
+        - pipelines:write
+        - pipelines:run
+        - webhooks:read
+        - webhooks:write
+        - deliveries:read
+        - api-keys:read
+        - api-keys:write
+
+    WebhookEventType:
+      type: string
+      enum:
+        - mobile_app.created
+        - mobile_app.updated
+        - mobile_app.deleted
+        - app_identifier.created
+        - app_identifier.updated
+        - app_identifier.deleted
+        - credential.created
+        - credential.updated
+        - credential.deleted
+        - build.created
+        - build.started
+        - build.cancel_requested
+        - build.completed
+        - artifact.created
+        - artifact.deleted
+        - team.invitation.created
+        - team.invitation.accepted
+        - team.invitation.revoked
+        - team.member.role_changed
+        - team.member.removed
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+                example: Not Found
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+
+    Conflict:
+      description: Conflict (e.g. invalid build transition)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string

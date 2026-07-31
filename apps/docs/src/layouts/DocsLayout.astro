@@ -1,0 +1,319 @@
+---
+interface Props {
+  title: string;
+  activeNav?: string;
+}
+
+const { title, activeNav } = Astro.props;
+
+const navSections = [
+  {
+    title: 'Overview',
+    items: [
+      { label: 'Introduction', href: '/' },
+      { label: 'Getting Started', href: '/getting-started' },
+    ],
+  },
+  {
+    title: 'Guides',
+    items: [
+      { label: 'Authentication', href: '/guides/authentication' },
+      { label: 'Builds', href: '/guides/builds' },
+      { label: 'CLI (appmctl)', href: '/guides/cli' },
+      { label: 'Fastlane Plugin', href: '/guides/fastlane' },
+      { label: 'Webhooks', href: '/guides/webhooks' },
+      { label: 'Expo Integration', href: '/guides/expo-integration' },
+      { label: 'CI/CD Pipelines', href: '/guides/cicd-pipelines' },
+    ],
+  },
+  {
+    title: 'API',
+    items: [
+      { label: 'API Reference', href: '/api-reference' },
+    ],
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | App Manager Docs</title>
+    <style is:global>
+      :root {
+        --bg: #ffffff;
+        --bg-sidebar: #f8f9fa;
+        --bg-code: #f1f3f5;
+        --text: #1a1a2e;
+        --text-muted: #6c757d;
+        --text-link: #2563eb;
+        --border: #e9ecef;
+        --accent: #2563eb;
+        --sidebar-width: 260px;
+        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', Consolas, monospace;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --bg-sidebar: #161b22;
+          --bg-code: #1c2128;
+          --text: #e6edf3;
+          --text-muted: #8b949e;
+          --text-link: #58a6ff;
+          --border: #30363d;
+          --accent: #58a6ff;
+        }
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        font-family: var(--font-sans);
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        display: flex;
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: var(--sidebar-width);
+        height: 100vh;
+        background: var(--bg-sidebar);
+        border-right: 1px solid var(--border);
+        overflow-y: auto;
+        padding: 24px 0;
+        z-index: 10;
+      }
+
+      .sidebar-title {
+        padding: 0 20px;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 24px;
+        letter-spacing: -0.02em;
+      }
+
+      .sidebar-title a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .nav-section {
+        margin-bottom: 20px;
+      }
+
+      .nav-section-title {
+        padding: 0 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .nav-link {
+        display: block;
+        padding: 6px 20px;
+        font-size: 14px;
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: all 0.15s ease;
+      }
+
+      .nav-link:hover {
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      .nav-link.active {
+        color: var(--accent);
+        background: var(--bg);
+        font-weight: 500;
+        border-right: 2px solid var(--accent);
+      }
+
+      .main-content {
+        margin-left: var(--sidebar-width);
+        flex: 1;
+        min-width: 0;
+      }
+
+      .content {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 48px;
+      }
+
+      @media (max-width: 768px) {
+        .sidebar {
+          display: none;
+        }
+        .main-content {
+          margin-left: 0;
+        }
+        .content {
+          padding: 24px 20px;
+        }
+      }
+
+      .content h1 {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 16px;
+        letter-spacing: -0.02em;
+      }
+
+      .content h2 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-top: 40px;
+        margin-bottom: 12px;
+        letter-spacing: -0.01em;
+      }
+
+      .content h3 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-top: 28px;
+        margin-bottom: 8px;
+      }
+
+      .content p {
+        margin-bottom: 16px;
+        line-height: 1.7;
+      }
+
+      .content a {
+        color: var(--text-link);
+        text-decoration: none;
+      }
+
+      .content a:hover {
+        text-decoration: underline;
+      }
+
+      .content code {
+        font-family: var(--font-mono);
+        font-size: 0.9em;
+        background: var(--bg-code);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+
+      .content pre {
+        background: var(--bg-code);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        overflow-x: auto;
+        margin-bottom: 16px;
+      }
+
+      .content pre code {
+        background: none;
+        padding: 0;
+        font-size: 14px;
+      }
+
+      .content table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16px;
+      }
+
+      .content th, .content td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+      }
+
+      .content th {
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+      }
+
+      .content ul, .content ol {
+        margin-bottom: 16px;
+        padding-left: 24px;
+      }
+
+      .content li {
+        margin-bottom: 4px;
+        line-height: 1.6;
+      }
+
+      .content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 32px 0;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 4px;
+        background: var(--bg-code);
+        color: var(--text-muted);
+      }
+
+      .badge.get { color: #22863a; background: #dcffe4; }
+      .badge.post { color: #0366d6; background: #dbedff; }
+      .badge.patch { color: #735c0f; background: #fff5b1; }
+      .badge.delete { color: #cb2431; background: #ffeef0; }
+
+      @media (prefers-color-scheme: dark) {
+        .badge.get { color: #3fb950; background: #1b3a2a; }
+        .badge.post { color: #58a6ff; background: #1a3050; }
+        .badge.patch { color: #d29922; background: #3d2e00; }
+        .badge.delete { color: #f85149; background: #3d1a1e; }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="sidebar">
+      <div class="sidebar-title">
+        <a href="/">App Manager</a>
+      </div>
+      {navSections.map((section) => (
+        <div class="nav-section">
+          <div class="nav-section-title">{section.title}</div>
+          {section.items.map((item) => (
+            <a
+              href={item.href}
+              class:list={['nav-link', { active: activeNav === item.href }]}
+            >
+              {item.label}
+            </a>
+          ))}
+        </div>
+      ))}
+    </nav>
+    <main class="main-content">
+      <div class="content">
+        <slot />
+      </div>
+    </main>
+  </body>
+</html>
