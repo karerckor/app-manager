@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:design": "node --test tests/design/*.test.js"
+        "test:design": "node --test tests/design/*.test.js",
+        "design:lint": "node scripts/design/design-lint.mjs resources/js/Components/ui resources/js/design"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.2.0",
