@@ -62,10 +62,10 @@ All routes join the existing group in `routes/api.php`
 | PATCH | `/files/{file}` | `apps.files.update` | `files:write` | `manage_applications` |
 | DELETE | `/files/{file}` | `apps.files.destroy` | `files:write` | `manage_applications` |
 
-`{file}` is `media.file_name`. The `/content` route is registered before
-`/files/{file}` so a file literally named `content` cannot shadow it. Lookup
-compares with `hash_equals` against the app's `files` collection, matching
-`AppFileController::fileByName`; no match is a 404.
+`{file}` is `media.file_name`. Lookup compares with `hash_equals` against the
+app's `files` collection, matching `AppFileController::fileByName`; no match is a
+404. Sanitized names never contain a slash, so `/files/{file}` and
+`/files/{file}/content` cannot collide.
 
 `App\Http\Controllers\Api\V1\AppFileController` owns these actions:
 
@@ -227,8 +227,10 @@ event list. `apps/docs/dist/` is build output and is not edited by hand.
   normalization, webhook payload shape.
 - `tests/Feature/AppMediaLibraryTest.php`: unchanged, must still pass.
 - `tests/Feature/Api/V1/ApiKeyScopeTest.php`: updated scope list.
-- fastlane: rspec. CLI: no bash test harness exists in the repo, so the new
-  commands are verified through `--dry-run` output.
+- CLI: `libs/cli/tests/test_files.sh`, following `test_logs_artifacts.sh` — the
+  suite drives `bin/appmctl` against `tests/fixtures/mock_curl.sh`, which needs
+  new `apps/*/files*` routes.
+- fastlane: rspec specs alongside the existing client and action specs.
 
 ## Risks
 
