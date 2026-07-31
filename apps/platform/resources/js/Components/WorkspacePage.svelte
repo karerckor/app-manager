@@ -31,15 +31,10 @@
 
 <AppShell {auth} teams={navigationTeams} currentTeam={navigationTeam} {active}>
     <main class="mx-auto {shell} px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
-        {#if heading}
-            {#if breadcrumbs}<div class="mb-4">{@render breadcrumbs()}</div>{/if}
-            <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
-                <div class="min-w-0">{@render heading()}</div>
-                {#if actions}<div class="flex flex-wrap items-center gap-2">{@render actions()}</div>{/if}
-            </div>
-        {:else}
-            <PageHeader {eyebrow} {title} {description} {breadcrumbs} {actions} />
-        {/if}
+        <!-- One header, one code path. `heading` is forwarded as PageHeader's
+             titleArea rather than branching into a locally-rewritten wrapper:
+             duplicating the wrapper here is the very defect this task removes. -->
+        <PageHeader {eyebrow} {title} {description} {breadcrumbs} {actions} titleArea={heading} />
 
         {#if flash?.status}
             <div class="mb-5 flex items-center gap-2.5 rounded-md border border-ok/30 bg-ok/10 px-4 py-3 text-sm font-medium text-ok" role="status">
