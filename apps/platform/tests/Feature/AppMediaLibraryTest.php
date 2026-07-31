@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\WebhookEventType;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -367,6 +368,37 @@ class AppMediaLibraryTest extends TestCase
         $this->get(route('accounts.apps.assets.conversions.preview', [
             $team, $app, 'splash_icon', 'ios-icon-40',
         ]))->assertNotFound();
+    }
+
+    public function test_web_upload_and_delete_record_app_file_webhook_events(): void
+    {
+        Storage::fake(config('media-library.disk_name'));
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)
+            ->post(route('accounts.apps.media.files.store', [$team, $app]), [
+                'file' => UploadedFile::fake()->create('notes.pdf', 12, 'application/pdf'),
+            ])
+            ->assertRedirect();
+
+        $media = $app->refresh()->getMedia('files')->first();
+        $this->assertNotNull($media);
+        $this->assertDatabaseHas('webhook_events', [
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::AppFileCreated->value,
+            'aggregate_id' => $media->getKey(),
+        ]);
+
+        $this->actingAs($user)
+            ->delete(route('accounts.apps.media.files.destroy', [$team, $app, $media]))
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('webhook_events', [
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::AppFileDeleted->value,
+            'aggregate_id' => $media->getKey(),
+        ]);
     }
 
     public function test_media_library_is_forbidden_for_a_non_member(): void

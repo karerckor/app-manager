@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppContext;
+use App\Support\Apps\AppFileLibrary;
 use App\Support\Apps\AppFilePreview;
 use App\Support\Apps\AppMediaLibrary;
 use Illuminate\Http\RedirectResponse;
@@ -16,6 +17,8 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class AppMediaLibraryController extends Controller
 {
+    public function __construct(private readonly AppFileLibrary $files) {}
+
     public function __invoke(Request $request, Team $team, MobileApp $mobileApp): Response
     {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
@@ -26,8 +29,9 @@ class AppMediaLibraryController extends Controller
             'fileLibrary' => [
                 'upload_url' => route('accounts.apps.media.files.store', [$team, $mobileApp]),
                 'max_file_size' => config('media-library.max_file_size_kb') * 1024,
-                'files' => $mobileApp->getMedia('files')
-                    ->sortByDesc('created_at')
+                'files' => $this->files->query($mobileApp)
+                    ->latest()
+                    ->get()
                     ->map(function (Media $media) use ($team, $mobileApp) {
                         $previewType = AppFilePreview::type($media->mime_type);
 

@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Concerns\NormalizesFileMetadata;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Apps\AppFileLibrary;
 use App\Support\Apps\AppFilePreview;
 use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AppFileController extends Controller
 {
+    use NormalizesFileMetadata;
+
+    public function __construct(private readonly AppFileLibrary $files) {}
+
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
         $this->authorizeTeam($request, $team, $mobileApp);
@@ -22,26 +27,8 @@ class AppFileController extends Controller
             'file' => ['required', 'file', 'max:'.config('media-library.max_file_size_kb')],
             'metadata' => ['nullable', 'string', 'max:65535', 'json'],
         ]);
-        $metadata = $this->metadata($data['metadata'] ?? null);
-        $fileAdder = $mobileApp->addMediaFromRequest('file');
 
-        if ($metadata !== null) {
-            $fileAdder->withCustomProperties(['metadata' => $metadata]);
-        }
-
-        $media = $fileAdder->toMediaCollection('files');
-        $duplicate = $mobileApp->getMedia('files')->first(
-            fn (Media $candidate) => $candidate->getKey() !== $media->getKey()
-                && hash_equals($candidate->file_name, $media->file_name),
-        );
-
-        if ($duplicate) {
-            $media->delete();
-
-            throw ValidationException::withMessages([
-                'file' => "A file named {$media->file_name} is already attached.",
-            ]);
-        }
+        $this->files->attach($mobileApp, $data['file'], $this->fileMetadata($data['metadata'] ?? null));
 
         return back()->with('status', 'File uploaded.');
     }
@@ -58,15 +45,8 @@ class AppFileController extends Controller
         $data = $request->validate([
             'metadata' => ['nullable', 'string', 'max:65535', 'json'],
         ]);
-        $metadata = $this->metadata($data['metadata'] ?? null);
 
-        if ($metadata === null) {
-            $media->forgetCustomProperty('metadata');
-        } else {
-            $media->setCustomProperty('metadata', $metadata);
-        }
-
-        $media->save();
+        $this->files->updateMetadata($media, $this->fileMetadata($data['metadata'] ?? null));
 
         return back()->with('status', 'File metadata updated.');
     }
@@ -78,7 +58,8 @@ class AppFileController extends Controller
         string $fileName,
     ): StreamedResponse {
         $this->authorizeTeam($request, $team, $mobileApp);
-        $media = $this->fileByName($mobileApp, $fileName);
+        $media = $this->files->findByName($mobileApp, $fileName);
+        abort_unless($media instanceof Media, 404);
 
         return MediaFileResponse::download($media, [
             'X-Content-Type-Options' => 'nosniff',
@@ -110,7 +91,7 @@ class AppFileController extends Controller
     ): RedirectResponse {
         $this->authorizeTeam($request, $team, $mobileApp);
         $this->assertFileBelongsToApp($mobileApp, $media);
-        $media->delete();
+        $this->files->detach($media);
 
         return back()->with('status', 'File deleted.');
     }
@@ -123,40 +104,6 @@ class AppFileController extends Controller
 
     private function assertFileBelongsToApp(MobileApp $mobileApp, Media $media): void
     {
-        abort_unless(
-            $media->model_type === $mobileApp->getMorphClass()
-                && (string) $media->model_id === (string) $mobileApp->getKey()
-                && $media->collection_name === 'files',
-            404,
-        );
-    }
-
-    private function fileByName(MobileApp $mobileApp, string $fileName): Media
-    {
-        $media = $mobileApp->getMedia('files')->first(
-            fn (Media $candidate) => hash_equals($candidate->file_name, $fileName),
-        );
-
-        abort_unless($media instanceof Media, 404);
-
-        return $media;
-    }
-
-    /** @return array<string, mixed>|null */
-    private function metadata(?string $value): ?array
-    {
-        if (blank($value)) {
-            return null;
-        }
-
-        $decodedObject = json_decode($value);
-
-        if (! is_object($decodedObject)) {
-            throw ValidationException::withMessages([
-                'metadata' => 'Metadata must be a JSON object.',
-            ]);
-        }
-
-        return json_decode($value, true, flags: JSON_THROW_ON_ERROR);
+        abort_unless($this->files->belongsToApp($mobileApp, $media), 404);
     }
 }
