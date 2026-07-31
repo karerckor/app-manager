@@ -1400,15 +1400,43 @@ The `heading` snippet escape hatch is kept because `Tools/PushNotifications` ren
 
 - [ ] **Step 3: Migrate the five existing consumers' slot syntax**
 
-The five pages using `WorkspacePage` pass content with Svelte 4 slot syntax (`<div slot="actions">`), which runes-mode snippets do not accept. In each of `resources/js/Pages/Dashboard.svelte`, `Pages/Credentials/Index.svelte`, `Pages/AuditLog/Index.svelte`, `Pages/Integrations/Index.svelte`, and `Pages/Tools/PushNotifications.svelte`, convert only the `WorkspacePage` slot usage — leave the rest of each page alone. A `<div slot="actions">…</div>` becomes:
+Pages passing content to `WorkspacePage` use Svelte 4 slot syntax, which runes-mode
+snippets do not accept. The element is `<svelte:fragment slot="…">`, not a `<div>`.
+
+There are exactly **four** conversions across **three** pages — not five. Two of the
+five `WorkspacePage` consumers pass no slotted content at all and need no edit:
+
+| File | Line | Slot |
+|---|---|---|
+| `resources/js/Pages/Dashboard.svelte` | 71 | `actions` |
+| `resources/js/Pages/Credentials/Index.svelte` | 285 | `actions` |
+| `resources/js/Pages/Tools/PushNotifications.svelte` | 240 | `breadcrumbs` |
+| `resources/js/Pages/Tools/PushNotifications.svelte` | 248 | `heading` |
+
+`Pages/AuditLog/Index.svelte` and `Pages/Integrations/Index.svelte` pass only default
+children and props. Do not edit them.
+
+Each conversion replaces the wrapper only:
 
 ```svelte
-{#snippet actions()}
-    …the same markup, without the slot attribute…
-{/snippet}
+<svelte:fragment slot="actions">     →     {#snippet actions()}
+    …unchanged markup…                         …the same markup, byte for byte…
+</svelte:fragment>                    →     {/snippet}
 ```
 
-Likewise `slot="breadcrumbs"` and `slot="heading"`. Default content stays as plain children and needs no change.
+**Change nothing inside the slots.** Their markup contains raw palette classes
+(`text-slate-500`, `bg-indigo-50`, `text-indigo-700`) and arbitrary type sizes
+(`text-[11px]`, `text-[10px]`). These three pages are not in the `design:lint`
+paths and their bodies are rewritten in sub-project 2. Restyling them here would
+widen this task and mix two concerns in one diff.
+
+One consequence worth stating so it is not mistaken for a defect later:
+`PushNotifications` uses the `heading` escape hatch, and its slot contains its own
+`<h1 class="truncate text-2xl font-extrabold …">`. Converting the wrapper preserves
+that, so this one page keeps the old title styling rather than gaining the condensed
+uppercase treatment. That is correct for this task's scope.
+
+Default content stays as plain children and needs no change.
 
 These five pages remain in legacy mode otherwise, which is fine: a snippet passed to a runes-mode child from a legacy-mode parent is supported. Converting the page bodies to runes happens in sub-project 2.
 
