@@ -1051,7 +1051,7 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
     ].join(' ');
 </script>
 
-{#snippet nav()}
+{#snippet nav(scope)}
     <Link href={url('/apps')} class="mb-6 flex items-center gap-2.5 px-2">
         <span class="grid h-8 w-8 grid-cols-2 gap-0.5 rounded-sm bg-brand p-1.5">
             <!-- Square tiles, no radius: at ~10px a 1px rounding is invisible, an
@@ -1066,10 +1066,14 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
         </span>
     </Link>
 
+    <!-- The id is scoped: this snippet renders twice (sidebar and drawer), and a
+         duplicate id makes the browser resolve BOTH labels to the first match in
+         document order — the hidden desktop select — so the drawer's visible label
+         would click through to a control that cannot take focus. -->
     <div class="mb-5 rounded-sm border border-nav-border p-2">
-        <label for="team" class="mb-1 block font-condensed text-2xs font-semibold tracking-[0.18em] text-nav-text uppercase">Workspace</label>
+        <label for="team-{scope}" class="mb-1 block font-condensed text-2xs font-semibold tracking-[0.18em] text-nav-text uppercase">Workspace</label>
         <select
-            id="team"
+            id="team-{scope}"
             class="w-full border-0 bg-transparent p-0.5 text-sm font-medium text-nav-strong shadow-none focus:ring-0"
             value={currentTeam?.slug ?? ''}
             onchange={switchTeam}
@@ -1118,44 +1122,57 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
 
 <div class="min-h-screen lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
     <aside class="hidden min-h-screen flex-col bg-nav px-3 py-4 lg:flex">
-        {@render nav()}
+        {@render nav('desktop')}
     </aside>
 
     <div class="min-w-0">
-        <header class="flex items-center justify-between border-b border-border bg-surface-raised px-4 py-2.5 lg:hidden">
-            <button
-                type="button"
-                class="flex items-center gap-2 rounded-sm bg-transparent px-1 py-1 text-sm font-semibold text-text shadow-none"
-                aria-label="Open navigation"
-                aria-expanded={drawerOpen}
-                onclick={() => (drawerOpen = true)}
-            >
-                <Menu class="h-5 w-5" strokeWidth={1.9} />
-                <span class="font-condensed tracking-[0.06em] uppercase">App Manager</span>
-            </button>
-            <ThemeToggle />
-        </header>
+        <!-- Everything behind the drawer goes inert while it is open. Without this a
+             keyboard user tabs straight past the drawer's last item into the page
+             content, which is still focusable behind the backdrop. `inert` also hides
+             it from assistive technology, which a manual Tab trap would not. -->
+        <div inert={drawerOpen || undefined}>
+            <header class="flex items-center justify-between border-b border-border bg-surface-raised px-4 py-2.5 lg:hidden">
+                <button
+                    bind:this={menuButton}
+                    type="button"
+                    class="flex items-center gap-2 rounded-sm bg-transparent px-1 py-1 text-sm font-semibold text-text shadow-none"
+                    aria-label="Open navigation"
+                    aria-expanded={drawerOpen}
+                    onclick={openDrawer}
+                >
+                    <Menu class="h-5 w-5" strokeWidth={1.9} />
+                    <span class="font-condensed tracking-[0.06em] uppercase">App Manager</span>
+                </button>
+                <ThemeToggle />
+            </header>
+
+            {@render children?.()}
+        </div>
 
         {#if drawerOpen}
             <div
                 class="fixed inset-0 z-40 bg-nav/60 lg:hidden"
                 role="presentation"
-                onclick={() => (drawerOpen = false)}
+                onclick={closeDrawer}
             ></div>
-            <aside class="fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col bg-nav px-3 py-4 lg:hidden">
+            <aside
+                class="fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col bg-nav px-3 py-4 lg:hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Navigation"
+            >
                 <button
+                    bind:this={closeButton}
                     type="button"
                     class="mb-2 ml-auto grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-nav-text shadow-none"
                     aria-label="Close navigation"
-                    onclick={() => (drawerOpen = false)}
+                    onclick={closeDrawer}
                 >
                     <X class="h-4 w-4" strokeWidth={1.9} />
                 </button>
-                {@render nav()}
+                {@render nav('mobile')}
             </aside>
         {/if}
-
-        {@render children?.()}
     </div>
 </div>
 ```
@@ -1168,24 +1185,62 @@ let { auth, teams = [], currentTeam = null, active = 'apps', children } = $props
 
 Consumers pass content as ordinary child markup, which Svelte 5 supplies as `children`, so no call site changes.
 
-- [ ] **Step 2: Close the drawer on navigation and on Escape**
+- [ ] **Step 2: Drawer open/close, focus handling, and dismissal**
 
-Append to the script block:
+Append to the script block. `tick` must be added to the imports: `import { tick } from 'svelte';`
 
 ```js
+    let menuButton = $state(null);
+    let closeButton = $state(null);
+
+    /*
+     * Focus moves into the drawer on open and back to the trigger on close.
+     * Without the first, a screen-reader user gets no signal the drawer appeared;
+     * without the second, dismissing it drops focus to <body> and the user
+     * restarts from the top of the document. `await tick()` is required because
+     * the element to focus does not exist (or is still inert) until Svelte has
+     * flushed the DOM update.
+     */
+    const openDrawer = async () => {
+        drawerOpen = true;
+        await tick();
+        closeButton?.focus();
+    };
+
+    const closeDrawer = async () => {
+        drawerOpen = false;
+        await tick();
+        menuButton?.focus();
+    };
+
     // Inertia swaps the page without unmounting the shell, so the drawer would
-    // otherwise stay open on top of the page the user just navigated to.
+    // otherwise stay open on top of the page the user just navigated to. Set the
+    // flag directly rather than calling closeDrawer: focus belongs to the new
+    // page, not back on the menu button.
+    $effect(() => router.on('navigate', () => (drawerOpen = false)));
+
+    /*
+     * Crossing to the desktop breakpoint hides the drawer with `lg:hidden` but
+     * leaves drawerOpen true, which would keep the page content inert with no
+     * visible drawer to dismiss. Close it on the transition.
+     */
     $effect(() => {
-        const done = router.on('navigate', () => (drawerOpen = false));
-        return done;
+        const desktop = window.matchMedia('(min-width: 1024px)');
+        const onChange = (event) => {
+            if (event.matches) drawerOpen = false;
+        };
+        desktop.addEventListener('change', onChange);
+        return () => desktop.removeEventListener('change', onChange);
     });
 
     const onKeydown = (event) => {
-        if (event.key === 'Escape') drawerOpen = false;
+        if (event.key === 'Escape' && drawerOpen) closeDrawer();
     };
 ```
 
-And add to the outermost element in the markup — put it on the `<svelte:window>` tag inserted just above the top-level `<div>`:
+Note the first `$effect` returns `router.on(...)`'s own return value directly, which is Inertia's unsubscribe function — that is the effect's cleanup.
+
+And add a `<svelte:window>` tag just above the top-level `<div>`:
 
 ```svelte
 <svelte:window onkeydown={onKeydown} />
