@@ -26,13 +26,19 @@ test('flags raw palette classes across every prefix and utility', () => {
 });
 
 test('flags radii outside the three-step scale', () => {
-    const found = findViolations('<div class="rounded-md rounded-2xl rounded-3xl rounded-lg rounded-xl">', 'c.svelte');
-    assert.equal(found.length, 5);
+    const found = findViolations('<div class="rounded-2xl rounded-3xl rounded-lg rounded-xl">', 'c.svelte');
+    assert.equal(found.length, 4);
     for (const violation of found) assert.equal(violation.rule, 'off-scale-radius');
 });
 
 test('allows the three permitted radii', () => {
-    assert.deepEqual(findViolations('<div class="rounded-sm rounded-md-not rounded-full">', 'd.svelte'), []);
+    assert.deepEqual(findViolations('<div class="rounded-sm rounded-md rounded-full">', 'd.svelte'), []);
+});
+
+test('flags an off-scale step behind a directional infix', () => {
+    const found = findViolations('<div class="rounded-t-lg rounded-b-sm">', 'g.svelte');
+    assert.equal(found.length, 1);
+    assert.equal(found[0].match, 'rounded-t-lg');
 });
 
 test('allows semantic tokens and named type steps', () => {

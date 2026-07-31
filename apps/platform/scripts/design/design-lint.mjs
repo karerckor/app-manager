@@ -5,7 +5,7 @@ import { join, relative } from 'node:path';
 const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'indigo', 'violet', 'purple', 'rose', 'red', 'emerald', 'green', 'teal', 'amber', 'yellow', 'orange', 'blue', 'sky', 'cyan'];
 const UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'divide', 'from', 'via', 'to', 'outline', 'shadow', 'accent', 'fill', 'stroke', 'decoration', 'placeholder', 'caret'];
 const RADIUS_STEPS = new Set(['none', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', 'full']);
-const ALLOWED_RADII = new Set(['sm', 'full', 'none']);
+const ALLOWED_RADII = new Set(['sm', 'md', 'full', 'none']);
 
 const RULES = [
     {
@@ -21,7 +21,7 @@ const RULES = [
     {
         name: 'off-scale-radius',
         pattern: /\brounded(?:-[a-z]+)?-?([a-z0-9]*)\b/g,
-        hint: 'radius is on-scale only as rounded-sm (controls) or rounded-full (avatars and dots) — every other step is off-scale',
+        hint: 'radius is three steps: rounded-sm (controls), rounded-md (containers), rounded-full (avatars and dots)',
         reject: (match) => {
             const suffix = match.replace(/^rounded-?/, '');
             if (suffix === '') return false;
