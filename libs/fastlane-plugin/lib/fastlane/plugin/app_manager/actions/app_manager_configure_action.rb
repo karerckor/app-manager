@@ -6,7 +6,10 @@ module Fastlane
           api_key: params[:api_key],
           base_url: params[:base_url],
           team: params[:team],
-          app: params[:app]
+          app: params[:app],
+          connect_timeout: params[:connect_timeout],
+          read_timeout: params[:read_timeout],
+          max_retries: params[:max_retries]
         )
         UI.success(
           "Configured App Manager at #{configuration.base_url} " \
@@ -22,7 +25,8 @@ module Fastlane
       end
 
       def self.details
-        "Stores the API key, API base URL, team slug and app slug for the current Fastlane process."
+        "Stores the API key, API base URL, team slug and app slug for the current Fastlane process. " \
+        "Optional timeout and retry settings control HTTP behavior."
       end
 
       def self.available_options
@@ -55,6 +59,27 @@ module Fastlane
             description: "App slug in App Manager",
             type: String,
             optional: true
+          ),
+          FastlaneCore::ConfigItem.new(
+            key: :connect_timeout,
+            description: "HTTP connection timeout in seconds",
+            type: Integer,
+            optional: true,
+            default_value: Fastlane::AppManager::Configuration::DEFAULT_CONNECT_TIMEOUT
+          ),
+          FastlaneCore::ConfigItem.new(
+            key: :read_timeout,
+            description: "HTTP read timeout in seconds",
+            type: Integer,
+            optional: true,
+            default_value: Fastlane::AppManager::Configuration::DEFAULT_READ_TIMEOUT
+          ),
+          FastlaneCore::ConfigItem.new(
+            key: :max_retries,
+            description: "Maximum retries for transient HTTP errors (429, 502, 503, 504)",
+            type: Integer,
+            optional: true,
+            default_value: Fastlane::AppManager::Configuration::DEFAULT_MAX_RETRIES
           )
         ]
       end

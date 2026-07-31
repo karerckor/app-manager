@@ -308,4 +308,141 @@ RSpec.describe Fastlane::AppManager::Client do
       end
     end
   end
+
+  describe "#list_builds" do
+    it "fetches builds from the app endpoint" do
+      builds = [
+        { "id" => "build-1", "status" => "completed" },
+        { "id" => "build-2", "status" => "running" }
+      ]
+      allow(client).to receive(:get_json).and_return("data" => builds)
+
+      result = client.list_builds
+
+      expect(result.length).to eq(2)
+      expect(result.first["id"]).to eq("build-1")
+    end
+
+    it "passes status and limit query parameters" do
+      allow(client).to receive(:get_json).and_return("data" => [])
+
+      expect(client).to receive(:get_json).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/builds?status=failed&limit=5"
+      ).and_return("data" => [])
+
+      client.list_builds(status: "failed", limit: 5)
+    end
+  end
+
+  describe "#cancel_build" do
+    it "posts to the cancel endpoint" do
+      response = Struct.new(:body).new(JSON.generate(
+        "data" => { "id" => "build-1", "status" => "cancel_requested" }
+      ))
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/builds/build-1/cancel",
+        method: :post,
+        body: {}
+      ).and_return(response)
+
+      result = client.cancel_build("build-1")
+
+      expect(result["status"]).to eq("cancel_requested")
+    end
+  end
+
+  describe "#download_artifact" do
+    it "downloads an artifact file to the requested path" do
+      response = Struct.new(:body).new("artifact-bytes")
+      allow(client).to receive(:request).and_return(response)
+
+      Dir.mktmpdir do |directory|
+        output = File.join(directory, "release.apk")
+        result = client.download_artifact(
+          build_id: "build-1",
+          artifact_id: "artifact-1",
+          output_path: output
+        )
+
+        expect(result).to eq(output)
+        expect(File.binread(output)).to eq("artifact-bytes")
+      end
+    end
+  end
+
+  describe "#list_credentials" do
+    it "fetches credentials from the app endpoint" do
+      allow(client).to receive(:get_json).and_return("data" => credentials)
+
+      result = client.list_credentials
+
+      expect(result.length).to eq(2)
+      expect(result.first["type"]).to eq("ios_certificate")
+    end
+  end
+
+  describe "#list_identifiers" do
+    it "fetches identifiers from the app endpoint" do
+      identifiers = [
+        { "id" => "ios-1", "platform" => "ios", "identifier" => "com.example.ios" },
+        { "id" => "android-1", "platform" => "android", "identifier" => "com.example.android" }
+      ]
+      allow(client).to receive(:get_json).and_return("data" => identifiers)
+
+      result = client.list_identifiers
+
+      expect(result.length).to eq(2)
+      expect(result.first["platform"]).to eq("ios")
+    end
+  end
+
+  describe "retry behavior" do
+    it "retries on 429 responses" do
+      retry_response = Net::HTTPTooManyRequests.new("1.1", "429", "Too Many Requests")
+      retry_response.instance_variable_set(:@read, true)
+      retry_response.instance_variable_set(:@body, "")
+
+      ok_response = Net::HTTPOK.new("1.1", "200", "OK")
+      ok_response.instance_variable_set(:@read, true)
+      ok_response.instance_variable_set(:@body, JSON.generate("data" => { "id" => "app-1", "name" => "Test" }))
+
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      allow(http).to receive(:open_timeout=)
+      allow(http).to receive(:read_timeout=)
+      allow(http).to receive(:request).and_return(retry_response, ok_response)
+      allow(client).to receive(:sleep)
+
+      result = client.send(:get_json, "https://manager.example/api/v1/mobile-team/apps/customer-app")
+
+      expect(result).to include("data")
+      expect(http).to have_received(:request).twice
+    end
+
+    it "retries on network errors" do
+      ok_response = Net::HTTPOK.new("1.1", "200", "OK")
+      ok_response.instance_variable_set(:@read, true)
+      ok_response.instance_variable_set(:@body, JSON.generate("data" => []))
+
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      allow(http).to receive(:open_timeout=)
+      allow(http).to receive(:read_timeout=)
+      call_count = 0
+      allow(http).to receive(:request) do
+        call_count += 1
+        raise Errno::ECONNREFUSED if call_count == 1
+
+        ok_response
+      end
+      allow(client).to receive(:sleep)
+
+      result = client.send(:get_json, "https://manager.example/api/v1/mobile-team/apps/customer-app")
+
+      expect(result).to include("data")
+      expect(http).to have_received(:request).twice
+    end
+  end
 end

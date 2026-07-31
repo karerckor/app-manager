@@ -2,12 +2,15 @@ module Fastlane
   module Helper
     class AppManagerHelper
       class << self
-        def configure(api_key:, base_url:, team:, app:)
+        def configure(api_key:, base_url:, team:, app:, connect_timeout: nil, read_timeout: nil, max_retries: nil)
           Fastlane::AppManager::Configuration.configure(
             api_key: api_key,
             base_url: base_url,
             team: team,
-            app: app
+            app: app,
+            connect_timeout: connect_timeout,
+            read_timeout: read_timeout,
+            max_retries: max_retries
           )
         end
 
@@ -23,6 +26,12 @@ module Fastlane
           UI.user_error!(e.message)
         end
 
+        def list_builds(**options)
+          client.list_builds(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
         def create_build(**options)
           client.create_build(**options)
         rescue Fastlane::AppManager::Error => e
@@ -31,6 +40,12 @@ module Fastlane
 
         def build(build_id)
           client.build(build_id)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def cancel_build(build_id)
+          client.cancel_build(build_id)
         rescue Fastlane::AppManager::Error => e
           UI.user_error!(e.message)
         end
@@ -57,6 +72,24 @@ module Fastlane
 
         def download_credential(**options)
           client.download_credential(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def download_artifact(**options)
+          client.download_artifact(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def list_credentials
+          client.list_credentials
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def list_identifiers
+          client.list_identifiers
         rescue Fastlane::AppManager::Error => e
           UI.user_error!(e.message)
         end

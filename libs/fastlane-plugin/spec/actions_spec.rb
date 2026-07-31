@@ -197,38 +197,6 @@ RSpec.describe "App Manager actions" do
     end.to raise_error(FastlaneCore::Interface::FastlaneError, /profile_type/)
   end
 
-  it "exposes all typed download actions" do
-    runner = Fastlane::Runner.new
-    action_names = %i[
-      app_manager_configure
-      app_manager_app_info
-      app_manager_create_build
-      app_manager_build_start
-      app_manager_build_log
-      app_manager_build_finish
-      app_manager_download_icon
-      app_manager_download_splashscreen
-      app_manager_download_ios_certificate
-      app_manager_download_provisioning_profile
-      app_manager_download_android_keystore
-      app_manager_download_firebase_config
-      app_manager_download_apns_key
-      app_manager_download_google_play_service_account
-      app_manager_download_apple_api_key
-    ]
-
-    action_names.each do |action_name|
-      expect(runner.class_reference_from_action_name(action_name)).not_to be_nil
-    end
-
-    configure_keys = Fastlane::Actions::AppManagerConfigureAction.available_options.map(&:key)
-    credential_keys = Fastlane::Actions::AppManagerDownloadIosCertificateAction.available_options.map(&:key)
-    asset_keys = Fastlane::Actions::AppManagerDownloadIconAction.available_options.map(&:key)
-    expect(configure_keys).to include(:app)
-    expect(credential_keys).not_to include(:app)
-    expect(asset_keys).not_to include(:app)
-  end
-
   it "app_manager_add_artifact uploads an artifact to the resolved build" do
     Dir.mktmpdir do |dir|
       path = File.join(dir, "release.apk")
@@ -291,5 +259,164 @@ RSpec.describe "App Manager actions" do
         metadata: nil
       )
     end.to raise_error(FastlaneCore::Interface::FastlaneError, /does not exist/)
+  end
+
+  it "lists builds and exposes them through lane context" do
+    builds = [
+      { "id" => "build-1", "status" => "completed", "profile_type" => "production" },
+      { "id" => "build-2", "status" => "running", "profile_type" => "development" }
+    ]
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:list_builds).and_return(builds)
+
+    result = Fastlane::Actions::AppManagerListBuildsAction.run(status: nil, limit: nil)
+
+    expect(result).to eq(builds)
+    expect(
+      Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILDS]
+    ).to eq(builds)
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILDS] = nil
+  end
+
+  it "lists builds with status filter" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:list_builds).and_return([])
+
+    Fastlane::Actions::AppManagerListBuildsAction.run(status: "failed", limit: 10)
+
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:list_builds).with(
+      status: "failed",
+      limit: 10
+    )
+  end
+
+  it "shows build details and exposes them through lane context" do
+    build = { "id" => "build-1", "status" => "running", "profile_type" => "production" }
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with(nil).and_return("build-1")
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:build).with("build-1").and_return(build)
+
+    result = Fastlane::Actions::AppManagerShowBuildAction.run(build_id: nil)
+
+    expect(result).to eq(build)
+    expect(
+      Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_INFO]
+    ).to eq(build)
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_INFO] = nil
+  end
+
+  it "cancels a build" do
+    build = { "id" => "build-1", "status" => "cancel_requested" }
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with("build-1").and_return("build-1")
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:cancel_build).with("build-1").and_return(build)
+
+    result = Fastlane::Actions::AppManagerCancelBuildAction.run(build_id: "build-1")
+
+    expect(result).to eq(build)
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:cancel_build).with("build-1")
+  end
+
+  it "downloads an artifact" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with(nil).and_return("build-1")
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:download_artifact).and_return("/tmp/release.apk")
+
+    result = Fastlane::Actions::AppManagerDownloadArtifactAction.run(
+      artifact_id: "artifact-1",
+      output_path: "/tmp/release.apk",
+      build_id: nil,
+      overwrite: true
+    )
+
+    expect(result).to eq("/tmp/release.apk")
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:download_artifact).with(
+      build_id: "build-1",
+      artifact_id: "artifact-1",
+      output_path: "/tmp/release.apk",
+      overwrite: true
+    )
+  end
+
+  it "download artifact requires artifact_id" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:resolve_build_id).with(nil).and_return("build-1")
+
+    expect do
+      Fastlane::Actions::AppManagerDownloadArtifactAction.run(
+        artifact_id: "",
+        output_path: "/tmp/release.apk",
+        build_id: nil
+      )
+    end.to raise_error(FastlaneCore::Interface::FastlaneError, /artifact_id/)
+  end
+
+  it "lists credentials and exposes them through lane context" do
+    credentials = [
+      { "id" => "cert-1", "type" => "ios_certificate", "name" => "App Store" },
+      { "id" => "keystore-1", "type" => "android_keystore", "name" => "Production" }
+    ]
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:list_credentials).and_return(credentials)
+
+    result = Fastlane::Actions::AppManagerListCredentialsAction.run({})
+
+    expect(result).to eq(credentials)
+    expect(
+      Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_CREDENTIALS]
+    ).to eq(credentials)
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_CREDENTIALS] = nil
+  end
+
+  it "lists identifiers and exposes them through lane context" do
+    identifiers = [
+      { "id" => "ios-1", "platform" => "ios", "identifier" => "com.example.ios", "name" => "iOS" },
+      { "id" => "android-1", "platform" => "android", "identifier" => "com.example.android", "name" => "Android" }
+    ]
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:list_identifiers).and_return(identifiers)
+
+    result = Fastlane::Actions::AppManagerListIdentifiersAction.run({})
+
+    expect(result).to eq(identifiers)
+    expect(
+      Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_IDENTIFIERS]
+    ).to eq(identifiers)
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_IDENTIFIERS] = nil
+  end
+
+  it "exposes all actions including new ones" do
+    runner = Fastlane::Runner.new
+    action_names = %i[
+      app_manager_configure
+      app_manager_app_info
+      app_manager_create_build
+      app_manager_build_start
+      app_manager_build_log
+      app_manager_build_finish
+      app_manager_add_artifact
+      app_manager_list_builds
+      app_manager_show_build
+      app_manager_cancel_build
+      app_manager_download_artifact
+      app_manager_list_credentials
+      app_manager_list_identifiers
+      app_manager_download_icon
+      app_manager_download_splashscreen
+      app_manager_download_ios_certificate
+      app_manager_download_provisioning_profile
+      app_manager_download_android_keystore
+      app_manager_download_firebase_config
+      app_manager_download_apns_key
+      app_manager_download_google_play_service_account
+      app_manager_download_apple_api_key
+    ]
+
+    action_names.each do |action_name|
+      expect(runner.class_reference_from_action_name(action_name)).not_to be_nil
+    end
+
+    configure_keys = Fastlane::Actions::AppManagerConfigureAction.available_options.map(&:key)
+    credential_keys = Fastlane::Actions::AppManagerDownloadIosCertificateAction.available_options.map(&:key)
+    asset_keys = Fastlane::Actions::AppManagerDownloadIconAction.available_options.map(&:key)
+    expect(configure_keys).to include(:app, :connect_timeout, :read_timeout, :max_retries)
+    expect(credential_keys).not_to include(:app)
+    expect(asset_keys).not_to include(:app)
   end
 end

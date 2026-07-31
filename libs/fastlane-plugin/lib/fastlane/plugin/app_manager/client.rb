@@ -60,6 +60,19 @@ module Fastlane
         }
       end
 
+      def list_builds(status: nil, limit: nil)
+        query = {}
+        query[:status] = status if present?(status)
+        query[:limit] = limit if limit
+        path = app_endpoint("builds")
+        path += "?#{URI.encode_www_form(query)}" if query.any?
+        body = get_json(path)
+        builds = body["data"]
+        raise Error, "App Manager returned an invalid builds response" unless builds.is_a?(Array)
+
+        builds
+      end
+
       def create_build(request_uuid:, profile_type:, app_identifier_id: nil, context: {})
         payload = {
           request_uuid: request_uuid,
@@ -72,6 +85,14 @@ module Fastlane
 
       def build(build_id)
         build_data(get_json(app_endpoint("builds", build_id)))
+      end
+
+      def cancel_build(build_id)
+        build_data(json_request(
+          app_endpoint("builds", build_id, "cancel"),
+          method: :post,
+          body: {}
+        ))
       end
 
       def update_build(build_id:, status:)
@@ -113,6 +134,31 @@ module Fastlane
         parsed["data"]
       rescue JSON::ParserError, TypeError
         raise Error, "App Manager returned invalid JSON for artifact upload"
+      end
+
+      def download_artifact(build_id:, artifact_id:, output_path:, overwrite: true)
+        download(
+          app_endpoint("builds", build_id, "artifacts", artifact_id, "file"),
+          output_path,
+          overwrite: overwrite,
+          mode: ASSET_FILE_MODE
+        )
+      end
+
+      def list_credentials
+        body = get_json(app_endpoint("credentials"))
+        credentials = body["data"]
+        raise Error, "App Manager returned an invalid credentials response" unless credentials.is_a?(Array)
+
+        credentials
+      end
+
+      def list_identifiers
+        body = get_json(app_endpoint("identifiers"))
+        identifiers = body["data"]
+        raise Error, "App Manager returned an invalid identifiers response" unless identifiers.is_a?(Array)
+
+        identifiers
       end
 
       def download_asset(asset:, output_path:, overwrite: true)
@@ -167,9 +213,7 @@ module Fastlane
         credential_name: nil
       )
         app_identifier ||= first_app_identifier(platform)
-        body = get_json(app_endpoint("credentials"))
-        credentials = body["data"]
-        raise Error, "App Manager returned an invalid credentials response" unless credentials.is_a?(Array)
+        credentials = list_credentials
 
         matches = credentials.select do |credential|
           credential["type"] == type &&
@@ -227,12 +271,13 @@ module Fastlane
         destination
       end
 
-      def request(path, method: :get, body: nil, content_type: nil)
+      def request(path, method: :get, body: nil, content_type: nil, attempt: 0)
         uri = URI.parse(path)
         request_class = {
           get: Net::HTTP::Get,
           post: Net::HTTP::Post,
-          patch: Net::HTTP::Patch
+          patch: Net::HTTP::Patch,
+          delete: Net::HTTP::Delete
         }.fetch(method)
         request = request_class.new(uri)
         request["Authorization"] = "Bearer #{@configuration.api_key}"
@@ -250,16 +295,34 @@ module Fastlane
 
         http = Net::HTTP.new(uri.host, uri.port)
         http.use_ssl = uri.scheme == "https"
-        http.open_timeout = 10
-        http.read_timeout = 60
+        http.open_timeout = @configuration.connect_timeout
+        http.read_timeout = @configuration.read_timeout
         response = http.request(request)
+
+        if retryable_response?(response) && attempt < @configuration.max_retries
+          sleep(retry_delay(attempt))
+          return request(path, method: method, body: body, content_type: content_type, attempt: attempt + 1)
+        end
+
         return response if response.is_a?(Net::HTTPSuccess)
 
         raise Error, response_error(response)
       rescue Error
         raise
       rescue SystemCallError, SocketError, Timeout::Error, OpenSSL::SSL::SSLError => e
+        if attempt < @configuration.max_retries
+          sleep(retry_delay(attempt))
+          return request(path, method: method, body: body, content_type: content_type, attempt: attempt + 1)
+        end
         raise Error, "Could not connect to App Manager at #{@configuration.base_url}: #{e.message}"
+      end
+
+      def retryable_response?(response)
+        Configuration::RETRYABLE_HTTP_CODES.include?(response.code.to_i)
+      end
+
+      def retry_delay(attempt)
+        [2**attempt, 10].min
       end
 
       def response_error(response)
@@ -305,9 +368,7 @@ module Fastlane
       end
 
       def first_app_identifier(platform)
-        body = get_json(app_endpoint("identifiers"))
-        identifiers = body["data"]
-        raise Error, "App Manager returned an invalid app identifiers response" unless identifiers.is_a?(Array)
+        identifiers = list_identifiers
 
         if present?(platform)
           identifiers = identifiers.select { |identifier| identifier["platform"] == platform.to_s }

@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    fastlane-plugin-app_manager (0.2.0)
+    fastlane-plugin-app_manager (0.3.0)
       fastlane (>= 2.220, < 3)
 
 GEM

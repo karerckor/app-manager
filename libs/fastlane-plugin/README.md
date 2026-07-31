@@ -1,10 +1,41 @@
 # fastlane-plugin-app_manager
 
-`fastlane-plugin-app_manager` connects Fastlane lanes to the App Manager API. It provides composable actions for application metadata, assets, mobile signing credentials, store credentials, manual build reporting, build logs, and artifact uploads.
+`fastlane-plugin-app_manager` connects Fastlane lanes to the App Manager API. It provides composable actions for application metadata, assets, mobile signing credentials, store credentials, manual build reporting, build logs, artifact uploads, and build management.
 
 The plugin does not own the build itself. Every download action writes to the exact `output_path` selected by the caller, so the result can be combined with native Xcode/Gradle lanes, Flutter, React Native, Expo, or a custom pipeline.
 
 The plugin targets API v1 served by `apps/platform` (locally, `http://localhost:8000`). It is currently a pre-1.0 monorepo package: pin the source revision used by CI and expect the action contract to evolve with the API.
+
+## Quick Start
+
+```ruby
+lane :ios_build do
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+    team: "mobile-team",
+    app: "customer-app"
+  )
+
+  info = app_manager_app_info
+  certificate = app_manager_download_ios_certificate(
+    profile_type: "appstore",
+    output_path: "build/signing/distribution.p12"
+  )
+
+  build = app_manager_create_build(profile_type: "appstore")
+  app_manager_build_start
+
+  begin
+    build_app(...)
+    app_manager_add_artifact(file: "output/app.ipa")
+    app_manager_build_finish(status: "completed")
+  rescue => e
+    app_manager_build_log(message: "Failed: #{e.message}")
+    app_manager_build_finish(status: "failed")
+    raise
+  end
+end
+```
 
 ## Requirements
 
@@ -67,13 +98,31 @@ APP_MANAGER_APP=customer-app
 
 Explicit `app_manager_configure` arguments take effect for the current Fastlane process. If that action is not called, the client reads the four environment variables when the first App Manager action runs. Configure one app per lane execution; calling the action again replaces the in-process configuration.
 
-For non-local use, always use an HTTPS base URL. The HTTP client uses a 10-second connection timeout and a 60-second response timeout. It does not currently retry requests, so retry the complete idempotent lane step at the CI layer when transient network handling is required.
+For non-local use, always use an HTTPS base URL. The HTTP client uses a 10-second connection timeout and a 60-second response timeout by default. It automatically retries requests on transient errors (HTTP 429, 502, 503, 504 and network failures) up to 3 times with exponential backoff.
+
+Customize timeout and retry behavior:
+
+```ruby
+app_manager_configure(
+  api_key: ENV.fetch("APP_MANAGER_API_KEY"),
+  team: "mobile-team",
+  app: "customer-app",
+  connect_timeout: 30,
+  read_timeout: 120,
+  max_retries: 5
+)
+```
 
 ### Required API scopes
 
 | Operation | Minimum scopes |
 | --- | --- |
 | `app_manager_app_info` | `apps:read`, `identifiers:read` |
+| `app_manager_list_builds`, `app_manager_show_build` | `builds:read` |
+| `app_manager_cancel_build` | `pipelines:run` |
+| `app_manager_list_credentials` | `credentials:read` |
+| `app_manager_list_identifiers` | `identifiers:read` |
+| `app_manager_download_artifact` | `artifacts:read` |
 | Icon or splash-screen download | `assets:read` |
 | Any credential download | `credentials:read`; also `identifiers:read` when `app_identifier` is omitted |
 | Create/start/finish a manual build | `builds:write` |
@@ -87,6 +136,9 @@ App Manager also evaluates the team permissions associated with the API key crea
 | Action | API resource | Platforms |
 | --- | --- | --- |
 | `app_manager_app_info` | App name, metadata and identifiers | iOS, Android |
+| `app_manager_list_builds` | List builds with optional status filter | iOS, Android |
+| `app_manager_show_build` | Show build details | iOS, Android |
+| `app_manager_cancel_build` | Request build cancellation | iOS, Android |
 | `app_manager_download_icon` | App icon | iOS, Android |
 | `app_manager_download_splashscreen` | Splash screen | iOS, Android |
 | `app_manager_download_ios_certificate` | Password-protected `.p12`/`.pfx` signing certificate | iOS |
@@ -96,6 +148,9 @@ App Manager also evaluates the team permissions associated with the API key crea
 | `app_manager_download_apns_key` | APNs authentication key (`.p8`) | iOS |
 | `app_manager_download_google_play_service_account` | Google Play service-account JSON | Android |
 | `app_manager_download_apple_api_key` | App Store Connect API key (`.p8`) | iOS |
+| `app_manager_download_artifact` | Download a build artifact | iOS, Android |
+| `app_manager_list_credentials` | List all credentials for the app | iOS, Android |
+| `app_manager_list_identifiers` | List app identifiers (bundle IDs, package names) | iOS, Android |
 | `app_manager_create_build` | Create an API-managed build in `pending` | iOS, Android |
 | `app_manager_build_start` | Mark an API-managed build as `running` | iOS, Android |
 | `app_manager_build_log` | Append plain-text build output | iOS, Android |
@@ -106,11 +161,17 @@ App Manager also evaluates the team permissions associated with the API key crea
 
 | Action group | Required options | Optional options and defaults | Return value |
 | --- | --- | --- | --- |
-| `app_manager_configure` | Configuration must resolve `api_key`, `team`, and `app` | `base_url` defaults to `http://localhost:8000` | `true` |
+| `app_manager_configure` | Configuration must resolve `api_key`, `team`, and `app` | `base_url` defaults to `http://localhost:8000`; `connect_timeout: 10`, `read_timeout: 60`, `max_retries: 3` | `true` |
 | `app_manager_app_info` | None | None | Normalized app/identifier hash |
+| `app_manager_list_builds` | None | `status` filter, `limit` count | Array of build hashes |
+| `app_manager_show_build` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Build hash |
+| `app_manager_cancel_build` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Updated build hash |
+| `app_manager_list_credentials` | None | None | Array of credential hashes |
+| `app_manager_list_identifiers` | None | None | Array of identifier hashes |
 | Icon and splash-screen actions | `output_path` | `overwrite: true` | Absolute output path |
 | Signing credential actions | `profile_type`, `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
 | Service credential actions | `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
+| `app_manager_download_artifact` | `artifact_id`, `output_path` | `build_id` defaults to lane context, `overwrite: true` | Absolute output path |
 | `app_manager_create_build` | `profile_type` | `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
 | `app_manager_build_start` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Updated build resource |
 | `app_manager_build_log` | `message` and a resolved build ID | `newline: true`, optional `build_id` | Build-log metadata |
@@ -327,7 +388,85 @@ rescue StandardError => error
 end
 ```
 
-`app_manager_add_artifact` uploads the file at `file` and attaches it to the resolved build. `name` defaults to the file's basename, and `metadata` accepts any JSON-compatible hash (for example a commit SHA or build flavor) recorded alongside the artifact.
+## Build management
+
+List, inspect and cancel builds:
+
+```ruby
+builds = app_manager_list_builds(status: "running")
+# => [{ "id" => "...", "status" => "running", ... }, ...]
+
+build = app_manager_show_build(build_id: "build-uuid")
+# => { "id" => "build-uuid", "status" => "running", ... }
+
+app_manager_cancel_build(build_id: "build-uuid")
+```
+
+Download an artifact from a previous build:
+
+```ruby
+app_manager_download_artifact(
+  artifact_id: "artifact-uuid",
+  output_path: "build/release.apk",
+  build_id: "build-uuid"
+)
+```
+
+## Listing credentials and identifiers
+
+Inspect available credentials and identifiers:
+
+```ruby
+credentials = app_manager_list_credentials
+# => [{ "id" => "...", "type" => "ios_certificate", "name" => "..." }, ...]
+
+identifiers = app_manager_list_identifiers
+# => [{ "id" => "...", "platform" => "ios", "identifier" => "com.example.app" }, ...]
+```
+
+## CI/CD integration
+
+### GitHub Actions
+
+```yaml
+name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      app_manager_build_id:
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      APP_MANAGER_BUILD_ID: ${{ inputs.app_manager_build_id }}
+      APP_MANAGER_API_KEY: ${{ secrets.APP_MANAGER_API_KEY }}
+      APP_MANAGER_TEAM: mobile-team
+      APP_MANAGER_APP: customer-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - run: bundle exec fastlane ios release
+```
+
+### Bitrise
+
+```yaml
+workflows:
+  build:
+    envs:
+      - APP_MANAGER_API_KEY: $APP_MANAGER_API_KEY
+      - APP_MANAGER_TEAM: mobile-team
+      - APP_MANAGER_APP: customer-app
+    steps:
+      - bundle@1:
+          inputs:
+            - command: exec fastlane android release
+```
 
 `app_manager_create_build` stores the returned UUID in `APP_MANAGER_BUILD_ID` lane context. The other actions use that value automatically. For a CI/CD pipeline configured with manual reporting, App Manager creates the build before dispatch and injects its UUID into the selected `workflow_dispatch` string input. Map that input to the runner environment:
 
@@ -404,7 +543,7 @@ bundle exec fastlane action app_manager_create_build
 
 - The plugin talks to one configured team and app at a time.
 - It downloads files and reports builds, but deliberately leaves compilation, signing-tool invocation, and store upload to normal Fastlane actions.
-- HTTP requests use fixed connection/read timeouts and no built-in retries.
+- HTTP requests automatically retry on transient errors (429, 502, 503, 504, network failures) with exponential backoff. Customize via `connect_timeout`, `read_timeout`, and `max_retries` on `app_manager_configure`.
 - Log actions send one message per request; use [`appmctl`](../cli/README.md) when a command's live stdout/stderr needs to be chunked and streamed automatically.
 - The Firebase action downloads the server-side Firebase HTTP v1 service account. The separate Android/iOS client configuration files are currently available through the API and demo preparation flow, not dedicated plugin actions.
 - There is no stable public gem release contract yet.

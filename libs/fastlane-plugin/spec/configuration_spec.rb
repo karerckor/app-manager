@@ -53,5 +53,54 @@ RSpec.describe Fastlane::AppManager::Configuration do
         )
       end.to raise_error(Fastlane::AppManager::Error, /app/)
     end
+
+    it "rejects invalid slug formats" do
+      expect do
+        described_class.configure(
+          api_key: "secret",
+          base_url: "https://manager.example",
+          team: "Invalid Team!",
+          app: "customer-app"
+        )
+      end.to raise_error(Fastlane::AppManager::Error, /team must be a lowercase slug/)
+
+      expect do
+        described_class.configure(
+          api_key: "secret",
+          base_url: "https://manager.example",
+          team: "mobile-team",
+          app: "UPPERCASE"
+        )
+      end.to raise_error(Fastlane::AppManager::Error, /app must be a lowercase slug/)
+    end
+
+    it "accepts custom timeout and retry settings" do
+      configuration = described_class.configure(
+        api_key: "secret",
+        base_url: "https://manager.example",
+        team: "mobile-team",
+        app: "customer-app",
+        connect_timeout: 30,
+        read_timeout: 120,
+        max_retries: 5
+      )
+
+      expect(configuration.connect_timeout).to eq(30)
+      expect(configuration.read_timeout).to eq(120)
+      expect(configuration.max_retries).to eq(5)
+    end
+
+    it "uses default timeout and retry settings" do
+      configuration = described_class.configure(
+        api_key: "secret",
+        base_url: "https://manager.example",
+        team: "mobile-team",
+        app: "customer-app"
+      )
+
+      expect(configuration.connect_timeout).to eq(10)
+      expect(configuration.read_timeout).to eq(60)
+      expect(configuration.max_retries).to eq(3)
+    end
   end
 end
