@@ -19,6 +19,8 @@ enum WebhookEventType: string
     case BuildCompleted = 'build.completed';
     case ArtifactCreated = 'artifact.created';
     case ArtifactDeleted = 'artifact.deleted';
+    case AppFileCreated = 'app_file.created';
+    case AppFileDeleted = 'app_file.deleted';
     case TeamInvitationCreated = 'team.invitation.created';
     case TeamInvitationAccepted = 'team.invitation.accepted';
     case TeamInvitationRevoked = 'team.invitation.revoked';

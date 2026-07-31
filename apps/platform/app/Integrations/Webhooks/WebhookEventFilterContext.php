@@ -8,6 +8,7 @@ use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class WebhookEventFilterContext
 {
@@ -36,6 +37,12 @@ class WebhookEventFilterContext
             $build = $aggregate->buildRecord;
             $mobileApps->push($build?->mobileApp);
             $tags = [...$tags, ...$this->tags($build)];
+        } elseif ($aggregate instanceof Media) {
+            $aggregate->loadMissing('model');
+
+            if ($aggregate->model instanceof MobileApp) {
+                $mobileApps->push($aggregate->model);
+            }
         } elseif ($aggregate instanceof AppIdentifier) {
             $aggregate->loadMissing('mobileApp');
             $mobileApps->push($aggregate->mobileApp);

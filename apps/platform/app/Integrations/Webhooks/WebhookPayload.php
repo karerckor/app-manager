@@ -7,6 +7,7 @@ use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\MobileApp;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class WebhookPayload
 {
@@ -90,6 +91,20 @@ class WebhookPayload
                 'mime_type' => $media->mime_type,
             ] : null,
             'created_at' => $artifact->created_at?->toISOString(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public static function appFile(Media $media): array
+    {
+        return [
+            'id' => $media->uuid,
+            'mobile_app_id' => $media->model_id,
+            'name' => $media->file_name,
+            'mime_type' => $media->mime_type ?: 'application/octet-stream',
+            'size' => $media->size,
+            'metadata' => $media->getCustomProperty('metadata'),
+            'created_at' => $media->created_at?->toISOString(),
         ];
     }
 }
