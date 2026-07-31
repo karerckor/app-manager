@@ -100,11 +100,11 @@ Raw ramps live in Tailwind's `@theme`. A semantic layer sits on CSS custom prope
 
 Contrast was computed, not estimated. Two values from the approved mockup failed WCAG AA for text and are corrected above:
 
-- `brass #B07D2B` on white gives **3.63:1**. As the text of the "+11d" label that fails the 4.5:1 threshold, so `warn-text` is `#8A6220` (5.49:1). The bar fill stays `#B07D2B`, which only needs 3:1.
+- `brass #B07D2B` on white gives **3.63:1**. As the text of the "+11d" label that fails the 4.5:1 threshold, so `warn-text` is `#8A6220` (5.49:1). The bar fill is `#A87524`, which only needs 3:1 and gets 3.38:1 against `border-subtle`, where the original `#B07D2B` reached only 3.05:1 and passed by rounding alone.
 - `faint #6B7688` on sunken `#F0EEE9` gives **3.99:1**, and this is the colour of table-head labels, which are text. `text-faint` is `#5D6878` (4.89:1).
 - `text-faint #6E8298` on dark `surface-raised #101E2B` gives **4.28:1**. Dark `text-faint` is `#7A8EA5` (5.03:1).
 
-Verified passing, light: brand on white 8.14:1, `danger` 5.93:1, `ok` 6.02:1, `text-muted` on surface 7.02:1. Dark: brand 7.31:1, `warn` 7.59:1, `danger` 5.62:1, `ok` 6.65:1, `text-faint` 4.80:1.
+Verified passing, light: brand on white 8.14:1, `danger` 5.93:1, `ok` 6.02:1, `text-muted` on surface 7.02:1. Dark: brand 7.31:1, `warn` 7.59:1, `danger` 5.62:1, `ok` 6.65:1, `text-faint` 5.63:1.
 
 Field and control borders delimit a UI component and need 3:1 under WCAG 1.4.11, which the decorative `border` token does not meet against white (1.47:1) and is not meant to. `border-control` carries that job: `#948D7E` light (3.26:1) and `#63748A` dark (3.55:1). Decorative table dividers have no threshold and are deliberately absent from the checked pair list. The sidebar is dark in both themes, so its emphasis text and its hairlines are deliberate constants rather than theme-varying colours: `nav-text-strong` and `nav-border` are still tokens, not raw palette classes, just with light and dark values that happen to match.
 
