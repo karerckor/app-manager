@@ -7,6 +7,8 @@
         <script>
             // Runs before first paint: reading the stored theme here is what stops
             // the light palette flashing in front of a dark-theme user.
+            // The key must match THEME_STORAGE_KEY in resources/js/design/theme.js.
+            // It is duplicated because this runs before any module loads.
             (function () {
                 try {
                     var stored = localStorage.getItem('app-manager-theme');
