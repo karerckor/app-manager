@@ -509,7 +509,8 @@ Run:
 cd apps/platform && ls node_modules/@fontsource/ibm-plex-sans/latin-{400,500,600}.css node_modules/@fontsource/ibm-plex-sans/latin-ext-{400,500,600}.css node_modules/@fontsource/ibm-plex-sans-condensed/latin-600.css node_modules/@fontsource/ibm-plex-sans-condensed/latin-ext-600.css node_modules/@fontsource/ibm-plex-mono/latin-{400,500}.css node_modules/@fontsource/ibm-plex-mono/latin-ext-{400,500}.css
 ```
 
-Expected: all fourteen paths listed, no `No such file or directory`.
+Expected: all twelve paths listed, no `No such file or directory`. Twelve entry
+points, one woff2 each, which is where Step 4's expected count of 12 comes from.
 
 - [ ] **Step 3: Import them at the top of `app.css`**
 
@@ -547,10 +548,18 @@ Expected: build succeeds; the count is 12.
 Run:
 
 ```bash
-cd apps/platform && grep -rn "fonts.googleapis\|fonts.gstatic\|fonts.bunny\|@fonts" resources/views resources/css || echo "no external font references"
+cd apps/platform && grep -rnE "fonts\.(googleapis|gstatic|bunny)|@fonts\b" resources/views resources/css || echo "no external font references"
 ```
 
-Expected: `no external font references`.
+Expected: one hit and one hit only — a literal `@fonts` on line 9 of
+`resources/views/welcome.blade.php`. That is pre-existing, out of this task's
+file scope, and not an external font request: `@fonts` is registered as a Blade
+directive by neither the application nor the framework, so Blade emits it as
+text, and `welcome.blade.php` is referenced by no route. Leave it alone.
+
+Note the `\b` in `@fonts\b`: without it the pattern matches this task's own
+`@fontsource/…` import lines twelve times over, since `@fonts` is a prefix of
+`@fontsource`. The word boundary is what makes the check mean anything.
 
 - [ ] **Step 6: Commit**
 
