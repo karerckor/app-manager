@@ -587,6 +587,14 @@ and two of the three families have no variable build."
 - Consumes: nothing.
 - Produces: `scripts/design/design-lint.mjs` exporting `findViolations(source, filename) -> Array<{ file: string, line: number, rule: string, match: string }>`, plus a CLI that walks the paths given as arguments and exits 1 on any violation.
 
+**One gap left open deliberately.** Tailwind's bare `rounded` (its DEFAULT radius)
+is off-scale but is not flagged: the `reject` callback returns false on an empty
+suffix. Closing it would mean flagging the standalone token `rounded`, which also
+matches the English word in a comment or string — and bare `rounded` appears zero
+times in the current 40 source files, so the false-positive cost exceeds the
+benefit. Revisit if it ever appears. Recorded here rather than left implicit, so
+nobody reads its absence as an oversight.
+
 **Scope note:** the existing pages contain hundreds of violations by design — they have not been migrated yet. The `design:lint` script therefore takes explicit paths, and `package.json` points it only at the directories this plan creates. Each later sub-project widens that path list as it migrates pages. A whole-tree run is the finish line, not the starting point.
 
 - [ ] **Step 1: Write the failing test**
@@ -637,6 +645,19 @@ test('flags an off-scale step behind a directional infix', () => {
     assert.equal(found[0].match, 'rounded-t-lg');
 });
 
+test('flags arbitrary bracket radii, once each', () => {
+    const found = findViolations('<div class="rounded-[2px] rounded-t-[22%]">', 'h.svelte');
+    assert.equal(found.length, 2);
+    for (const violation of found) assert.equal(violation.rule, 'arbitrary-radius');
+});
+
+test('flags the ramps most easily left out of the list', () => {
+    const source = '<div class="bg-pink-500">\n<div class="text-fuchsia-600">\n<div class="border-lime-400">';
+    const found = findViolations(source, 'i.svelte');
+    assert.equal(found.length, 3);
+    for (const violation of found) assert.equal(violation.rule, 'raw-palette');
+});
+
 test('allows semantic tokens and named type steps', () => {
     const clean = '<p class="bg-surface-raised text-faint text-2xs font-condensed rounded-sm border-border-control">ok</p>';
     assert.deepEqual(findViolations(clean, 'e.svelte'), []);
@@ -668,7 +689,9 @@ Create `scripts/design/design-lint.mjs`:
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'indigo', 'violet', 'purple', 'rose', 'red', 'emerald', 'green', 'teal', 'amber', 'yellow', 'orange', 'blue', 'sky', 'cyan'];
+// All 22 of Tailwind's default ramps. Omitting any of them leaves a silent hole:
+// `fuchsia` and `pink` are in live use in Pages/Apps/Media/Index.svelte today.
+const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose'];
 const UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'divide', 'from', 'via', 'to', 'outline', 'shadow', 'accent', 'fill', 'stroke', 'decoration', 'placeholder', 'caret'];
 const RADIUS_STEPS = new Set(['none', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', 'full']);
 const ALLOWED_RADII = new Set(['sm', 'md', 'full', 'none']);
@@ -683,6 +706,16 @@ const RULES = [
         name: 'raw-palette',
         pattern: new RegExp(`\\b(?:${UTILITY_PREFIXES.join('|')})-(?:${RAW_PALETTES.join('|')})-\\d{2,3}\\b`, 'g'),
         hint: 'use a semantic token: surface, surface-raised, surface-sunken, border, border-subtle, border-control, text, muted, faint, brand, brand-fg, brand-soft, brand-soft-line, ok, warn-text, warn-fill, danger, nav, nav-text',
+    },
+    {
+        // The radius counterpart of arbitrary-type-size. `rounded-[2px]` appears four
+        // times in AppShell.svelte and `rounded-[22%]` three times in Media/Index.svelte,
+        // so this is an active hole, not a hypothetical one. Note this pattern requires
+        // a bracket, so it never double-counts with off-scale-radius below, whose own
+        // pattern backs off to a bare `rounded` match on the same text.
+        name: 'arbitrary-radius',
+        pattern: /\brounded(?:-[a-z]+)?-\[[^\]]+\]/g,
+        hint: 'radius is three steps: rounded-sm (controls), rounded-md (containers), rounded-full (avatars and dots)',
     },
     {
         name: 'off-scale-radius',
