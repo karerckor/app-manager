@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test:design": "node --test tests/design/*.test.js"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.2.0",

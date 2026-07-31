@@ -1,0 +1,58 @@
+/*
+ * Blueprint semantic tokens. Single source of truth.
+ *
+ * Markup must never reference a raw palette value. Every colour decision in the
+ * application resolves through one of these names, which is what makes the dark
+ * theme a single override block instead of a per-page rewrite.
+ *
+ * Guarded by tests/design/contrast.test.js — every pair the system relies on is
+ * asserted against WCAG AA. Change a value here and run `npm run test:design`.
+ */
+
+:root {
+    --surface: #F7F6F3;
+    --surface-raised: #FFFFFF;
+    --surface-sunken: #F0EEE9;
+    --border: #D8D5CD;
+    --border-subtle: #EDEBE5;
+    --border-control: #948D7E;
+    --text: #131A22;
+    --text-muted: #4A5464;
+    --text-faint: #5D6878;
+    --brand: #14508C;
+    --brand-fg: #FFFFFF;
+    --brand-soft: #E8F0F8;
+    --brand-soft-line: #C9DCEC;
+    --ok: #1F6F5C;
+    --warn-text: #8A6220;
+    --warn-fill: #A87524;
+    --danger: #A8452B;
+    --nav: #131A22;
+    --nav-text: #B8C2CE;
+    --nav-text-strong: #FFFFFF;
+    --nav-border: #262E38;
+}
+
+.dark {
+    --surface: #0B1520;
+    --surface-raised: #101E2B;
+    --surface-sunken: #0A121B;
+    --border: #1E3247;
+    --border-subtle: #182838;
+    --border-control: #63748A;
+    --text: #DCE4EC;
+    --text-muted: #93A4B6;
+    --text-faint: #7A8EA5;
+    --brand: #6FA8DC;
+    --brand-fg: #08131C;
+    --brand-soft: #132B41;
+    --brand-soft-line: #1F425E;
+    --ok: #4FB39B;
+    --warn-text: #D9A54A;
+    --warn-fill: #D9A54A;
+    --danger: #E0785F;
+    --nav: #070E16;
+    --nav-text: #8A9CB0;
+    --nav-text-strong: #FFFFFF;
+    --nav-border: #16202B;
+}
