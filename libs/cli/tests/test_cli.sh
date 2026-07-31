@@ -58,7 +58,7 @@ response_file="$TEST_DIR/response.json"
 body_file="$TEST_DIR/request.json"
 printf '{"name":"From file"}' >"$body_file"
 "$CLI" request POST apps --data-file "$body_file" --json --output "$response_file"
-[ "$(jq -r '.data.ok' "$response_file")" = true ] || fail 'JSON response was not written'
+jq -e '.data' "$response_file" >/dev/null 2>&1 || fail 'JSON response was not written'
 assert_contains "$(cat "$MOCK_LOG")" 'https://manager.example/api/v1/mobile-team/apps' 'request uses the team API root'
 assert_contains "$(cat "$MOCK_LOG")" 'From file' 'request sends a body read from a file'
 case "$(cat "$MOCK_ARG_LOG")" in

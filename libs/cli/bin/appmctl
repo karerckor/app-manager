@@ -678,6 +678,7 @@ Optional environment:
 Global options:
   --instance-url URL        Override APP_MANAGER_INSTANCE_URL
   --team TEAM               Override APP_MANAGER_TEAM
+  --app APP                 Override APP_MANAGER_APP
   --dry-run                 Print the request plan without calling the API
   --json                    Pretty-print and validate a JSON response with jq
   -o, --output FILE         Save the response instead of writing it to stdout

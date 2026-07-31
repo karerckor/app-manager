@@ -2,10 +2,18 @@
 
 `appmctl` is a dependency-light command-line client for the App Manager API. It is distributed as one Bash 3.2-compatible executable, making it suitable for CI runners, minimal build images, and local automation without a language-specific SDK.
 
-It provides two commands:
+It provides domain-aware subcommands for all major API resources, plus generic access:
 
-- `request` for any team API endpoint, including JSON bodies, request bodies read from files/stdin, multipart file uploads, and responses written to stdout or a file;
-- `stream` for running a command locally while its combined stdout/stderr is uploaded to an existing manual build.
+- **`builds`** — create, list, get, cancel, and patch builds
+- **`logs`** — fetch and append build logs
+- **`artifacts`** — list, download, upload, and delete build artifacts
+- **`apps`** — list, get, create, update, and delete applications
+- **`credentials`** — manage app credentials and credential types
+- **`integrations`** — list integrations, repositories, workflows, and refs
+- **`pipelines`** — manage and trigger CI/CD pipelines
+- **`webhooks`** — manage webhook endpoints, deliveries, and secrets
+- **`request`** — generic access to any team API endpoint
+- **`stream`** — run a command locally while uploading stdout/stderr to a manual build
 
 The CLI is currently pre-1.0. Pin the source commit in reproducible pipelines and expect the command surface to evolve with API v1.
 
@@ -103,7 +111,7 @@ export PATH="$APPMCTL_BIN_DIR:$PATH"
 APP_MANAGER_API_KEY="$APP_MANAGER_API_KEY" \
 APP_MANAGER_TEAM="$APP_MANAGER_TEAM" \
 APP_MANAGER_INSTANCE_URL="${APP_MANAGER_INSTANCE_URL:-http://localhost:8000}" \
-appmctl --json request GET apps
+appmctl apps list --json
 ```
 
 GitHub Actions persists the installed directory for later steps through `$GITHUB_PATH`:
@@ -155,8 +163,11 @@ export APP_MANAGER_TEAM='mobile-team'
 export APP_MANAGER_APP='customer-app'
 export APP_MANAGER_INSTANCE_URL='https://manager.example.com'
 
-# Inspect the configured app.
-appmctl --json request GET "apps/$APP_MANAGER_APP"
+# List team apps.
+appmctl apps list
+
+# Show build history for an app.
+appmctl builds list --status running
 
 # Stream a command to an existing manual build.
 appmctl stream \
@@ -164,6 +175,103 @@ appmctl stream \
   --step Build \
   -- pnpm build
 ```
+
+## Commands
+
+All subcommands support `--help` for detailed usage and `--dry-run` to preview the request without sending it. Use `--json` to pretty-print JSON responses.
+
+### `appmctl builds`
+
+```bash
+appmctl builds list [--app APP] [--status STATUS] [--page N]
+appmctl builds get [--app APP] <build-id>
+appmctl builds create [--app APP] --profile TYPE [--request-uuid UUID] [--context JSON]
+appmctl builds cancel [--app APP] <build-id>
+appmctl builds patch [--app APP] <build-id> --status STATUS
+```
+
+### `appmctl logs`
+
+```bash
+appmctl logs get [--app APP] --build-id ID
+appmctl logs post [--app APP] --build-id ID --content TEXT
+```
+
+### `appmctl artifacts`
+
+```bash
+appmctl artifacts list [--app APP] --build-id ID
+appmctl artifacts get [--app APP] --build-id ID <artifact-id> [-o FILE]
+appmctl artifacts upload [--app APP] --build-id ID --name NAME [--metadata JSON] --file FILE
+appmctl artifacts delete [--app APP] --build-id ID <artifact-id>
+```
+
+### `appmctl apps`
+
+```bash
+appmctl apps list
+appmctl apps get <slug>
+appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]
+appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]
+appmctl apps delete <slug>
+```
+
+### `appmctl credentials`
+
+```bash
+appmctl credentials list [--app APP]
+appmctl credentials get [--app APP] <credential-id>
+appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data JSON] [--file FILE]
+appmctl credentials update [--app APP] <credential-id> --data JSON
+appmctl credentials delete [--app APP] <credential-id>
+appmctl credentials download [--app APP] <credential-id> [-o FILE]
+appmctl credentials upload [--app APP] <credential-id> --file FILE
+appmctl credentials types
+```
+
+### `appmctl integrations`
+
+```bash
+appmctl integrations list
+appmctl integrations get <integration-id>
+appmctl integrations repos --integration-id ID
+appmctl integrations workflows --integration-id ID
+appmctl integrations refs --integration-id ID
+```
+
+### `appmctl pipelines`
+
+```bash
+appmctl pipelines list --integration-id ID
+appmctl pipelines get --integration-id ID <pipeline-id>
+appmctl pipelines create --integration-id ID --name NAME [--config JSON]
+appmctl pipelines update --integration-id ID <pipeline-id> [--name NAME] [--config JSON]
+appmctl pipelines delete --integration-id ID <pipeline-id>
+appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]
+appmctl pipelines inputs --integration-id ID <pipeline-id>
+```
+
+### `appmctl webhooks`
+
+```bash
+appmctl webhooks list
+appmctl webhooks get <webhook-id>
+appmctl webhooks create --url URL [--events JSON] [--app SLUG]
+appmctl webhooks update <webhook-id> [--url URL] [--events JSON]
+appmctl webhooks delete <webhook-id>
+appmctl webhooks test <webhook-id>
+appmctl webhooks rotate <webhook-id>
+appmctl webhooks deliveries <webhook-id>
+appmctl webhooks redeliver --webhook-id ID <delivery-id>
+```
+
+### `appmctl request` (legacy)
+
+Generic access to any API endpoint. See [API requests](#api-requests) below.
+
+### `appmctl stream` (legacy)
+
+Stream command output to a manual build log. See [Stream command logs](#stream-command-logs) below.
 
 ## Configure
 
@@ -195,7 +303,7 @@ The CLI never prints the API key in dry-run output and passes its authorization 
 | `APP_MANAGER_API_KEY` | None | Yes | Bearer API key; deliberately not accepted as a command-line argument |
 | `APP_MANAGER_TEAM` | `--team` | Yes | Team slug inserted into every API URL |
 | `APP_MANAGER_INSTANCE_URL` | `--instance-url` | No | Instance root or `/api/v1` URL; defaults to `http://localhost:8000` |
-| `APP_MANAGER_APP` | `stream --app` | For `stream` | Default application slug |
+| `APP_MANAGER_APP` | `--app` | For app-scoped commands | Default application slug |
 | `APP_MANAGER_CURL_BIN` | None | No | Alternate `curl` executable, primarily for tests |
 | `APP_MANAGER_JQ_BIN` | None | No | Alternate `jq` executable, primarily for tests |
 
@@ -277,16 +385,16 @@ Supported methods are `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`.
 
 Only one body kind can be selected, but multipart text and file fields can be mixed and repeated. The parent directory of `--output` must already exist. The CLI protects existing output files unless `--force` is explicit.
 
-### Manual build lifecycle with generic requests
+### Manual build lifecycle with subcommands
 
-There is no dedicated `create-build` subcommand because `request` already covers the complete API. A runner can create an idempotent manual build, stream its main command, and upload an artifact:
+A runner can create an idempotent manual build, stream its main command, and upload an artifact using the dedicated subcommands:
 
 ```bash
-REQUEST_UUID='598a349f-b526-40ba-8e54-247772bce160'
-
 APP_MANAGER_BUILD_ID=$(
-  appmctl request POST "apps/$APP_MANAGER_APP/builds" \
-    --data "{\"request_uuid\":\"$REQUEST_UUID\",\"profile_type\":\"production\",\"context\":{\"runner\":\"ci\"}}" |
+  appmctl --json builds create \
+    --app "$APP_MANAGER_APP" \
+    --profile production \
+    --context '{"runner":"ci"}' |
     jq -er '.data.id'
 )
 export APP_MANAGER_BUILD_ID
@@ -297,15 +405,14 @@ appmctl stream \
   --step 'Android bundle' \
   -- ./gradlew bundleRelease
 
-appmctl request POST \
-  "apps/$APP_MANAGER_APP/builds/$APP_MANAGER_BUILD_ID/artifacts" \
-  --form 'name=app-release.aab' \
-  --form 'metadata={"channel":"internal"}' \
-  --file file=app/build/outputs/bundle/release/app-release.aab \
-  --json
+appmctl artifacts upload \
+  --build-id "$APP_MANAGER_BUILD_ID" \
+  --name app-release.aab \
+  --metadata '{"channel":"internal"}' \
+  --file app/build/outputs/bundle/release/app-release.aab
 ```
 
-Use a stable request UUID when a CI retry must resolve to the same build. `--manage-status` is appropriate only when that one `stream` invocation owns the full lifecycle; otherwise update state with explicit requests and use several stream steps without it.
+The same workflow works with the generic `request` command for endpoints not yet covered by subcommands. Use a stable `--request-uuid` when a CI retry must resolve to the same build.
 
 ## Stream command logs
 
@@ -406,12 +513,12 @@ Avoid secrets in URL query strings, output filenames, arbitrary headers not reco
 
 ## Current boundaries
 
-- `appmctl` is an API transport plus a log streamer, not a high-level CRUD SDK. Resource-specific behavior remains documented in the [API v1 guide](../../apps/platform/docs/api-v1.md).
 - `stream` works only with builds in `manual` reporting mode. Automatic provider builds reject manual status and log writes.
 - Output is combined stdout/stderr; separate streams and terminal control sequences are not preserved.
 - The API accepts at most 256 KiB per log chunk and 5 MB per complete build log. The CLI does not truncate output automatically when the server limit is reached.
 - A response is treated as bytes unless `--json` is selected; content-type does not change output behavior.
 - There is no built-in config file or credential store. Configuration is deliberately explicit through environment variables and flags.
+- The generic `request` command remains available for API endpoints not yet covered by dedicated subcommands.
 
 ## Troubleshooting
 
@@ -423,15 +530,29 @@ Avoid secrets in URL query strings, output filenames, arbitrary headers not reco
 
 ## Development
 
-Run the dependency-free smoke suite and syntax check:
+The source is organized as Bash modules in `libs/cli/lib/` with a build step that produces a single distributable file:
 
 ```bash
-bash -n libs/cli/bin/appmctl
-bash libs/cli/tests/test_cli.sh
-bash -n libs/cli/install.sh
-bash libs/cli/tests/test_install.sh
+# Build the single-file distributable from modules.
+bash libs/cli/build.sh > libs/cli/bin/appmctl
+
+# Run the full test suite.
+for t in libs/cli/tests/test_*.sh; do bash "$t"; done
 ```
 
-The smoke suite uses a mock `curl` executable and covers URL construction, secret handling, JSON file/stdin bodies, multipart fields, output files, command exit propagation, status management, chunk sizing, installer syntax validation, and checksum rejection. Keep the script compatible with Bash 3.2 and avoid adding runtime dependencies without updating the requirements and CI examples.
+Individual test files:
+
+```bash
+bash libs/cli/tests/test_cli.sh           # Core request/stream tests
+bash libs/cli/tests/test_install.sh       # Installer verification
+bash libs/cli/tests/test_builds.sh        # Builds subcommands
+bash libs/cli/tests/test_apps.sh          # Apps subcommands
+bash libs/cli/tests/test_credentials.sh   # Credentials subcommands
+bash libs/cli/tests/test_pipelines.sh     # Integrations + pipelines subcommands
+bash libs/cli/tests/test_webhooks.sh      # Webhooks subcommands
+bash libs/cli/tests/test_logs_artifacts.sh # Logs + artifacts subcommands
+```
+
+The test suite uses a mock `curl` executable and covers URL construction, secret handling, all subcommand actions, dry-run output, formatted output, and backward compatibility with `request`/`stream`. Keep the script compatible with Bash 3.2 and avoid adding runtime dependencies without updating the requirements and CI examples.
 
 The version is defined by `APPMCTL_VERSION` in `bin/appmctl`. There is no separate release channel yet; the installer downloads from `main` unless `APPMCTL_REF` is set, which is why production CI should always pin a full commit SHA.
