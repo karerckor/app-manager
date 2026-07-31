@@ -75,7 +75,14 @@ Three values in `docs/superpowers/specs/2026-07-31-platform-redesign-foundation-
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `resources/css/tokens.css` defining these custom properties in `:root` and overriding them in `.dark` — `--surface`, `--surface-raised`, `--surface-sunken`, `--border`, `--border-subtle`, `--border-control`, `--text`, `--text-muted`, `--text-faint`, `--brand`, `--brand-fg`, `--brand-soft`, `--brand-soft-line`, `--ok`, `--warn-text`, `--warn-fill`, `--danger`, `--nav`, `--nav-text`.
+- Produces: `resources/css/tokens.css` defining these custom properties in `:root` and overriding them in `.dark` — `--surface`, `--surface-raised`, `--surface-sunken`, `--border`, `--border-subtle`, `--border-control`, `--text`, `--text-muted`, `--text-faint`, `--brand`, `--brand-fg`, `--brand-soft`, `--brand-soft-line`, `--ok`, `--warn-text`, `--warn-fill`, `--danger`, `--nav`, `--nav-text`, `--nav-text-strong`, `--nav-border`.
+
+The sidebar is dark in both themes, so its emphasis text and its hairlines are
+deliberate constants rather than theme-varying colours. They still get tokens
+(`--nav-text-strong`, `--nav-border`) instead of literal `text-white` and
+`border-white/10`, because the global constraint prohibiting raw palette
+classes has to be literally satisfiable — otherwise every reviewer relitigates
+the same exception for the whole plan.
 - Produces: `scripts/design/contrast.mjs` exporting `parseTokens(cssText) -> { light: Record<string,string>, dark: Record<string,string> }`, `luminance(hex) -> number`, `contrast(hexA, hexB) -> number`, and `PAIRS -> Array<{ fg: string, bg: string, min: number, theme: 'light'|'dark'|'both' }>`.
 
 - [ ] **Step 1: Write the failing test**
@@ -209,6 +216,7 @@ export const PAIRS = [
     { fg: 'danger', bg: 'surface-raised', min: 4.5, theme: 'both' },
     // sidebar
     { fg: 'nav-text', bg: 'nav', min: 4.5, theme: 'both' },
+    { fg: 'nav-text-strong', bg: 'nav', min: 4.5, theme: 'both' },
     // runway bar fills against the track: meaningful graphics
     { fg: 'brand', bg: 'border-subtle', min: 3, theme: 'both' },
     { fg: 'warn-fill', bg: 'border-subtle', min: 3, theme: 'both' },
@@ -257,6 +265,8 @@ Create `resources/css/tokens.css`:
     --danger: #A8452B;
     --nav: #131A22;
     --nav-text: #B8C2CE;
+    --nav-text-strong: #FFFFFF;
+    --nav-border: #262E38;
 }
 
 .dark {
@@ -279,6 +289,8 @@ Create `resources/css/tokens.css`:
     --danger: #E0785F;
     --nav: #070E16;
     --nav-text: #8A9CB0;
+    --nav-text-strong: #FFFFFF;
+    --nav-border: #16202B;
 }
 ```
 
@@ -394,6 +406,8 @@ Replace lines 1–10 of `resources/css/app.css` (the `@import 'tailwindcss';`, t
     --color-danger: var(--danger);
     --color-nav: var(--nav);
     --color-nav-text: var(--nav-text);
+    --color-nav-strong: var(--nav-text-strong);
+    --color-nav-border: var(--nav-border);
 }
 
 @layer base {
@@ -835,7 +849,7 @@ Create `resources/js/Components/ui/ThemeToggle.svelte`:
 <button
     type="button"
     onclick={toggleTheme}
-    class="grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-nav-text shadow-none transition hover:bg-nav-text/10 hover:text-white"
+    class="grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-nav-text shadow-none transition hover:bg-nav-text/10 hover:text-nav-strong"
     aria-label={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
     title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
 >
@@ -937,7 +951,7 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
         'flex items-center gap-3 rounded-sm px-3 py-2 text-sm transition',
         key === active
             ? 'bg-brand text-brand-fg font-semibold'
-            : 'text-nav-text hover:bg-nav-text/10 hover:text-white',
+            : 'text-nav-text hover:bg-nav-text/10 hover:text-nav-strong',
     ].join(' ');
 </script>
 
@@ -948,16 +962,16 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
             <i class="rounded-[1px] bg-brand-fg/60"></i><i class="rounded-[1px] bg-brand-fg"></i>
         </span>
         <span class="min-w-0">
-            <strong class="block font-condensed text-xs font-semibold tracking-[0.06em] text-white uppercase">App Manager</strong>
+            <strong class="block font-condensed text-xs font-semibold tracking-[0.06em] text-nav-strong uppercase">App Manager</strong>
             <small class="block font-mono text-2xs text-nav-text">developer console</small>
         </span>
     </Link>
 
-    <div class="mb-5 rounded-sm border border-white/10 p-2">
+    <div class="mb-5 rounded-sm border border-nav-border p-2">
         <label for="team" class="mb-1 block font-condensed text-2xs font-semibold tracking-[0.18em] text-nav-text uppercase">Workspace</label>
         <select
             id="team"
-            class="w-full border-0 bg-transparent p-0.5 text-sm font-medium text-white shadow-none focus:ring-0"
+            class="w-full border-0 bg-transparent p-0.5 text-sm font-medium text-nav-strong shadow-none focus:ring-0"
             value={currentTeam?.slug ?? ''}
             onchange={switchTeam}
         >
@@ -982,12 +996,12 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
         {/each}
     </nav>
 
-    <div class="mt-auto flex items-center gap-2 border-t border-white/10 pt-3">
-        <Link href="/profile" class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand/20 font-mono text-2xs font-semibold text-white" aria-label="Open profile">
+    <div class="mt-auto flex items-center gap-2 border-t border-nav-border pt-3">
+        <Link href="/profile" class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand/20 font-mono text-2xs font-semibold text-nav-strong" aria-label="Open profile">
             {initials(auth.user.name)}
         </Link>
         <Link href="/profile" class="min-w-0 flex-1 rounded-sm">
-            <p class="truncate text-xs font-medium text-white">{auth.user.name}</p>
+            <p class="truncate text-xs font-medium text-nav-strong">{auth.user.name}</p>
             <p class="truncate font-mono text-2xs text-nav-text">{auth.user.email}</p>
         </Link>
         <ThemeToggle />
@@ -995,7 +1009,7 @@ Replace the entire contents of `resources/js/Components/AppShell.svelte`:
             type="button"
             aria-label="Sign out"
             title="Sign out"
-            class="grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-nav-text shadow-none transition hover:bg-nav-text/10 hover:text-white"
+            class="grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-nav-text shadow-none transition hover:bg-nav-text/10 hover:text-nav-strong"
             onclick={logout}
         >
             <LogOut class="h-4 w-4" strokeWidth={1.9} />
