@@ -19,7 +19,7 @@
 - Disabled buttons render sunken and muted, never in a brand tint.
 - Every interactive element has a visible `:focus-visible` ring: 2px in `brand`, 2px offset.
 - `@media (prefers-reduced-motion: reduce)` neutralises transitions.
-- The 105 existing PHP tests must stay green. Controllers, Inertia props, and routes are not touched.
+- The existing PHP suite — 485 tests across 105 files — must stay green. Controllers, Inertia props, and routes are not touched.
 - Commit after every task. Branch is `design/platform-redesign-foundation`.
 
 ### Corrections to the spec's token table
@@ -1460,7 +1460,7 @@ Run:
 cd apps/platform && php artisan test 2>&1 | tail -5 && npm run design:lint && npm run test:design
 ```
 
-Expected: 105 PHP tests pass; both guards pass. Add `resources/js/Components/WorkspacePage.svelte` to the `design:lint` paths and re-run.
+Expected: 485 PHP tests pass; both guards pass. Add `resources/js/Components/WorkspacePage.svelte` to the `design:lint` paths and re-run.
 
 - [ ] **Step 7: Commit**
 
@@ -1510,7 +1510,7 @@ Run:
 cd apps/platform && npm run verify && php artisan test 2>&1 | tail -5
 ```
 
-Expected: design tests pass, linter clean on the migrated paths, build succeeds, 105 PHP tests pass.
+Expected: design tests pass, linter clean on the migrated paths, build succeeds, 485 PHP tests pass.
 
 - [ ] **Step 4: Write the reference**
 
