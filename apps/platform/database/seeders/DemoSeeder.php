@@ -3,12 +3,16 @@
 namespace Database\Seeders;
 
 use App\Enums\ApiKeyScope;
+use App\Enums\BuildReportingMode;
+use App\Enums\BuildStatus;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\User;
+use App\Models\WebhookEndpoint;
 use Illuminate\Database\Seeder;
 
 /**
@@ -232,6 +236,91 @@ class DemoSeeder extends Seeder
             $iosFirebase->addMediaFromString($this->makeGoogleServiceInfoPlist())
                 ->usingFileName('GoogleService-Info.plist')
                 ->toMediaCollection('file');
+        }
+
+        // App metadata: free-form JSON that flows into the mobile app at build
+        // time via the prepare CLI. Demonstrates feature flags, environment
+        // config, and minimum supported version management from Platform.
+        $app->update(['metadata' => [
+            'environment' => 'development',
+            'features' => [
+                'push_notifications' => true,
+                'analytics' => false,
+                'dark_mode' => true,
+            ],
+            'min_supported_version' => '1.0.0',
+            'remote_config' => [
+                'api_timeout_ms' => 5000,
+                'max_retries' => 3,
+            ],
+        ]]);
+
+        // Build history: demonstrates the builds API and shows past builds in
+        // the Platform UI. The completed build has a full log; the pending
+        // build simulates a job waiting for a CI runner.
+        $app->buildRecords()->firstOrCreate(
+            ['request_uuid' => 'demo-build-completed-0001'],
+            [
+                'team_id' => $team->id,
+                'app_identifier_id' => $identifier->id,
+                'requested_by_user_id' => $user->id,
+                'profile_type' => ProfileType::Production,
+                'status' => BuildStatus::Completed,
+                'reporting_mode' => BuildReportingMode::Manual,
+                'context_snapshot' => ['runner' => 'github-actions', 'commit' => 'abc1234'],
+                'parameters' => ['channel' => 'internal', 'minify' => true],
+                'log_output' => implode("\n", [
+                    '[1/4] Compiling sources...',
+                    '[2/4] Bundling assets...',
+                    '[3/4] Signing AAB with production keystore...',
+                    '[4/4] Build completed successfully.',
+                ]),
+                'started_at' => now()->subHours(2),
+                'finished_at' => now()->subHours(2)->addMinutes(3),
+                'tags' => ['demo', 'android'],
+            ],
+        );
+
+        $app->buildRecords()->firstOrCreate(
+            ['request_uuid' => 'demo-build-pending-0001'],
+            [
+                'team_id' => $team->id,
+                'app_identifier_id' => $iosIdentifier->id,
+                'requested_by_user_id' => $user->id,
+                'profile_type' => ProfileType::AppStore,
+                'status' => BuildStatus::Pending,
+                'reporting_mode' => BuildReportingMode::Manual,
+                'context_snapshot' => ['runner' => 'self-hosted'],
+                'parameters' => ['channel' => 'beta'],
+                'tags' => ['demo', 'ios'],
+            ],
+        );
+
+        // Webhook endpoint: demonstrates how Platform notifies external
+        // systems about build lifecycle events.
+        WebhookEndpoint::firstOrCreate(
+            ['team_id' => $team->id, 'url' => 'https://example.com/app-manager-webhooks'],
+            [
+                'secret' => 'whsec_demo123456789abcdef',
+                'secret_hint' => 'demo1…ef',
+                'subscribed_events' => ['build.completed', 'artifact.created'],
+                'filters' => ['build_statuses' => ['completed', 'failed']],
+            ],
+        );
+
+        // Project files: arbitrary files attached to the app, downloadable
+        // via the files API. Demonstrates that Platform can store and serve
+        // not just credentials, but any project-related files.
+        if ($app->getMedia('files')->isEmpty()) {
+            $app->addMediaFromString($this->makeReleaseNotes())
+                ->usingFileName('release-notes.md')
+                ->withCustomProperties(['metadata' => ['version' => '1.0.0', 'channel' => 'stable']])
+                ->toMediaCollection('files');
+
+            $app->addMediaFromString($this->makeAppConfig())
+                ->usingFileName('app-config.json')
+                ->withCustomProperties(['metadata' => ['environment' => 'development']])
+                ->toMediaCollection('files');
         }
     }
 
@@ -555,5 +644,45 @@ XML;
             @unlink($inputPath);
             @unlink($outputPath);
         }
+    }
+
+    private function makeReleaseNotes(): string
+    {
+        return <<<'MARKDOWN'
+# Example App v1.0.0
+
+## Initial release
+
+- Hello world screen with Platform integration demo
+- Automatic Expo config generation from App Manager
+- Android and iOS signing credentials from Platform
+- Push notification support (feature flag controlled)
+- Dark mode support (feature flag controlled)
+
+## Build info
+
+- Android: AAB signed with production keystore
+- iOS: IPA signed with App Store certificate
+MARKDOWN;
+    }
+
+    private function makeAppConfig(): string
+    {
+        return json_encode([
+            'app' => [
+                'name' => 'Example App',
+                'version' => '1.0.0',
+                'build' => '1',
+            ],
+            'api' => [
+                'baseUrl' => 'https://api.example.com',
+                'timeout' => 5000,
+                'retries' => 3,
+            ],
+            'features' => [
+                'push_notifications' => true,
+                'analytics' => false,
+            ],
+        ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
     }
 }
