@@ -4,10 +4,12 @@ use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
 use App\Enums\WebhookDeliveryStatus;
+use App\Jobs\Billing\ReportBillingUsage;
 use App\Jobs\Integrations\ReconcileCiCdRun;
 use App\Jobs\Integrations\SyncCiCdRunLogs;
 use App\Jobs\Webhooks\DeliverWebhook;
 use App\Jobs\Webhooks\PublishWebhookEvent;
+use App\Models\BillingUsageEvent;
 use App\Models\CiCdRun;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEvent;
@@ -47,6 +49,19 @@ Schedule::call(function () {
         ->pluck('id')
         ->each(fn (string $id) => SyncCiCdRunLogs::dispatch($id)->onQueue('integrations'));
 })->everyFiveMinutes()->name('sync-ci-cd-run-logs')->withoutOverlapping();
+
+Schedule::call(function () {
+    BillingUsageEvent::query()
+        ->whereNull('reported_at')
+        ->where(fn ($query) => $query
+            ->whereNull('next_attempt_at')
+            ->orWhere('next_attempt_at', '<=', now()))
+        ->limit(500)
+        ->pluck('id')
+        ->each(fn (string $id) => ReportBillingUsage::dispatch($id)
+            ->onQueue(config('billing.queue', 'billing')));
+})->everyMinute()->name('report-billing-usage')->withoutOverlapping()
+    ->when(fn () => (bool) config('billing.enabled'));
 
 Schedule::call(function () {
     WebhookEvent::query()

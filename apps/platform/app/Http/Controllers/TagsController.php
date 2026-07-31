@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
@@ -32,7 +33,7 @@ class TagsController extends Controller
 
     public function updateCredential(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        abort_unless($team->allows($request->user(), TeamPermission::ManageCredentials), 403);
         abort_unless($credential->team_id === $team->id, 404);
 
         $this->sync($request, $team, $credential);

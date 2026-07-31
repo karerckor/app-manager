@@ -3,9 +3,6 @@
 namespace App\Actions\Fortify;
 
 use App\Models\User;
-use App\Support\Audit\ActorContext;
-use App\Support\Audit\ActorContextManager;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -37,26 +34,10 @@ class CreateNewUser implements CreatesNewUsers
             'password' => $this->passwordRules(),
         ])->validate();
 
-        return DB::transaction(function () use ($input) {
-            $user = User::create([
-                'name' => $input['name'],
-                'email' => $input['email'],
-                'password' => Hash::make($input['password']),
-            ]);
-
-            $team = $user->teams()->create([
-                'name' => $input['name']."'s Team",
-                'owner_id' => $user->id,
-            ], ['role' => 'owner']);
-
-            $user->update(['current_team_id' => $team->id]);
-
-            app(ActorContextManager::class)->runAs(
-                ActorContext::forUser($user, 'web'),
-                fn () => $team->recordMembershipAudit($user, 'membership_added', 'owner'),
-            );
-
-            return $user;
-        });
+        return User::create([
+            'name' => $input['name'],
+            'email' => $input['email'],
+            'password' => Hash::make($input['password']),
+        ]);
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Integrations;
 
 use App\Enums\TeamRole;
+use App\Models\Integration;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -153,6 +154,81 @@ class GitHubConnectionTest extends TestCase
         ]);
     }
 
+    public function test_repeated_connection_prompts_for_an_account_and_connects_a_new_installation(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        Integration::factory()->create([
+            'team_id' => $team->id,
+            'external_id' => '42',
+            'external_account_id' => '777',
+            'external_account_name' => 'first-org',
+        ]);
+        Http::fake([
+            'https://github.test/login/oauth/access_token' => Http::response(['access_token' => 'user-token']),
+            'https://api.github.test/user/installations*' => Http::response([
+                'total_count' => 2,
+                'installations' => [['id' => 42], ['id' => 84]],
+            ]),
+            'https://api.github.test/app/installations/84' => Http::response($this->installation(
+                id: 84,
+                accountId: 888,
+                accountName: 'second-org',
+            )),
+        ]);
+
+        $connect = $this->actingAs($owner)->get(route('accounts.integrations.github.connect', $team));
+        parse_str((string) parse_url($connect->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $this->assertSame('select_account', $query['prompt'] ?? null);
+
+        $this->get(route('integrations.github.callback', [
+            'state' => $query['state'],
+            'code' => 'github-code',
+        ]))->assertRedirect(route('accounts.integrations.index', $team))
+            ->assertSessionHas('status', 'GitHub connected.');
+
+        $this->assertDatabaseCount('integrations', 2);
+        $this->assertDatabaseHas('integrations', [
+            'team_id' => $team->id,
+            'provider' => 'github',
+            'external_id' => '42',
+            'external_account_name' => 'first-org',
+        ]);
+        $this->assertDatabaseHas('integrations', [
+            'team_id' => $team->id,
+            'provider' => 'github',
+            'external_id' => '84',
+            'external_account_name' => 'second-org',
+        ]);
+    }
+
+    public function test_repeated_connection_does_not_silently_reuse_the_connected_installation(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        Integration::factory()->create([
+            'team_id' => $team->id,
+            'external_id' => '42',
+        ]);
+        Http::fake([
+            'https://github.test/login/oauth/access_token' => Http::response(['access_token' => 'user-token']),
+            'https://api.github.test/user/installations*' => Http::response([
+                'total_count' => 1,
+                'installations' => [['id' => 42]],
+            ]),
+        ]);
+
+        $connect = $this->actingAs($owner)->get(route('accounts.integrations.github.connect', $team));
+        parse_str((string) parse_url($connect->headers->get('Location'), PHP_URL_QUERY), $query);
+
+        $callback = $this->get(route('integrations.github.callback', [
+            'state' => $query['state'],
+            'code' => 'github-code',
+        ]));
+
+        $callback->assertRedirectContains('https://github.test/apps/app-manager-test/installations/new?');
+        $this->assertDatabaseCount('integrations', 1);
+    }
+
     public function test_user_without_installations_is_redirected_to_install_the_app(): void
     {
         [$owner, $team] = $this->member(TeamRole::Owner);
@@ -199,11 +275,14 @@ class GitHubConnectionTest extends TestCase
         return [$user, $team];
     }
 
-    private function installation(): array
-    {
+    private function installation(
+        int $id = 42,
+        int $accountId = 777,
+        string $accountName = 'octo-org',
+    ): array {
         return [
-            'id' => 42,
-            'account' => ['id' => 777, 'login' => 'octo-org'],
+            'id' => $id,
+            'account' => ['id' => $accountId, 'login' => $accountName],
             'target_type' => 'Organization',
             'repository_selection' => 'selected',
             'permissions' => ['actions' => 'write', 'contents' => 'read'],

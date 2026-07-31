@@ -49,6 +49,7 @@ RSpec.describe Fastlane::AppManager::Client do
             "slug" => "customer-app",
             "name" => "Customer App",
             "description" => "White-label customer app",
+            "metadata" => { "owner" => "mobile-team", "channel" => "production" },
             "assets" => { "icon" => { "name" => "icon.png" } },
             "created_at" => "2026-07-14T00:00:00Z",
             "updated_at" => "2026-07-14T01:00:00Z"
@@ -67,6 +68,7 @@ RSpec.describe Fastlane::AppManager::Client do
       info = client.app_info
 
       expect(info[:name]).to eq("Customer App")
+      expect(info[:metadata]).to eq("owner" => "mobile-team", "channel" => "production")
       expect(info[:app_identifiers].map { |identifier| identifier[:default] }).to eq([true, true, false, false])
       expect(info[:default_app_identifiers][:ios][:identifier]).to eq("com.example.ios")
       expect(info[:default_app_identifiers][:android][:identifier]).to eq("com.example.android")

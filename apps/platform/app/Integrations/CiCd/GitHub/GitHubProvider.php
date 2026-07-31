@@ -3,7 +3,7 @@
 namespace App\Integrations\CiCd\GitHub;
 
 use App\Enums\IntegrationProvider;
-use App\Integrations\CiCd\Contracts\CiCdProvider;
+use App\Integrations\CiCd\AbstractCiCdProvider;
 use App\Integrations\CiCd\Data\CancelResult;
 use App\Integrations\CiCd\Data\DispatchResult;
 use App\Integrations\CiCd\Data\PipelineData;
@@ -13,12 +13,11 @@ use App\Integrations\CiCd\Data\RepositoryData;
 use App\Models\CiCdPipeline;
 use App\Models\CiCdRun;
 use App\Models\Integration;
-use DateTimeImmutable;
 use Illuminate\Http\Client\RequestException;
 use RuntimeException;
 use ZipArchive;
 
-class GitHubProvider implements CiCdProvider
+class GitHubProvider extends AbstractCiCdProvider
 {
     private const MAX_LOG_BYTES = 500_000;
 
@@ -174,16 +173,7 @@ class GitHubProvider implements CiCdProvider
 
     private function installationId(Integration $integration): string
     {
-        if (! is_string($integration->external_id) || $integration->external_id === '') {
-            throw new RuntimeException('GitHub integration has no installation ID.');
-        }
-
-        return $integration->external_id;
-    }
-
-    private function date(mixed $value): ?DateTimeImmutable
-    {
-        return is_string($value) && $value !== '' ? new DateTimeImmutable($value) : null;
+        return $this->externalId($integration, 'installation ID');
     }
 
     private function extractLogs(string $archive): string
@@ -259,21 +249,11 @@ class GitHubProvider implements CiCdProvider
                 $logs[] = '===== '.($stat['name'] ?? 'job.log')." =====\n".$contents;
             }
 
-            $output = trim(implode("\n\n", $logs));
-
-            if ($output === '') {
-                return '';
-            }
-
-            $output = preg_replace('/\x1B(?:[@-_]|\[[0-?]*[ -\/]*[@-~])/', '', $output) ?? $output;
-            $utf8 = iconv('UTF-8', 'UTF-8//IGNORE', $output);
-            $output = is_string($utf8) ? $utf8 : $output;
-
-            if (strlen($output) > self::MAX_LOG_BYTES) {
-                $output = "[Earlier GitHub Actions log output truncated]\n".substr($output, -self::MAX_LOG_BYTES);
-            }
-
-            return $output;
+            return $this->normalizeLogs(
+                implode("\n\n", $logs),
+                '[Earlier GitHub Actions log output truncated]',
+                self::MAX_LOG_BYTES,
+            );
         } finally {
             if ($opened) {
                 $zip->close();

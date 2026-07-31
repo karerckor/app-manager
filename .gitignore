@@ -11,3 +11,6 @@ libs/fastlane-plugin/*.gem
 
 # Brainstorming visual companion
 .superpowers/
+
+# Playwright MCP scratch output
+.playwright-mcp/

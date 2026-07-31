@@ -9,18 +9,19 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
-#[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at', 'tags'])]
-class Credential extends Model implements HasMedia, Auditable
+#[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at', 'tags', 'fingerprint'])]
+class Credential extends Model implements Auditable, HasMedia
 {
-    use HasFactory, HasUuids, HasTags, InteractsWithMedia, AuditableTrait;
+    use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia;
 
-    protected array $auditExclude = ['payload'];
+    protected array $auditExclude = ['payload', 'fingerprint'];
 
     public function team(): BelongsTo
     {
@@ -37,14 +38,9 @@ class Credential extends Model implements HasMedia, Auditable
         return $this->morphedByMany(Profile::class, 'credentialable')->withTimestamps();
     }
 
-    public function isAttachedOutsideApp(string $mobileAppId): bool
+    public function expoCredentialLinks(): HasMany
     {
-        return $this->appIdentifiers()
-            ->where('app_identifiers.mobile_app_id', '!=', $mobileAppId)
-            ->exists()
-            || $this->profiles()
-                ->whereHas('appIdentifier', fn ($query) => $query->where('mobile_app_id', '!=', $mobileAppId))
-                ->exists();
+        return $this->hasMany(ExpoCredentialLink::class);
     }
 
     public function registerMediaCollections(): void

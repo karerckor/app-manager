@@ -78,7 +78,7 @@ class CredentialSchema
             CredentialType::FirebaseConfig => self::make(
                 $type,
                 'Firebase HTTP v1 service account',
-                ['ios', 'android'],
+                ['android'],
                 ['json'],
                 'Service-account JSON containing project_id, client_email and private_key',
             ),

@@ -6,30 +6,63 @@ use App\Enums\ApiKeyScope;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class AccountFeaturesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_registration_creates_a_personal_team(): void
+    public function test_registration_requires_the_user_to_create_a_team(): void
     {
         $this->post('/register', [
             'name' => 'Ada Lovelace',
             'email' => 'ada@example.com',
             'password' => 'password',
             'password_confirmation' => 'password',
-        ])->assertRedirect('/dashboard');
+        ])->assertRedirect(route('accounts.create'));
 
         $user = User::where('email', 'ada@example.com')->firstOrFail();
         $this->assertAuthenticatedAs($user);
-        $this->assertNotNull($user->current_team_id);
-        $this->assertDatabaseHas('teams', [
-            'id' => $user->current_team_id,
-            'owner_id' => $user->id,
-            'slug' => 'ada-lovelaces-team',
+        $this->assertNull($user->current_team_id);
+        $this->assertDatabaseCount('teams', 0);
+        $this->assertDatabaseCount('team_user', 0);
+
+        $this->get(route('accounts.create'))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Team/Create')
+                ->where('storeUrl', route('accounts.store')));
+    }
+
+    public function test_login_redirects_a_user_without_a_team_to_team_creation(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertRedirect(route('accounts.create'));
+    }
+
+    public function test_user_can_create_their_first_team(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->post(route('accounts.store'), ['name' => 'Analytical Engines'])
+            ->assertRedirect();
+
+        $team = $user->refresh()->currentTeam;
+
+        $this->assertNotNull($team);
+        $this->assertSame('Analytical Engines', $team->name);
+        $this->assertSame($user->id, $team->owner_id);
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'role' => 'owner',
         ]);
-        $this->assertDatabaseHas('team_user', ['team_id' => $user->current_team_id, 'user_id' => $user->id, 'role' => 'owner']);
     }
 
     public function test_user_can_create_and_revoke_an_api_key(): void

@@ -12,31 +12,35 @@ class BuildLog
 
     public const MAX_TOTAL_BYTES = 5_000_000;
 
+    public function __construct(private readonly BuildActorResolver $actors) {}
+
     public function append(BuildRecord $build, string $content): BuildRecord
     {
-        return DB::transaction(function () use ($build, $content) {
-            $current = BuildRecord::query()->lockForUpdate()->findOrFail($build->id);
+        return $this->actors->runAs($build, function () use ($build, $content) {
+            return DB::transaction(function () use ($build, $content) {
+                $current = BuildRecord::query()->lockForUpdate()->findOrFail($build->id);
 
-            if (strlen($content) > self::MAX_CHUNK_BYTES) {
-                throw ValidationException::withMessages([
-                    'content' => 'A build log chunk may not exceed 256 KiB.',
+                if (strlen($content) > self::MAX_CHUNK_BYTES) {
+                    throw ValidationException::withMessages([
+                        'content' => 'A build log chunk may not exceed 256 KiB.',
+                    ]);
+                }
+
+                $output = ($current->log_output ?? '').$content;
+
+                if (strlen($output) > self::MAX_TOTAL_BYTES) {
+                    throw ValidationException::withMessages([
+                        'content' => 'The build log may not exceed 5 MB.',
+                    ]);
+                }
+
+                $current->update([
+                    'log_output' => $output,
+                    'logs_updated_at' => now(),
                 ]);
-            }
 
-            $output = ($current->log_output ?? '').$content;
-
-            if (strlen($output) > self::MAX_TOTAL_BYTES) {
-                throw ValidationException::withMessages([
-                    'content' => 'The build log may not exceed 5 MB.',
-                ]);
-            }
-
-            $current->update([
-                'log_output' => $output,
-                'logs_updated_at' => now(),
-            ]);
-
-            return $current->refresh();
+                return $current->refresh();
+            });
         });
     }
 
@@ -48,11 +52,13 @@ class BuildLog
             ]);
         }
 
-        $build->update([
-            'log_output' => $content,
-            'logs_updated_at' => now(),
-        ]);
+        return $this->actors->runAs($build, function () use ($build, $content) {
+            $build->update([
+                'log_output' => $content,
+                'logs_updated_at' => now(),
+            ]);
 
-        return $build->refresh();
+            return $build->refresh();
+        });
     }
 }

@@ -47,6 +47,15 @@ return [
             'report' => false,
         ],
 
+        'media-local' => [
+            'driver' => 'local',
+            'root' => env('MEDIA_LOCAL_ROOT') ?: storage_path('app/private'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -58,6 +67,25 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
             'report' => false,
+        ],
+
+        'media-s3' => [
+            'driver' => 's3',
+            'key' => env('MEDIA_S3_ACCESS_KEY_ID'),
+            'secret' => env('MEDIA_S3_SECRET_ACCESS_KEY'),
+            'token' => env('MEDIA_S3_SESSION_TOKEN'),
+            'region' => env('MEDIA_S3_REGION', 'us-east-1'),
+            'bucket' => env('MEDIA_S3_BUCKET'),
+            'url' => env('MEDIA_S3_URL'),
+            'endpoint' => env('MEDIA_S3_ENDPOINT'),
+            'root' => env('MEDIA_S3_PREFIX'),
+            'use_path_style_endpoint' => env('MEDIA_S3_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+            'options' => [
+                'ACL' => env('MEDIA_S3_OBJECT_ACL', 'bucket-owner-full-control'),
+            ],
         ],
 
     ],

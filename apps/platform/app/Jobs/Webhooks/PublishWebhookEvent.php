@@ -4,7 +4,7 @@ namespace App\Jobs\Webhooks;
 
 use App\Enums\IntegrationStatus;
 use App\Enums\WebhookDeliveryStatus;
-use App\Enums\WebhookEventType;
+use App\Integrations\Webhooks\WebhookSubscriptionMatcher;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use App\Models\WebhookEvent;
@@ -46,9 +46,8 @@ class PublishWebhookEvent implements ShouldQueue
                 ->where('team_id', $event->team_id)
                 ->whereHas('integration', fn ($query) => $query->where('status', IntegrationStatus::Active->value))
                 ->get()
-                ->filter(fn (WebhookEndpoint $endpoint) => $event->event_type === WebhookEventType::WebhookTest
-                    ? ($event->payload['endpoint_id'] ?? null) === $endpoint->id
-                    : $endpoint->subscribesTo($event->event_type->value))
+                ->filter(fn (WebhookEndpoint $endpoint) => app(WebhookSubscriptionMatcher::class)
+                    ->matches($endpoint, $event))
                 ->map(function (WebhookEndpoint $endpoint) use ($event, $payload) {
                     return WebhookDelivery::firstOrCreate(
                         [

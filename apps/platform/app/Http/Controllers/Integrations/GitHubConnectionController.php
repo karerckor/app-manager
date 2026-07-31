@@ -2,37 +2,39 @@
 
 namespace App\Http\Controllers\Integrations;
 
-use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
-use App\Http\Controllers\Controller;
-use App\Integrations\CiCd\GitHub\Connection\GitHubConnectionStateStore;
+use App\Integrations\CiCd\Connection\ConnectionStateStore;
+use App\Integrations\CiCd\Data\ConnectedAccount;
 use App\Integrations\CiCd\GitHub\GitHubClient;
 use App\Models\Integration;
 use App\Models\Team;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Gate;
 
-class GitHubConnectionController extends Controller
+class GitHubConnectionController extends AbstractCiCdConnectionController
 {
     public function connect(
         Request $request,
         Team $team,
-        GitHubConnectionStateStore $states,
+        ConnectionStateStore $states,
         GitHubClient $github,
     ): RedirectResponse {
         $this->ensureEnabled();
-        Gate::forUser($request->user())->authorize('manageIntegrations', $team);
+        $this->authorizeTeam($request, $team);
 
-        $state = $states->issue($request->user(), $team);
+        $state = $states->issue($request->user(), $team, $this->provider());
+        $hasConnectedAccount = $team->integrations()
+            ->where('provider', $this->provider()->value)
+            ->where('status', IntegrationStatus::Active->value)
+            ->exists();
 
-        return redirect()->away($github->authorizationUrl($state));
+        return redirect()->away($github->authorizationUrl($state, $hasConnectedAccount));
     }
 
     public function callback(
         Request $request,
-        GitHubConnectionStateStore $states,
+        ConnectionStateStore $states,
         GitHubClient $github,
     ): RedirectResponse {
         $this->ensureEnabled();
@@ -41,12 +43,12 @@ class GitHubConnectionController extends Controller
             'code' => ['required', 'string', 'max:1000'],
             'installation_id' => ['nullable', 'integer', 'min:1'],
         ]);
-        $context = $states->consume($data['state']);
+        $context = $states->consume($data['state'], $this->provider());
 
         abort_unless($context && $context['user_id'] === $request->user()->id, 419);
 
         $team = Team::query()->findOrFail($context['team_id']);
-        Gate::forUser($request->user())->authorize('manageIntegrations', $team);
+        $this->authorizeTeam($request, $team);
 
         $userToken = $github->exchangeUserCode($data['code']);
         $accessibleInstallations = collect($github->userInstallations($userToken))
@@ -54,19 +56,25 @@ class GitHubConnectionController extends Controller
             ->values();
 
         if (! isset($data['installation_id'])) {
-            if ($accessibleInstallations->isEmpty()) {
-                $installationState = $states->issue($request->user(), $team);
+            $connectedInstallationIds = $team->integrations()
+                ->where('provider', $this->provider()->value)
+                ->where('status', IntegrationStatus::Active->value)
+                ->pluck('external_id')
+                ->filter()
+                ->map(fn ($id) => (string) $id);
+            $availableInstallations = $accessibleInstallations
+                ->reject(fn (array $installation) => $connectedInstallationIds->contains(
+                    (string) $installation['id'],
+                ))
+                ->values();
+
+            if ($availableInstallations->count() !== 1) {
+                $installationState = $states->issue($request->user(), $team, $this->provider());
 
                 return redirect()->away($github->installationUrl($installationState));
             }
 
-            abort_if(
-                $accessibleInstallations->count() > 1,
-                409,
-                'Multiple GitHub App installations are accessible. Select an account during installation.',
-            );
-
-            $installationId = (string) $accessibleInstallations->first()['id'];
+            $installationId = (string) $availableInstallations->first()['id'];
         } else {
             $installationId = (string) $data['installation_id'];
             $accessible = $accessibleInstallations
@@ -77,33 +85,17 @@ class GitHubConnectionController extends Controller
 
         $installation = $github->installation($installationId);
         $account = is_array($installation['account'] ?? null) ? $installation['account'] : [];
-        $integration = Integration::withTrashed()->firstOrNew([
-            'team_id' => $team->id,
-            'provider' => IntegrationProvider::GitHub->value,
-            'external_id' => $installationId,
-        ]);
-        $integration->fill([
-            'kind' => IntegrationKind::CiCd,
-            'name' => 'GitHub '.($account['login'] ?? $installationId),
-            'status' => IntegrationStatus::Active,
-            'external_account_id' => isset($account['id']) ? (string) $account['id'] : null,
-            'external_account_name' => $account['login'] ?? null,
-            'settings' => [
+        $this->persistConnection($request, $team, new ConnectedAccount(
+            externalId: $installationId,
+            name: 'GitHub '.($account['login'] ?? $installationId),
+            externalAccountId: isset($account['id']) ? (string) $account['id'] : null,
+            externalAccountName: $account['login'] ?? null,
+            settings: [
                 'target_type' => $installation['target_type'] ?? null,
                 'repository_selection' => $installation['repository_selection'] ?? null,
                 'permissions' => $installation['permissions'] ?? [],
             ],
-            'created_by_user_id' => $integration->created_by_user_id ?: $request->user()->id,
-            'updated_by_user_id' => $request->user()->id,
-            'last_synced_at' => now(),
-            'disabled_at' => null,
-            'disconnected_at' => null,
-        ]);
-        if ($integration->exists && $integration->trashed()) {
-            $integration->restore();
-        }
-
-        $integration->save();
+        ));
 
         return redirect()
             ->route('accounts.integrations.index', $team)
@@ -116,56 +108,27 @@ class GitHubConnectionController extends Controller
         Integration $integration,
         GitHubClient $github,
     ): RedirectResponse {
-        $this->assertGitHubIntegration($request, $team, $integration);
+        $this->assertIntegration($request, $team, $integration);
         $installation = $github->installation((string) $integration->external_id);
         $account = is_array($installation['account'] ?? null) ? $installation['account'] : [];
 
-        $integration->update([
-            'status' => IntegrationStatus::Active,
-            'external_account_id' => isset($account['id']) ? (string) $account['id'] : null,
-            'external_account_name' => $account['login'] ?? null,
-            'settings' => [
+        $this->persistConnection($request, $team, new ConnectedAccount(
+            externalId: (string) $integration->external_id,
+            name: 'GitHub '.($account['login'] ?? $integration->external_id),
+            externalAccountId: isset($account['id']) ? (string) $account['id'] : null,
+            externalAccountName: $account['login'] ?? null,
+            settings: [
                 'target_type' => $installation['target_type'] ?? null,
                 'repository_selection' => $installation['repository_selection'] ?? null,
                 'permissions' => $installation['permissions'] ?? [],
             ],
-            'updated_by_user_id' => $request->user()->id,
-            'last_synced_at' => now(),
-            'disabled_at' => null,
-        ]);
+        ));
 
         return back()->with('status', 'GitHub connection synced.');
     }
 
-    public function disconnect(Request $request, Team $team, Integration $integration): RedirectResponse
+    protected function provider(): IntegrationProvider
     {
-        $this->assertGitHubIntegration($request, $team, $integration);
-
-        $integration->update([
-            'status' => IntegrationStatus::Disconnected,
-            'updated_by_user_id' => $request->user()->id,
-            'disconnected_at' => now(),
-        ]);
-        $integration->pipelines()->update(['enabled' => false]);
-
-        return back()->with('status', 'GitHub disconnected. Historical builds were preserved.');
-    }
-
-    private function assertGitHubIntegration(Request $request, Team $team, Integration $integration): void
-    {
-        Gate::forUser($request->user())->authorize('manageIntegrations', $team);
-        abort_unless(
-            $integration->team_id === $team->id
-            && $integration->provider === IntegrationProvider::GitHub,
-            404,
-        );
-    }
-
-    private function ensureEnabled(): void
-    {
-        abort_unless(
-            config('integrations.enabled') && config('integrations.github.enabled'),
-            404,
-        );
+        return IntegrationProvider::GitHub;
     }
 }

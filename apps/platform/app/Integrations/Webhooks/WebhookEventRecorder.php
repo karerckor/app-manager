@@ -13,7 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 class WebhookEventRecorder
 {
-    public function __construct(private readonly ActorContextManager $actorContext) {}
+    public function __construct(
+        private readonly ActorContextManager $actorContext,
+        private readonly WebhookEventFilterContext $filterContext,
+    ) {}
 
     /** @param array<string, mixed> $payload */
     public function record(
@@ -39,6 +42,7 @@ class WebhookEventRecorder
             'actor_user_id' => $actor->originator?->id,
             'source' => $actor->source,
             'payload' => $payload,
+            'filter_context' => $this->filterContext->for($aggregate),
             'occurred_at' => now(),
         ]);
 

@@ -18,6 +18,7 @@ class WebhookPayload
             'name' => $app->name,
             'slug' => $app->slug,
             'description' => $app->description,
+            'metadata' => $app->metadata,
             'created_at' => $app->created_at?->toISOString(),
             'updated_at' => $app->updated_at?->toISOString(),
         ];

@@ -71,7 +71,7 @@ class CascadeDeletionTest extends TestCase
 
     public function test_deleting_credential_purges_its_media_file(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         $credential = Credential::factory()->create();
         $credential->addMediaFromString('cert-bytes')->usingFileName('cert.p12')->toMediaCollection('file');
         $this->assertDatabaseCount('media', 1);
@@ -83,7 +83,7 @@ class CascadeDeletionTest extends TestCase
 
     public function test_deleting_team_purges_credential_media_via_cascade(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         $team = Team::factory()->create();
         $credential = Credential::factory()->create(['team_id' => $team->id]);
         $credential->addMediaFromString('key-bytes')->usingFileName('key.p8')->toMediaCollection('file');
@@ -96,8 +96,7 @@ class CascadeDeletionTest extends TestCase
 
     public function test_deleting_mobile_app_purges_build_artifact_media_via_cascade(): void
     {
-        Storage::fake(config('filesystems.default'));
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
 
         $team = Team::factory()->create();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);

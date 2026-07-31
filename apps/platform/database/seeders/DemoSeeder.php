@@ -41,8 +41,8 @@ class DemoSeeder extends Seeder
             ['name' => 'Demo User', 'password' => 'Demo123!'],
         );
 
-        // Personal team — mirrors registration (App\Actions\Fortify\CreateNewUser):
-        // user is the owner, pivot role 'owner', and it becomes the current team.
+        // The demo data needs a workspace: the demo user owns it and uses it as
+        // their current team. Real users create this workspace during onboarding.
         $team = $user->currentTeam;
 
         if ($team === null) {
@@ -175,6 +175,19 @@ class DemoSeeder extends Seeder
         if (! $googlePlay->hasMedia('file')) {
             $googlePlay->addMediaFromString($this->makeDemoServiceAccount())
                 ->usingFileName('google-play-service-account.json')
+                ->toMediaCollection('file');
+        }
+
+        // Firebase Cloud Messaging HTTP v1 service account on the Android identifier.
+        $firebaseHttpV1 = Credential::updateOrCreate(
+            ['team_id' => $team->id, 'type' => CredentialType::FirebaseConfig, 'name' => 'Firebase HTTP v1 Service Account'],
+            ['payload' => null],
+        );
+        $identifier->credentials()->syncWithoutDetaching([$firebaseHttpV1->id]);
+
+        if (! $firebaseHttpV1->hasMedia('file')) {
+            $firebaseHttpV1->addMediaFromString($this->makeDemoServiceAccount())
+                ->usingFileName('firebase-http-v1-service-account.json')
                 ->toMediaCollection('file');
         }
 

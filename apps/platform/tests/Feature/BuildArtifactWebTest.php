@@ -20,7 +20,7 @@ class BuildArtifactWebTest extends TestCase
 
     public function test_admin_can_upload_and_delete_artifact(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app, $build] = $this->context('owner');
 
         $this->actingAs($user)->post($this->url($team, $app, $build), [
@@ -40,7 +40,7 @@ class BuildArtifactWebTest extends TestCase
 
     public function test_viewer_cannot_upload_artifact(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app, $build] = $this->context('viewer');
 
         $this->actingAs($user)->post($this->url($team, $app, $build), [
@@ -51,7 +51,7 @@ class BuildArtifactWebTest extends TestCase
 
     public function test_deleting_build_purges_artifact_media_record(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         [, $team, , $build] = $this->context('owner');
         $artifact = Artifact::factory()->for($build)->create(['team_id' => $team->id]);
         $artifact->addMedia(UploadedFile::fake()->create('a.apk', 5))->toMediaCollection('file');
@@ -64,7 +64,7 @@ class BuildArtifactWebTest extends TestCase
 
     public function test_show_exposes_artifacts_for_a_build(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app, $build] = $this->context('owner');
         $artifact = Artifact::factory()->for($build)->create([
             'team_id' => $team->id,

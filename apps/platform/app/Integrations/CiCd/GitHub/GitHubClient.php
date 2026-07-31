@@ -23,15 +23,21 @@ class GitHubClient
             .'/apps/'.rawurlencode($slug).'/installations/new?'.http_build_query(['state' => $state]);
     }
 
-    public function authorizationUrl(string $state): string
+    public function authorizationUrl(string $state, bool $selectAccount = false): string
     {
         $this->assertUserAuthorizationConfigured();
 
+        $query = [
+            'client_id' => config('integrations.github.client_id'),
+            'state' => $state,
+        ];
+
+        if ($selectAccount) {
+            $query['prompt'] = 'select_account';
+        }
+
         return rtrim((string) config('integrations.github.web_url'), '/')
-            .'/login/oauth/authorize?'.http_build_query([
-                'client_id' => config('integrations.github.client_id'),
-                'state' => $state,
-            ]);
+            .'/login/oauth/authorize?'.http_build_query($query);
     }
 
     public function exchangeUserCode(string $code): string

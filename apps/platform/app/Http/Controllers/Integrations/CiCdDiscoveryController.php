@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Http\Controllers\Controller;
 use App\Integrations\CiCd\CiCdProviderRegistry;
+use App\Integrations\CiCd\Data\RepositoryData;
 use App\Models\Integration;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 
-class GitHubDiscoveryController extends Controller
+class CiCdDiscoveryController extends Controller
 {
     public function repositories(
         Request $request,
@@ -47,18 +48,26 @@ class GitHubDiscoveryController extends Controller
         return response()->json(['data' => $providers->for($integration->provider)->refs($integration, $repository)]);
     }
 
-    private function repository(Request $request, Integration $integration, CiCdProviderRegistry $providers)
-    {
+    private function repository(
+        Request $request,
+        Integration $integration,
+        CiCdProviderRegistry $providers,
+    ): RepositoryData {
         $data = $request->validate(['repository' => ['required', 'string', 'max:255']]);
 
         return collect($providers->for($integration->provider)->repositories($integration))
-            ->first(fn ($repository) => $repository->fullName === $data['repository'])
+            ->first(fn (RepositoryData $repository) => $repository->fullName === $data['repository'])
             ?? abort(404);
     }
 
     private function authorizeIntegration(Request $request, Team $team, Integration $integration): void
     {
         Gate::forUser($request->user())->authorize('manageIntegrations', $team);
-        abort_unless($integration->team_id === $team->id && $integration->status->canDispatch(), 404);
+        abort_unless(
+            $integration->team_id === $team->id
+            && $integration->supportsCiCd()
+            && $integration->status->canDispatch(),
+            404,
+        );
     }
 }

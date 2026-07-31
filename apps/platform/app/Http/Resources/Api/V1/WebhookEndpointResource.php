@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Enums\IntegrationStatus;
+use App\Integrations\Webhooks\WebhookSubscriptionFilters;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,6 +17,7 @@ class WebhookEndpointResource extends JsonResource
             'url' => $this->url,
             'secret_hint' => $this->secret_hint,
             'subscribed_events' => $this->subscribed_events,
+            'filters' => WebhookSubscriptionFilters::normalize($this->filters),
             'enabled' => $this->integration?->status === IntegrationStatus::Active,
             'consecutive_failures' => $this->consecutive_failures,
             'last_delivered_at' => $this->last_delivered_at,

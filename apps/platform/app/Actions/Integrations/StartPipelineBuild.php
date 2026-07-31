@@ -2,6 +2,8 @@
 
 namespace App\Actions\Integrations;
 
+use App\Billing\Contracts\AuthorizesBuildCreation;
+use App\Billing\Contracts\RecordsUsage;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
@@ -29,6 +31,8 @@ class StartPipelineBuild
         private readonly CiCdProviderRegistry $providers,
         private readonly WorkflowInputValidator $inputValidator,
         private readonly WebhookEventRecorder $webhookEvents,
+        private readonly AuthorizesBuildCreation $buildAuthorizer,
+        private readonly RecordsUsage $usage,
     ) {}
 
     /** @param array<string, mixed> $providedInputs */
@@ -49,6 +53,8 @@ class StartPipelineBuild
         if ($existing) {
             return $existing;
         }
+
+        $this->buildAuthorizer->authorize($team);
 
         abort_unless(
             $pipeline->team_id === $team->id
@@ -149,6 +155,8 @@ class StartPipelineBuild
                 WebhookPayload::build($build),
                 ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
+
+            $this->usage->recordBuildRun($build);
 
             DB::afterCommit(fn () => DispatchCiCdRun::dispatch($run->id)->onQueue('integrations'));
 

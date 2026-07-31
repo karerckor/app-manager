@@ -27,7 +27,8 @@
         Vault,
         X,
     } from '@lucide/svelte';
-    import AppShell from '../../Components/AppShell.svelte';
+    import WorkspacePage from '../../Components/WorkspacePage.svelte';
+    import TabSelector from '../../Components/TabSelector.svelte';
     import TagEditor from '../../Components/TagEditor.svelte';
     import VaultCredentialFormModal from './VaultCredentialFormModal.svelte';
 
@@ -280,13 +281,8 @@
 <svelte:head><title>Credentials Vault · App Manager</title></svelte:head>
 <svelte:window on:keydown={onWindowKeydown} />
 
-<AppShell {auth} teams={navigationTeams} currentTeam={navigationTeam} active="credentials">
-    <main class="mx-auto max-w-[1240px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
-        <div class="mb-5 flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <p class="eyebrow mb-1.5">Workspace security</p>
-                <h1 class="text-2xl font-extrabold tracking-tight text-slate-950">Credentials Vault</h1>
-            </div>
+<WorkspacePage {auth} {navigationTeams} {navigationTeam} active="credentials" eyebrow="Workspace security" title="Credentials Vault" {flash}>
+    <svelte:fragment slot="actions">
             {#if canManage}
                 <button class="flex items-center gap-2" disabled={!hasConfiguredApps} title={hasConfiguredApps ? 'Add credential' : 'Create an application identifier first'} on:click={openCreate}>
                     <Plus class="h-4 w-4" strokeWidth={2.2} />
@@ -295,22 +291,16 @@
             {:else}
                 <span class="text-xs font-semibold text-slate-500">Read-only access</span>
             {/if}
-        </div>
+    </svelte:fragment>
 
-        {#if flash?.status}
-            <div class="mb-6 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-                <span class="grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-xs text-white">✓</span>
-                {flash.status}
-            </div>
-        {/if}
-
-        <div class="mb-4 flex flex-wrap items-center gap-2">
-            {#each statusChips as chip (chip.value)}
-                <button type="button" class="chip {chipClass(chip)}" disabled={chipDisabled(chip)} aria-pressed={status === chip.value} on:click={() => applyStatus(chip.value)}>
-                    {chip.label}
-                    <span class="font-mono text-[10px] font-medium tabular-nums opacity-70">{chip.count}</span>
-                </button>
-            {/each}
+        <div class="mb-4">
+            <TabSelector
+                variant="pills"
+                ariaLabel="Credential status filter"
+                value={status}
+                items={statusChips.map(chip => ({ value: chip.value, label: chip.label, count: chip.count, tone: chip.tone, disabled: chipDisabled(chip) }))}
+                onChange={applyStatus}
+            />
         </div>
 
         <div class="mb-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_190px_180px_170px_auto]">
@@ -551,8 +541,7 @@
                 </div>
             {/if}
         </section>
-    </main>
-</AppShell>
+</WorkspacePage>
 
 {#if revealTarget}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeReveal()}>

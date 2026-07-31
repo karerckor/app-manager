@@ -17,6 +17,8 @@ use App\Models\Team;
 use App\Rules\ValidCredentialFile;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
+use App\Support\Credentials\CredentialUniqueness;
+use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -25,13 +27,16 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CredentialController extends Controller
 {
     use ResolvesPageSize;
 
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly CredentialUniqueness $credentialUniqueness,
+    ) {}
 
     public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
@@ -95,6 +100,7 @@ class CredentialController extends Controller
                 $identifier->credentials()->attach($credential);
             }
             $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            $this->refreshFingerprint($credential);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::CredentialCreated,
@@ -158,6 +164,8 @@ class CredentialController extends Controller
                 $credential->addMediaFromRequest('file')->toMediaCollection('file');
             }
 
+            $this->refreshFingerprint($credential);
+
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::CredentialUpdated,
@@ -190,11 +198,11 @@ class CredentialController extends Controller
         Team $team,
         MobileApp $mobileApp,
         string $credential,
-    ): BinaryFileResponse {
+    ): StreamedResponse {
         $media = $this->credential($team, $mobileApp, $credential)->getFirstMedia('file');
         abort_unless($media, 404);
 
-        return response()->download($media->getPath(), $media->file_name);
+        return MediaFileResponse::download($media);
     }
 
     public function upload(
@@ -214,6 +222,7 @@ class CredentialController extends Controller
         ]);
         DB::transaction(function () use ($credential, $team) {
             $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            $this->refreshFingerprint($credential);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::CredentialUpdated,
@@ -231,6 +240,7 @@ class CredentialController extends Controller
         abort_unless($credential->getFirstMedia('file'), 404);
         DB::transaction(function () use ($credential, $team) {
             $credential->clearMediaCollection('file');
+            $this->refreshFingerprint($credential);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::CredentialUpdated,
@@ -279,5 +289,12 @@ class CredentialController extends Controller
                 ->whereHas('appIdentifier', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id))
                 ->with('appIdentifier'),
         ];
+    }
+
+    private function refreshFingerprint(Credential $credential): void
+    {
+        $credential->forceFill([
+            'fingerprint' => $this->credentialUniqueness->fingerprintCredential($credential),
+        ])->saveQuietly();
     }
 }

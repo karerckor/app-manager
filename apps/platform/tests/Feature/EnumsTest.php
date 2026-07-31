@@ -13,6 +13,7 @@ class EnumsTest extends TestCase
     {
         $this->assertSame('ios', Platform::Ios->value);
         $this->assertSame('android', Platform::Android->value);
+        $this->assertSame('web', Platform::Web->value);
     }
 
     public function test_profile_type_values(): void

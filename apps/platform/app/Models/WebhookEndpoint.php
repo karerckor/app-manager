@@ -19,12 +19,13 @@ use OwenIt\Auditing\Contracts\Auditable;
     'secret',
     'secret_hint',
     'subscribed_events',
+    'filters',
     'consecutive_failures',
     'last_delivered_at',
 ])]
 class WebhookEndpoint extends Model implements Auditable
 {
-    use HasFactory, HasUuids, SoftDeletes, AuditableTrait;
+    use AuditableTrait, HasFactory, HasUuids, SoftDeletes;
 
     protected array $auditExclude = ['secret'];
 
@@ -53,6 +54,7 @@ class WebhookEndpoint extends Model implements Auditable
         return [
             'secret' => 'encrypted',
             'subscribed_events' => 'array',
+            'filters' => 'array',
             'last_delivered_at' => 'datetime',
         ];
     }

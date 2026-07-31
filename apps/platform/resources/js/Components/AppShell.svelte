@@ -1,6 +1,6 @@
 <script>
     import { Link, router } from '@inertiajs/svelte';
-    import { LayoutGrid, KeyRound, Blocks, ShieldCheck, LogOut, ScrollText } from '@lucide/svelte';
+    import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, CreditCard, UserRound, ShieldCheck, BellRing } from '@lucide/svelte';
 
     export let auth;
     export let teams = [];
@@ -8,11 +8,16 @@
     export let active = 'apps';
 
     $: appsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/apps` : '/dashboard';
+    $: credentialsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/credentials` : '/dashboard';
     $: apiKeysUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/api-keys` : '/dashboard';
     $: canManageApiKeys = currentTeam?.owner_id === auth.user.id;
     $: canViewAuditLog = ['owner', 'admin'].includes(auth?.team?.role);
+    $: canManageBilling = auth?.billing?.enabled && currentTeam?.owner_id === auth?.user?.id;
     $: integrationsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/integrations` : '/dashboard';
+    $: pushNotificationsUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/tools/push-notifications` : '/dashboard';
     $: auditUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/audit` : '/dashboard';
+    $: teamUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/team` : '/dashboard';
+    $: billingUrl = currentTeam?.slug ? `/accounts/${currentTeam.slug}/billing` : '/dashboard';
     const switchTeam = (event) => router.put(`/accounts/${event.currentTarget.value}/switch`);
     const logout = () => router.post('/logout');
     const initials = (name = '') => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
@@ -39,6 +44,10 @@
                 <LayoutGrid class="h-4.5 w-4.5" strokeWidth={1.8} />
                 Applications
             </Link>
+            <Link href={credentialsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'credentials' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                <ShieldCheck class="h-4.5 w-4.5" strokeWidth={1.8} />
+                Credentials Vault
+            </Link>
             {#if canManageApiKeys}
                 <Link href={apiKeysUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'api-keys' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
                     <KeyRound class="h-4.5 w-4.5" strokeWidth={1.8} />
@@ -57,16 +66,30 @@
                     Integrations
                 </Link>
             {/if}
-            <span class="flex cursor-default items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500">
-                <ShieldCheck class="h-4.5 w-4.5" strokeWidth={1.8} />
-                Team access <span class="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[9px] uppercase">Soon</span>
-            </span>
+            <Link href={teamUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'team' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                <Users class="h-4.5 w-4.5" strokeWidth={1.8} />
+                Team access
+            </Link>
+            {#if canManageBilling}
+                <Link href={billingUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'billing' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                    <CreditCard class="h-4.5 w-4.5" strokeWidth={1.8} />
+                    Billing
+                </Link>
+            {/if}
+            <p class="px-3 pt-5 pb-1.5 text-[10px] font-semibold tracking-[0.16em] text-slate-600 uppercase">Tools</p>
+            <Link href={pushNotificationsUrl} class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition {active === 'push-notifications' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/20' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}">
+                <BellRing class="h-4.5 w-4.5" strokeWidth={1.8} />
+                Push notifications
+            </Link>
         </nav>
 
         <div class="mt-auto border-t border-white/10 pt-4">
             <div class="flex items-center gap-3 px-2">
-                <span class="grid h-9 w-9 place-items-center rounded-full bg-indigo-400/15 text-xs font-bold text-indigo-300">{initials(auth.user.name)}</span>
-                <div class="min-w-0 flex-1"><p class="truncate text-xs font-semibold">{auth.user.name}</p><p class="truncate text-[11px] text-slate-500">{auth.user.email}</p></div>
+                <Link href="/profile" class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-400/15 text-xs font-bold text-indigo-300 transition hover:bg-indigo-400/25" aria-label="Open profile">{initials(auth.user.name)}</Link>
+                <Link href="/profile" class="min-w-0 flex-1 rounded-lg outline-none ring-indigo-400 focus-visible:ring-2">
+                    <p class="truncate text-xs font-semibold">{auth.user.name}</p>
+                    <p class="truncate text-[11px] text-slate-500">{auth.user.email}</p>
+                </Link>
                 <button aria-label="Sign out" title="Sign out" class="ghost p-2 text-slate-500 hover:bg-white/5 hover:text-white" on:click={logout}>
                     <LogOut class="h-4 w-4" />
                 </button>
@@ -77,7 +100,10 @@
     <div class="min-w-0">
         <header class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
             <Link href={appsUrl} class="flex items-center gap-2 text-sm font-bold"><span class="grid h-7 w-7 place-items-center rounded-lg bg-indigo-600 text-xs text-white">AM</span> App Manager</Link>
-            <button class="ghost px-2.5 py-1.5" on:click={logout}>Sign out</button>
+            <div class="flex items-center gap-1">
+                <Link href="/profile" class="ghost grid h-9 w-9 place-items-center rounded-xl" aria-label="Open profile"><UserRound class="h-4.5 w-4.5" /></Link>
+                <button class="ghost px-2.5 py-1.5" on:click={logout}>Sign out</button>
+            </div>
         </header>
         <slot />
     </div>

@@ -3,6 +3,7 @@
 namespace App\Actions\Integrations;
 
 use App\Enums\BuildReportingMode;
+use App\Enums\IntegrationProvider;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Integrations\CiCd\Data\PipelineData;
 use App\Integrations\CiCd\WorkflowInputValidator;
@@ -30,7 +31,12 @@ class SaveCiCdPipeline
         array $data,
         ?CiCdPipeline $pipeline = null,
     ): CiCdPipeline {
-        abort_unless($integration->team_id === $team->id && $integration->status->canDispatch(), 404);
+        abort_unless(
+            $integration->team_id === $team->id
+            && $integration->supportsCiCd()
+            && $integration->status->canDispatch(),
+            404,
+        );
         $mobileApp = MobileApp::query()
             ->whereKey($data['mobile_app_id'])
             ->where('team_id', $team->id)
@@ -46,14 +52,25 @@ class SaveCiCdPipeline
             ->first(fn ($item) => $item->fullName === $data['repository_full_name']);
 
         if (! $repository) {
-            throw ValidationException::withMessages(['repository_full_name' => 'Repository is not accessible to this installation.']);
+            throw ValidationException::withMessages(['repository_full_name' => 'Repository is not accessible to this integration.']);
+        }
+
+        if ($integration->provider === IntegrationProvider::Expo
+            && ! $mobileApp->expoProject()
+                ->where('integration_id', $integration->id)
+                ->where('external_id', $repository->id)
+                ->where('exists_on_expo', true)
+                ->exists()) {
+            throw ValidationException::withMessages([
+                'mobile_app_id' => 'EAS Workflows can only be bound to the application linked to this Expo project.',
+            ]);
         }
 
         $workflow = collect($provider->pipelines($integration, $repository))
             ->first(fn (PipelineData $item) => $item->id === (string) $data['workflow_id']);
 
         if (! $workflow) {
-            throw ValidationException::withMessages(['workflow_id' => 'Workflow is unavailable or does not support workflow_dispatch.']);
+            throw ValidationException::withMessages(['workflow_id' => 'Pipeline is unavailable or cannot be dispatched.']);
         }
 
         $availableRef = collect($provider->refs($integration, $repository))
@@ -65,6 +82,13 @@ class SaveCiCdPipeline
 
         $inputs = $data['input_defaults'] ?? [];
         $reportingMode = BuildReportingMode::from($data['reporting_mode'] ?? BuildReportingMode::Automatic->value);
+
+        if ($integration->provider === IntegrationProvider::Expo
+            && $reportingMode !== BuildReportingMode::Automatic) {
+            throw ValidationException::withMessages([
+                'reporting_mode' => 'EAS Workflows always report status through Expo.',
+            ]);
+        }
 
         if ($reportingMode === BuildReportingMode::Manual) {
             $buildIdInput = $data['build_id_input'] ?? null;

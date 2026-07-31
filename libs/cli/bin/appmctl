@@ -1,0 +1,3695 @@
+#!/usr/bin/env bash
+
+# App Manager CLI. Keep this script compatible with Bash 3.2 (the version
+# shipped with macOS) so it can run in CI without another language runtime.
+
+set -o pipefail
+
+APPMCTL_VERSION="0.2.0"
+APPMCTL_NAME="appmctl"
+
+
+# Core utilities: error handling, cleanup, temporary files.
+
+APPMCTL_ROOT_PID="$$"
+APPMCTL_TMPDIR=""
+
+say_error() {
+  printf '%s: %s\n' "$APPMCTL_NAME" "$*" >&2
+}
+
+die() {
+  say_error "$*"
+  exit 1
+}
+
+cleanup() {
+  if [ "$$" = "$APPMCTL_ROOT_PID" ] && [ -n "$APPMCTL_TMPDIR" ] && [ -d "$APPMCTL_TMPDIR" ]; then
+    case "$APPMCTL_TMPDIR" in
+      */appmctl.*) rm -rf -- "$APPMCTL_TMPDIR" ;;
+    esac
+  fi
+}
+
+trap cleanup EXIT
+
+ensure_tmpdir() {
+  if [ -z "$APPMCTL_TMPDIR" ]; then
+    APPMCTL_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/appmctl.XXXXXX") || die "could not create a temporary directory"
+    chmod 700 "$APPMCTL_TMPDIR" 2>/dev/null || true
+  fi
+}
+
+new_temp_file() {
+  [ -n "$APPMCTL_TMPDIR" ] || return 1
+  mktemp "$APPMCTL_TMPDIR/${1:-file}.XXXXXX" || return 1
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+require_value() {
+  [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 requires a value"
+}
+
+
+# Configuration: environment variables, validation, URL construction.
+
+DRY_RUN=0
+PRETTY_JSON=0
+OUTPUT_FILE=""
+FORCE_OUTPUT=0
+INSTANCE_URL="${APP_MANAGER_INSTANCE_URL:-http://localhost:8000}"
+TEAM="${APP_MANAGER_TEAM:-}"
+API_KEY="${APP_MANAGER_API_KEY:-}"
+APP="${APP_MANAGER_APP:-}"
+CURL_BIN="${APP_MANAGER_CURL_BIN:-curl}"
+JQ_BIN="${APP_MANAGER_JQ_BIN:-jq}"
+
+validate_slug() {
+  local label="$1"
+  local value="$2"
+  case "$value" in
+    ''|.|..|*[!A-Za-z0-9._-]*) die "$label must contain only letters, numbers, '.', '_' or '-'" ;;
+  esac
+}
+
+require_config() {
+  [ -n "$API_KEY" ] || die "APP_MANAGER_API_KEY is required"
+  [ -n "$TEAM" ] || die "APP_MANAGER_TEAM is required"
+  case "$API_KEY" in
+    *$'\n'*|*$'\r'*) die "APP_MANAGER_API_KEY must not contain line breaks" ;;
+  esac
+  validate_slug "APP_MANAGER_TEAM" "$TEAM"
+}
+
+normalize_api_root() {
+  local value="$INSTANCE_URL"
+
+  case "$value" in
+    http://*|https://*) ;;
+    *) die "APP_MANAGER_INSTANCE_URL must start with http:// or https://" ;;
+  esac
+  case "$value" in
+    *\?*|*\#*) die "APP_MANAGER_INSTANCE_URL must not contain a query string or fragment" ;;
+  esac
+
+  while [ "${value%/}" != "$value" ]; do
+    value=${value%/}
+  done
+  case "$value" in
+    */api/v1) value=${value%/api/v1} ;;
+  esac
+  case "$value" in
+    http://?*|https://?*) ;;
+    *) die "APP_MANAGER_INSTANCE_URL must include a host" ;;
+  esac
+
+  printf '%s/api/v1' "$value"
+}
+
+build_url() {
+  local path="$1"
+  local root
+
+  case "$path" in
+    http://*|https://*) die "PATH must be relative to the team API root" ;;
+  esac
+  path=${path#/}
+  [ -n "$path" ] || die "PATH must not be empty"
+  case "/$path/" in
+    */../*|*/./*) die "PATH must not contain '.' or '..' segments" ;;
+  esac
+
+  root=$(normalize_api_root) || return 1
+  printf '%s/%s/%s' "$root" "$TEAM" "$path"
+}
+
+require_curl() {
+  command_exists "$CURL_BIN" || die "curl is required (looked for '$CURL_BIN')"
+}
+
+require_jq() {
+  command_exists "$JQ_BIN" || die "jq is required for this operation (looked for '$JQ_BIN')"
+}
+
+require_app() {
+  [ -n "$APP" ] || die "--app or APP_MANAGER_APP is required"
+  validate_slug "app" "$APP"
+}
+
+
+# HTTP transport: curl wrapper, request building, response handling.
+
+REQUEST_HEADERS=()
+REQUEST_FORMS=()
+REQUEST_FILES=()
+REQUEST_BODY_KIND="none"
+REQUEST_BODY_VALUE=""
+REQUEST_HAS_CONTENT_TYPE=0
+LAST_RESPONSE_FILE=""
+
+reset_request() {
+  REQUEST_HEADERS=()
+  REQUEST_FORMS=()
+  REQUEST_FILES=()
+  REQUEST_BODY_KIND="none"
+  REQUEST_BODY_VALUE=""
+  REQUEST_HAS_CONTENT_TYPE=0
+}
+
+validate_field_assignment() {
+  local option="$1"
+  local assignment="$2"
+  local field
+
+  case "$assignment" in
+    *=*) ;;
+    *) die "$option expects FIELD=VALUE" ;;
+  esac
+  field=${assignment%%=*}
+  case "$field" in
+    ''|*[!A-Za-z0-9_.-]*) die "$option expects FIELD=VALUE with a simple field name" ;;
+  esac
+}
+
+validate_file_assignment() {
+  local assignment="$1"
+  local path
+  validate_field_assignment "--file" "$assignment"
+  path=${assignment#*=}
+  [ -n "$path" ] || die "--file requires a non-empty file path"
+  [ -f "$path" ] || die "upload file does not exist: $path"
+}
+
+header_is_sensitive() {
+  local name=${1%%:*}
+  name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+  case "$name" in
+    authorization|cookie|proxy-authorization|x-api-key) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+print_request_plan() {
+  local method="$1"
+  local url="$2"
+  local item
+  local path
+
+  printf 'dry-run: no request sent\n'
+  printf 'method: %s\n' "$method"
+  printf 'url: %s\n' "$url"
+  printf 'headers:\n'
+  printf '  Authorization: Bearer [REDACTED]\n'
+  printf '  Accept: application/json\n'
+  for item in "${REQUEST_HEADERS[@]}"; do
+    if header_is_sensitive "$item"; then
+      printf '  %s: [REDACTED]\n' "${item%%:*}"
+    else
+      printf '  %s\n' "$item"
+    fi
+  done
+
+  case "$REQUEST_BODY_KIND" in
+    inline) printf 'body: inline data (%s characters)\n' "${#REQUEST_BODY_VALUE}" ;;
+    file) printf 'body-file: %s\n' "$REQUEST_BODY_VALUE" ;;
+    stdin) printf 'body-file: stdin\n' ;;
+    multipart)
+      printf 'multipart:\n'
+      for item in "${REQUEST_FORMS[@]}"; do
+        printf '  field: %s=<inline value>\n' "${item%%=*}"
+      done
+      for item in "${REQUEST_FILES[@]}"; do
+        path=${item#*=}
+        printf '  file: %s=%s\n' "${item%%=*}" "$path"
+      done
+      ;;
+    none) printf 'body: none\n' ;;
+  esac
+
+  if [ -n "$OUTPUT_FILE" ]; then
+    printf 'output: %s\n' "$OUTPUT_FILE"
+  else
+    printf 'output: stdout\n'
+  fi
+}
+
+print_http_error_body() {
+  local response_file="$1"
+  if [ -s "$response_file" ]; then
+    printf '%s: response body:\n' "$APPMCTL_NAME" >&2
+    cat "$response_file" >&2
+    printf '\n' >&2
+  fi
+}
+
+perform_request() {
+  local method="$1"
+  local url="$2"
+  local response_file
+  local auth_headers_file
+  local inline_file=""
+  local status
+  local curl_status
+  local item
+  local field
+  local path
+  local curl_args
+
+  response_file=$(new_temp_file response) || die "could not create a response file"
+  auth_headers_file=$(new_temp_file headers) || die "could not create a header file"
+  chmod 600 "$auth_headers_file" 2>/dev/null || true
+  printf 'Authorization: Bearer %s\nAccept: application/json\n' "$API_KEY" >"$auth_headers_file"
+  curl_args=(
+    --silent
+    --show-error
+    --request "$method"
+    --output "$response_file"
+    --write-out '%{http_code}'
+    --header "@$auth_headers_file"
+  )
+
+  for item in "${REQUEST_HEADERS[@]}"; do
+    curl_args+=(--header "$item")
+  done
+
+  case "$REQUEST_BODY_KIND" in
+    inline)
+      inline_file=$(new_temp_file request) || die "could not create a request body file"
+      chmod 600 "$inline_file" 2>/dev/null || true
+      printf '%s' "$REQUEST_BODY_VALUE" >"$inline_file"
+      if [ "$REQUEST_HAS_CONTENT_TYPE" -eq 0 ]; then
+        curl_args+=(--header 'Content-Type: application/json')
+      fi
+      curl_args+=(--data-binary "@$inline_file")
+      ;;
+    file)
+      if [ "$REQUEST_HAS_CONTENT_TYPE" -eq 0 ]; then
+        curl_args+=(--header 'Content-Type: application/json')
+      fi
+      curl_args+=(--data-binary "@$REQUEST_BODY_VALUE")
+      ;;
+    stdin)
+      if [ "$REQUEST_HAS_CONTENT_TYPE" -eq 0 ]; then
+        curl_args+=(--header 'Content-Type: application/json')
+      fi
+      curl_args+=(--data-binary '@-')
+      ;;
+    multipart)
+      for item in "${REQUEST_FORMS[@]}"; do
+        curl_args+=(--form-string "$item")
+      done
+      for item in "${REQUEST_FILES[@]}"; do
+        field=${item%%=*}
+        path=${item#*=}
+        curl_args+=(--form "$field=@$path")
+      done
+      ;;
+  esac
+
+  curl_args+=("$url")
+  status=$("$CURL_BIN" "${curl_args[@]}")
+  curl_status=$?
+
+  if [ "$curl_status" -ne 0 ]; then
+    print_http_error_body "$response_file"
+    say_error "request failed before receiving a valid response (curl exit $curl_status)"
+    return 1
+  fi
+  case "$status" in
+    [0-9][0-9][0-9]) ;;
+    *)
+      print_http_error_body "$response_file"
+      say_error "curl returned an invalid HTTP status: $status"
+      return 1
+      ;;
+  esac
+  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+    print_http_error_body "$response_file"
+    say_error "API request failed with HTTP $status"
+    return 1
+  fi
+
+  LAST_RESPONSE_FILE="$response_file"
+  return 0
+}
+
+check_output_destination() {
+  if [ -n "$OUTPUT_FILE" ] && [ -e "$OUTPUT_FILE" ] && [ "$FORCE_OUTPUT" -ne 1 ]; then
+    die "refusing to overwrite $OUTPUT_FILE (use --force)"
+  fi
+  if [ -n "$OUTPUT_FILE" ] && [ ! -d "$(dirname "$OUTPUT_FILE")" ]; then
+    die "output directory does not exist: $(dirname "$OUTPUT_FILE")"
+  fi
+}
+
+emit_response() {
+  local source="$LAST_RESPONSE_FILE"
+  local formatted
+
+  if [ "$PRETTY_JSON" -eq 1 ]; then
+    require_jq
+    formatted=$(new_temp_file json) || die "could not create a JSON output file"
+    if ! "$JQ_BIN" . "$source" >"$formatted"; then
+      die "the API response is not valid JSON"
+    fi
+    source="$formatted"
+  fi
+
+  if [ -n "$OUTPUT_FILE" ]; then
+    mv -f -- "$source" "$OUTPUT_FILE" || die "could not write response to $OUTPUT_FILE"
+  else
+    cat "$source"
+  fi
+}
+
+configure_json_file_body() {
+  reset_request
+  REQUEST_BODY_KIND="file"
+  REQUEST_BODY_VALUE="$1"
+}
+
+discard_last_response() {
+  :
+}
+
+send_json_file() {
+  local method="$1"
+  local url="$2"
+  local body_file="$3"
+
+  configure_json_file_body "$body_file"
+  perform_request "$method" "$url" || return 1
+  discard_last_response
+}
+
+create_json_string_body() {
+  local content_file="$1"
+  local body_file="$2"
+  "$JQ_BIN" -Rs '{content: .}' "$content_file" >"$body_file"
+}
+
+post_log_file() {
+  local url="$1"
+  local content_file="$2"
+  local body_file
+
+  body_file=$(new_temp_file log-body) || return 1
+  if ! create_json_string_body "$content_file" "$body_file"; then
+    say_error "could not encode build log as JSON"
+    return 1
+  fi
+  send_json_file POST "$url" "$body_file"
+}
+
+post_log_text() {
+  local url="$1"
+  local content="$2"
+  local content_file
+
+  content_file=$(new_temp_file log-text) || return 1
+  printf '%s' "$content" >"$content_file"
+  post_log_file "$url" "$content_file"
+}
+
+api_get() {
+  local path="$1"
+  local url
+  require_config
+  url=$(build_url "$path") || return 1
+  require_curl
+  ensure_tmpdir
+  perform_request GET "$url" || return 1
+}
+
+api_post() {
+  local path="$1"
+  local body_file="$2"
+  local url
+  require_config
+  url=$(build_url "$path") || return 1
+  require_curl
+  ensure_tmpdir
+  reset_request
+  if [ -n "$body_file" ]; then
+    send_json_file POST "$url" "$body_file"
+  else
+    perform_request POST "$url"
+  fi
+}
+
+api_patch() {
+  local path="$1"
+  local body_file="$2"
+  local url
+  require_config
+  url=$(build_url "$path") || return 1
+  require_curl
+  ensure_tmpdir
+  reset_request
+  if [ -n "$body_file" ]; then
+    send_json_file PATCH "$url" "$body_file"
+  else
+    perform_request PATCH "$url"
+  fi
+}
+
+api_delete() {
+  local path="$1"
+  local url
+  require_config
+  url=$(build_url "$path") || return 1
+  require_curl
+  ensure_tmpdir
+  reset_request
+  perform_request DELETE "$url" || return 1
+}
+
+
+# Output formatting: tables, single-resource display, JSON extraction.
+
+extract_field() {
+  local json_file="$1"
+  local field="$2"
+  require_jq
+  "$JQ_BIN" -r "$field" "$json_file" 2>/dev/null
+}
+
+extract_data_field() {
+  extract_field "$1" ".data$2"
+}
+
+has_data() {
+  local json_file="$1"
+  require_jq
+  [ "$("$JQ_BIN" -r '.data // empty' "$json_file")" != "" ]
+}
+
+is_data_array() {
+  local json_file="$1"
+  require_jq
+  [ "$("$JQ_BIN" -r 'if .data | type == "array" then "yes" else "no" end' "$json_file")" = "yes" ]
+}
+
+data_array_length() {
+  local json_file="$1"
+  require_jq
+  "$JQ_BIN" -r '.data | length' "$json_file"
+}
+
+# Print a single resource as key-value pairs.
+# Usage: format_resource <json_file> <field_spec>
+# field_spec is a jq object like '{"id":"id","name":"name","status":"status"}'
+# where keys are display labels and values are jq paths relative to .data
+format_resource() {
+  local json_file="$1"
+  local fields="$2"
+  local label
+  local path
+  local value
+  local max_label=0
+
+  require_jq
+
+  while IFS='=' read -r label path; do
+    if [ "${#label}" -gt "$max_label" ]; then
+      max_label=${#label}
+    fi
+  done < <("$JQ_BIN" -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$fields")
+
+  while IFS='=' read -r label path; do
+    value=$("$JQ_BIN" -r ".data.${path} // \"\"" "$json_file")
+    printf "%-${max_label}s  %s\n" "$label:" "$value"
+  done < <("$JQ_BIN" -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$fields")
+}
+
+# Print a list of resources as a table.
+# Usage: format_table <json_file> <fields_array_name> <headers_array_name>
+# fields_array: array of jq paths relative to .data[]
+# headers_array: corresponding display headers
+format_table() {
+  local json_file="$1"
+  local fields_json="$2"
+  local headers_json="$3"
+  local count
+  local i
+  local field
+  local header
+  local value
+  local widths
+  local header_line
+  local separator_line
+  local row_line
+
+  require_jq
+
+  count=$(data_array_length "$json_file")
+  if [ "$count" -eq 0 ]; then
+    printf '(no results)\n'
+    return 0
+  fi
+
+  local num_fields
+  num_fields=$("$JQ_BIN" -r 'length' <<<"$headers_json")
+
+  widths=()
+  for i in $(seq 0 $((num_fields - 1))); do
+    header=$("$JQ_BIN" -r ".[$i]" <<<"$headers_json")
+    widths+=("${#header}")
+  done
+
+  for i in $(seq 0 $((count - 1))); do
+    for j in $(seq 0 $((num_fields - 1))); do
+      field=$("$JQ_BIN" -r ".[$j]" <<<"$fields_json")
+      value=$("$JQ_BIN" -r ".data[$i].${field} // \"\"" "$json_file")
+      if [ "${#value}" -gt "${widths[$j]}" ]; then
+        widths[$j]=${#value}
+      fi
+    done
+  done
+
+  header_line=""
+  separator_line=""
+  for j in $(seq 0 $((num_fields - 1))); do
+    header=$("$JQ_BIN" -r ".[$j]" <<<"$headers_json")
+    if [ "$j" -gt 0 ]; then
+      header_line="$header_line  "
+      separator_line="$separator_line  "
+    fi
+    printf -v padded "%-${widths[$j]}s" "$header"
+    header_line="$header_line$padded"
+    printf -v dashes "%-${widths[$j]}s" ""
+    dashes="${dashes// /-}"
+    separator_line="$separator_line$dashes"
+  done
+
+  printf '%s\n' "$header_line"
+  printf '%s\n' "$separator_line"
+
+  for i in $(seq 0 $((count - 1))); do
+    row_line=""
+    for j in $(seq 0 $((num_fields - 1))); do
+      field=$("$JQ_BIN" -r ".[$j]" <<<"$fields_json")
+      value=$("$JQ_BIN" -r ".data[$i].${field} // \"\"" "$json_file")
+      if [ "$j" -gt 0 ]; then
+        row_line="$row_line  "
+      fi
+      printf -v padded "%-${widths[$j]}s" "$value"
+      row_line="$row_line$padded"
+    done
+    printf '%s\n' "$row_line"
+  done
+}
+
+# Emit response: either pretty JSON or formatted output.
+# If FORMAT_SPEC is set, uses structured formatting; otherwise raw output.
+emit_formatted_response() {
+  local json_file="$1"
+  local format_spec="$2"
+
+  if [ "$PRETTY_JSON" -eq 1 ]; then
+    emit_response
+    return
+  fi
+
+  if [ -n "$format_spec" ]; then
+    local fmt_type
+    fmt_type=$("$JQ_BIN" -r '.type' <<<"$format_spec")
+    case "$fmt_type" in
+      resource)
+        local fields
+        fields=$("$JQ_BIN" -c '.fields' <<<"$format_spec")
+        format_resource "$json_file" "$fields"
+        ;;
+      table)
+        local fields
+        local headers
+        fields=$("$JQ_BIN" -c '.fields' <<<"$format_spec")
+        headers=$("$JQ_BIN" -c '.headers' <<<"$format_spec")
+        format_table "$json_file" "$fields" "$headers"
+        ;;
+      raw)
+        emit_response
+        ;;
+      *)
+        emit_response
+        ;;
+    esac
+  else
+    emit_response
+  fi
+}
+
+
+# Global option parsing and subcommand dispatch.
+
+COMMAND_NAME=""
+REMAINING_ARGS=()
+
+usage() {
+  cat <<'EOF'
+App Manager CLI
+
+Usage:
+  appmctl [global options] <resource> <action> [options]
+  appmctl [global options] request METHOD PATH [request options]
+  appmctl [global options] stream [stream options] -- COMMAND [ARG ...]
+
+Resources:
+  apps            Manage mobile applications
+  builds          Manage builds
+  logs            Read and write build logs
+  artifacts       Manage build artifacts
+  credentials     Manage app credentials
+  integrations    Manage integrations
+  pipelines       Manage CI/CD pipelines
+  webhooks        Manage webhook endpoints
+
+Required environment:
+  APP_MANAGER_API_KEY       API key used as a Bearer token
+  APP_MANAGER_TEAM          Team slug used in every API URL
+
+Optional environment:
+  APP_MANAGER_INSTANCE_URL  Server URL; defaults to http://localhost:8000
+  APP_MANAGER_APP           Default app slug for app-scoped commands
+
+Global options:
+  --instance-url URL        Override APP_MANAGER_INSTANCE_URL
+  --team TEAM               Override APP_MANAGER_TEAM
+  --dry-run                 Print the request plan without calling the API
+  --json                    Pretty-print and validate a JSON response with jq
+  -o, --output FILE         Save the response instead of writing it to stdout
+  --force                   Allow --output to replace an existing file
+  -h, --help                Show help
+  --version                 Show the CLI version
+
+Run "appmctl <resource> --help" for resource-specific help.
+Run "appmctl request --help" or "appmctl stream --help" for legacy command help.
+EOF
+}
+
+parse_global_options() {
+  COMMAND_NAME=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --instance-url)
+        require_value "$1" "$2"
+        INSTANCE_URL="$2"
+        shift 2
+        ;;
+      --instance-url=*) INSTANCE_URL=${1#*=}; shift ;;
+      --team)
+        require_value "$1" "$2"
+        TEAM="$2"
+        shift 2
+        ;;
+      --team=*) TEAM=${1#*=}; shift ;;
+      --app)
+        require_value "$1" "$2"
+        APP="$2"
+        shift 2
+        ;;
+      --app=*) APP=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output)
+        require_value "$1" "$2"
+        OUTPUT_FILE="$2"
+        shift 2
+        ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      --version)
+        printf '%s %s\n' "$APPMCTL_NAME" "$APPMCTL_VERSION"
+        exit 0
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      request|stream|apps|builds|logs|artifacts|credentials|integrations|pipelines|webhooks)
+        COMMAND_NAME="$1"
+        shift
+        REMAINING_ARGS=("$@")
+        return 0
+        ;;
+      --) die "a command name must appear before --" ;;
+      -*) die "unknown global option: $1" ;;
+      *) die "unknown command: $1" ;;
+    esac
+  done
+}
+
+dispatch_command() {
+  case "$COMMAND_NAME" in
+    request) command_request "${REMAINING_ARGS[@]}" ;;
+    stream) command_stream "${REMAINING_ARGS[@]}" ;;
+    apps) command_apps "${REMAINING_ARGS[@]}" ;;
+    builds) command_builds "${REMAINING_ARGS[@]}" ;;
+    logs) command_logs "${REMAINING_ARGS[@]}" ;;
+    artifacts) command_artifacts "${REMAINING_ARGS[@]}" ;;
+    credentials) command_credentials "${REMAINING_ARGS[@]}" ;;
+    integrations) command_integrations "${REMAINING_ARGS[@]}" ;;
+    pipelines) command_pipelines "${REMAINING_ARGS[@]}" ;;
+    webhooks) command_webhooks "${REMAINING_ARGS[@]}" ;;
+    '') usage; return 1 ;;
+  esac
+}
+
+main() {
+  if [ "$#" -eq 0 ]; then
+    usage
+    return 1
+  fi
+
+  parse_global_options "$@"
+  dispatch_command
+}
+
+
+# Legacy "request" command. Preserved for backward compatibility.
+
+request_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] request METHOD PATH [options]
+
+PATH is relative to /api/v1/{APP_MANAGER_TEAM}/. It may include a query
+string, for example "apps?per_page=25".
+
+Options:
+  --data JSON               Send inline JSON
+  --data-file FILE          Read the request body from FILE; use - for stdin
+  --form FIELD=VALUE        Add a multipart text field; may be repeated
+  --file FIELD=FILE         Add a multipart file; may be repeated
+  -H, --header HEADER       Add a request header; may be repeated
+  --content-type TYPE       Set Content-Type for --data/--data-file
+  --dry-run                 Print the request plan without calling the API
+  --json                    Pretty-print and validate a JSON response with jq
+  -o, --output FILE         Save the response to FILE
+  --force                   Replace an existing output file
+
+Examples:
+  appmctl --json request GET apps
+  appmctl request POST apps --data '{"name":"Customer App"}' --json
+  appmctl request POST apps --data-file create-app.json --output response.json
+  appmctl request POST apps/my-app/assets/icon --file file=icon.png --json
+  appmctl request GET apps/my-app/assets/icon --output icon.png
+EOF
+}
+
+parse_request_options() {
+  local item
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --data)
+        require_value "$1" "$2"
+        [ "$REQUEST_BODY_KIND" = "none" ] || die "only one of --data, --data-file, --form and --file may select the body type"
+        REQUEST_BODY_KIND="inline"
+        REQUEST_BODY_VALUE="$2"
+        shift 2
+        ;;
+      --data=*)
+        [ "$REQUEST_BODY_KIND" = "none" ] || die "only one body type may be selected"
+        REQUEST_BODY_KIND="inline"
+        REQUEST_BODY_VALUE=${1#*=}
+        shift
+        ;;
+      --data-file)
+        require_value "$1" "$2"
+        [ "$REQUEST_BODY_KIND" = "none" ] || die "only one body type may be selected"
+        if [ "$2" = "-" ]; then
+          REQUEST_BODY_KIND="stdin"
+        else
+          [ -f "$2" ] || die "request body file does not exist: $2"
+          REQUEST_BODY_KIND="file"
+          REQUEST_BODY_VALUE="$2"
+        fi
+        shift 2
+        ;;
+      --data-file=*)
+        [ "$REQUEST_BODY_KIND" = "none" ] || die "only one body type may be selected"
+        REQUEST_BODY_VALUE=${1#*=}
+        if [ "$REQUEST_BODY_VALUE" = "-" ]; then
+          REQUEST_BODY_KIND="stdin"
+        else
+          [ -f "$REQUEST_BODY_VALUE" ] || die "request body file does not exist: $REQUEST_BODY_VALUE"
+          REQUEST_BODY_KIND="file"
+        fi
+        shift
+        ;;
+      --form)
+        require_value "$1" "$2"
+        [ "$REQUEST_BODY_KIND" = "none" ] || [ "$REQUEST_BODY_KIND" = "multipart" ] || die "multipart fields cannot be combined with --data or --data-file"
+        validate_field_assignment "--form" "$2"
+        REQUEST_BODY_KIND="multipart"
+        REQUEST_FORMS+=("$2")
+        shift 2
+        ;;
+      --form=*)
+        item=${1#*=}
+        [ "$REQUEST_BODY_KIND" = "none" ] || [ "$REQUEST_BODY_KIND" = "multipart" ] || die "multipart fields cannot be combined with --data or --data-file"
+        validate_field_assignment "--form" "$item"
+        REQUEST_BODY_KIND="multipart"
+        REQUEST_FORMS+=("$item")
+        shift
+        ;;
+      --file)
+        require_value "$1" "$2"
+        [ "$REQUEST_BODY_KIND" = "none" ] || [ "$REQUEST_BODY_KIND" = "multipart" ] || die "multipart files cannot be combined with --data or --data-file"
+        validate_file_assignment "$2"
+        REQUEST_BODY_KIND="multipart"
+        REQUEST_FILES+=("$2")
+        shift 2
+        ;;
+      --file=*)
+        item=${1#*=}
+        [ "$REQUEST_BODY_KIND" = "none" ] || [ "$REQUEST_BODY_KIND" = "multipart" ] || die "multipart files cannot be combined with --data or --data-file"
+        validate_file_assignment "$item"
+        REQUEST_BODY_KIND="multipart"
+        REQUEST_FILES+=("$item")
+        shift
+        ;;
+      -H|--header)
+        require_value "$1" "$2"
+        case "$2" in
+          *$'\n'*|*$'\r'*) die "request headers must not contain line breaks" ;;
+        esac
+        case "$2" in
+          [Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:*) die "Authorization is managed by APP_MANAGER_API_KEY" ;;
+          [Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]:*) REQUEST_HAS_CONTENT_TYPE=1 ;;
+        esac
+        REQUEST_HEADERS+=("$2")
+        shift 2
+        ;;
+      --content-type)
+        require_value "$1" "$2"
+        REQUEST_HEADERS+=("Content-Type: $2")
+        REQUEST_HAS_CONTENT_TYPE=1
+        shift 2
+        ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output)
+        require_value "$1" "$2"
+        OUTPUT_FILE="$2"
+        shift 2
+        ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) request_usage; exit 0 ;;
+      *) die "unknown request option: $1" ;;
+    esac
+  done
+}
+
+command_request() {
+  local method
+  local path
+  local url
+
+  if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    request_usage
+    return 0
+  fi
+  [ "$#" -ge 2 ] || die "request requires METHOD and PATH"
+  method=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')
+  path="$2"
+  shift 2
+  case "$method" in
+    GET|POST|PUT|PATCH|DELETE|HEAD) ;;
+    *) die "unsupported HTTP method: $method" ;;
+  esac
+
+  reset_request
+  parse_request_options "$@"
+  require_config
+  url=$(build_url "$path") || return 1
+  check_output_destination
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    print_request_plan "$method" "$url"
+    return 0
+  fi
+
+  require_curl
+  ensure_tmpdir
+  perform_request "$method" "$url" || return 1
+  emit_response
+}
+
+
+# Legacy "stream" command. Preserved for backward compatibility.
+
+stream_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] stream --app APP --build-id ID [options] -- COMMAND [ARG ...]
+  appmctl [global options] stream --app APP --build-id ID [options] --command COMMAND [ARG ...]
+
+Runs COMMAND without eval, mirrors its combined stdout/stderr locally, and
+uploads output to the manual build log while the command is running.
+
+Options:
+  --app APP                 App slug; defaults to APP_MANAGER_APP
+  --build-id ID             Existing manual build UUID (required)
+  --step NAME               Add visible start/finish separators to the log
+  --chunk-bytes BYTES       Upload chunk size, 1..262144 (default: 65536)
+  --manage-status           Set running before the command and completed/failed after
+  --dry-run                 Print the plan without running COMMAND or calling the API
+  --command                 Treat all remaining arguments as COMMAND
+
+The CLI exits with COMMAND's status. If COMMAND succeeds but a log/status
+upload fails, the CLI exits non-zero. Use "sh -c" explicitly for pipes,
+redirects, variable expansion, or other shell syntax.
+EOF
+}
+
+stream_worker() {
+  local log_file="$1"
+  local done_file="$2"
+  local log_url="$3"
+  local chunk_bytes="$4"
+  local offset=0
+  local size=0
+  local available=0
+  local count=0
+  local chunk_file
+
+  while :; do
+    size=$(wc -c <"$log_file" | tr -d '[:space:]')
+    [ -n "$size" ] || size=0
+
+    if [ "$size" -gt "$offset" ]; then
+      available=$((size - offset))
+      count=$chunk_bytes
+      if [ "$available" -lt "$count" ]; then
+        count=$available
+      fi
+
+      chunk_file=$(new_temp_file log-chunk) || return 1
+      if ! dd if="$log_file" of="$chunk_file" bs=1 skip="$offset" count="$count" 2>/dev/null; then
+        say_error "could not read captured command output"
+        return 1
+      fi
+      if ! post_log_file "$log_url" "$chunk_file"; then
+        return 1
+      fi
+      offset=$((offset + count))
+      continue
+    fi
+
+    if [ -f "$done_file" ]; then
+      return 0
+    fi
+    sleep 1
+  done
+}
+
+update_build_status() {
+  local build_url="$1"
+  local status="$2"
+  local body_file
+
+  body_file=$(new_temp_file status) || return 1
+  printf '{"status":"%s"}' "$status" >"$body_file"
+  send_json_file PATCH "$build_url" "$body_file"
+}
+
+print_stream_plan() {
+  local app="$1"
+  local build_id="$2"
+  local step="$3"
+  local chunk_bytes="$4"
+  local manage_status="$5"
+  shift 5
+
+  printf 'dry-run: command not run and no request sent\n'
+  printf 'build: %s/apps/%s/builds/%s\n' "$TEAM" "$app" "$build_id"
+  if [ -n "$step" ]; then
+    printf 'step: %s\n' "$step"
+  fi
+  printf 'chunk-bytes: %s\n' "$chunk_bytes"
+  printf 'manage-status: %s\n' "$manage_status"
+  printf 'command:'
+  printf ' %q' "$@"
+  printf '\n'
+}
+
+command_stream() {
+  local app="${APP:-}"
+  local build_id=""
+  local step=""
+  local chunk_bytes=65536
+  local manage_status=0
+  local stream_command=()
+  local api_root
+  local build_url
+  local log_url
+  local stream_dir
+  local log_file
+  local done_file
+  local worker_pid
+  local command_status
+  local tee_status
+  local worker_status
+  local final_status
+  local status_error=0
+  local marker
+  local pipeline_status=()
+
+  if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    stream_usage
+    return 0
+  fi
+
+  [ -z "$OUTPUT_FILE" ] || die "--output is only supported by the request command"
+  [ "$PRETTY_JSON" -eq 0 ] || die "--json is only supported by the request command"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app)
+        require_value "$1" "$2"
+        app="$2"
+        shift 2
+        ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id)
+        require_value "$1" "$2"
+        build_id="$2"
+        shift 2
+        ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --step)
+        require_value "$1" "$2"
+        step="$2"
+        shift 2
+        ;;
+      --step=*) step=${1#*=}; shift ;;
+      --chunk-bytes)
+        require_value "$1" "$2"
+        chunk_bytes="$2"
+        shift 2
+        ;;
+      --chunk-bytes=*) chunk_bytes=${1#*=}; shift ;;
+      --manage-status) manage_status=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --command)
+        shift
+        stream_command=("$@")
+        set --
+        ;;
+      --)
+        shift
+        stream_command=("$@")
+        set --
+        ;;
+      -h|--help) stream_usage; return 0 ;;
+      -*) die "unknown stream option: $1" ;;
+      *) die "unexpected stream argument '$1'; put the command after -- or --command" ;;
+    esac
+  done
+
+  require_config
+  [ -n "$app" ] || die "stream requires --app or APP_MANAGER_APP"
+  [ -n "$build_id" ] || die "stream requires --build-id"
+  [ "${#stream_command[@]}" -gt 0 ] || die "stream requires a command after -- or --command"
+  validate_slug "app" "$app"
+  validate_slug "build ID" "$build_id"
+  case "$chunk_bytes" in
+    ''|*[!0-9]*) die "--chunk-bytes must be an integer from 1 to 262144" ;;
+  esac
+  if [ "$chunk_bytes" -lt 1 ] || [ "$chunk_bytes" -gt 262144 ]; then
+    die "--chunk-bytes must be an integer from 1 to 262144"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    print_stream_plan "$app" "$build_id" "$step" "$chunk_bytes" "$manage_status" "${stream_command[@]}"
+    return 0
+  fi
+
+  require_curl
+  require_jq
+  ensure_tmpdir
+  api_root=$(normalize_api_root) || return 1
+  build_url="$api_root/$TEAM/apps/$app/builds/$build_id"
+  log_url="$build_url/logs"
+
+  if [ "$manage_status" -eq 1 ]; then
+    update_build_status "$build_url" running || return 1
+  fi
+
+  if [ -n "$step" ]; then
+    printf -v marker '\n--- step: %s ---\n' "$step"
+    post_log_text "$log_url" "$marker" || return 1
+  fi
+
+  ensure_tmpdir
+  stream_dir=$(mktemp -d "$APPMCTL_TMPDIR/stream.XXXXXX") || die "could not create stream state"
+  log_file="$stream_dir/command.log"
+  done_file="$stream_dir/done"
+  : >"$log_file"
+
+  (
+    trap - EXIT INT TERM
+    stream_worker "$log_file" "$done_file" "$log_url" "$chunk_bytes"
+  ) &
+  worker_pid=$!
+
+  "${stream_command[@]}" 2>&1 | tee -a "$log_file"
+  pipeline_status=("${PIPESTATUS[@]}")
+  command_status=${pipeline_status[0]}
+  tee_status=${pipeline_status[1]}
+  : >"$done_file"
+
+  wait "$worker_pid"
+  worker_status=$?
+
+  if [ "$tee_status" -ne 0 ]; then
+    say_error "could not capture command output (tee exit $tee_status)"
+    worker_status=1
+  fi
+
+  if [ -n "$step" ] && [ "$worker_status" -eq 0 ]; then
+    printf -v marker '%s\n' "--- step: $step finished (exit $command_status) ---"
+    post_log_text "$log_url" "$marker" || worker_status=1
+  fi
+
+  if [ "$manage_status" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ] && [ "$worker_status" -eq 0 ]; then
+      final_status=completed
+    else
+      final_status=failed
+    fi
+    update_build_status "$build_url" "$final_status" || status_error=1
+  fi
+
+  if [ "$command_status" -ne 0 ]; then
+    return "$command_status"
+  fi
+  if [ "$worker_status" -ne 0 ] || [ "$status_error" -ne 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+
+# "builds" subcommands: list, get, create, cancel, patch.
+
+builds_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] builds <action> [options]
+
+Actions:
+  list                List builds for an app
+  get                 Show build details
+  create              Create a manual build
+  cancel              Cancel a build
+  patch               Update build status or metadata
+
+Options:
+  --app APP           App slug (default: APP_MANAGER_APP)
+  --build-id ID       Build ID (required for get, cancel, patch)
+  --status STATUS     Filter by status (list) or set status (patch)
+  --profile TYPE      Build profile type (create)
+  --request-uuid UUID Idempotency key (create)
+  --context JSON      Build context metadata (create)
+  --page N            Page number (list)
+
+Run "appmctl builds <action> --help" for action-specific help.
+EOF
+}
+
+builds_list_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds list [--app APP] [--status STATUS] [--page N]
+
+List builds for an application.
+
+Examples:
+  appmctl builds list --app customer-app
+  appmctl builds list --status running
+  appmctl builds list --json
+EOF
+}
+
+builds_get_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds get [--app APP] <build-id>
+
+Show details for a single build.
+
+Examples:
+  appmctl builds get bld-abc123
+  appmctl builds get --app customer-app bld-abc123
+EOF
+}
+
+builds_create_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds create [--app APP] [options]
+
+Create a manual build.
+
+Options:
+  --profile TYPE        Build profile (e.g. production, staging)
+  --request-uuid UUID   Idempotency key for CI retries
+  --context JSON        Inline JSON context/metadata
+
+Examples:
+  appmctl builds create --app customer-app --profile production
+  appmctl builds create --profile staging --request-uuid "$(uuidgen)"
+  appmctl builds create --profile production --context '{"runner":"github"}'
+EOF
+}
+
+builds_cancel_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds cancel [--app APP] <build-id>
+
+Cancel a build.
+
+Examples:
+  appmctl builds cancel bld-abc123
+EOF
+}
+
+builds_patch_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl builds patch [--app APP] <build-id> --status STATUS
+
+Update a build's status (for manual builds with force-status).
+
+Examples:
+  appmctl builds patch bld-abc123 --status completed
+  appmctl builds patch bld-abc123 --status failed
+EOF
+}
+
+command_builds() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _builds_list "$@" ;;
+    get) _builds_get "$@" ;;
+    create) _builds_create "$@" ;;
+    cancel) _builds_cancel "$@" ;;
+    patch) _builds_patch "$@" ;;
+    -h|--help|"") builds_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown builds action: $action (use list, get, create, cancel, patch)" ;;
+  esac
+}
+
+_builds_list() {
+  local app="${APP:-}"
+  local status_filter=""
+  local page=""
+  local query=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --status) require_value "$1" "$2"; status_filter="$2"; shift 2 ;;
+      --status=*) status_filter=${1#*=}; shift ;;
+      --page) require_value "$1" "$2"; page="$2"; shift 2 ;;
+      --page=*) page=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) builds_list_usage; return 0 ;;
+      *) die "unknown builds list option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+
+  if [ -n "$status_filter" ] || [ -n "$page" ]; then
+    query="?"
+    [ -n "$status_filter" ] && query="${query}status=${status_filter}"
+    [ -n "$page" ] && query="${query}${query:+&}page=${page}"
+  fi
+
+  local path="apps/$APP/builds${query}"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","profile_type","status","created_at"],"headers":["id","profile","status","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_builds_get() {
+  local app="${APP:-}"
+  local build_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) builds_get_usage; return 0 ;;
+      -*) die "unknown builds get option: $1" ;;
+      *)
+        [ -z "$build_id" ] || die "unexpected argument: $1"
+        build_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "build ID is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","app":"app.slug","profile":"profile_type","status":"status","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_builds_create() {
+  local app="${APP:-}"
+  local profile=""
+  local request_uuid=""
+  local context=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --profile) require_value "$1" "$2"; profile="$2"; shift 2 ;;
+      --profile=*) profile=${1#*=}; shift ;;
+      --request-uuid) require_value "$1" "$2"; request_uuid="$2"; shift 2 ;;
+      --request-uuid=*) request_uuid=${1#*=}; shift ;;
+      --context) require_value "$1" "$2"; context="$2"; shift 2 ;;
+      --context=*) context=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) builds_create_usage; return 0 ;;
+      *) die "unknown builds create option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$profile" ] || die "--profile is required"
+
+  if [ -z "$request_uuid" ]; then
+    if command_exists uuidgen; then
+      request_uuid=$(uuidgen)
+    else
+      request_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s-%s-%s-%s' \
+        "$(head -c 8 /dev/urandom | xxd -p)" \
+        "$(head -c 4 /dev/urandom | xxd -p)" \
+        "$(head -c 4 /dev/urandom | xxd -p)" \
+        "$(head -c 4 /dev/urandom | xxd -p)" \
+        "$(head -c 12 /dev/urandom | xxd -p)")
+    fi
+  fi
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  if [ -n "$context" ]; then
+    "$JQ_BIN" -n --arg pid "$request_uuid" --arg pf "$profile" --argjson ctx "$context" \
+      '{request_uuid: $pid, profile_type: $pf, context: $ctx}' >"$body_file"
+  else
+    "$JQ_BIN" -n --arg pid "$request_uuid" --arg pf "$profile" \
+      '{request_uuid: $pid, profile_type: $pf}' >"$body_file"
+  fi
+
+  local path="apps/$APP/builds"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"id":"id","status":"status","profile":"profile_type","request_uuid":"request_uuid","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_builds_cancel() {
+  local app="${APP:-}"
+  local build_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) builds_cancel_usage; return 0 ;;
+      -*) die "unknown builds cancel option: $1" ;;
+      *)
+        [ -z "$build_id" ] || die "unexpected argument: $1"
+        build_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "build ID is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id/cancel"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_post "$path" "" || return 1
+  printf 'Build %s cancelled\n' "$build_id"
+}
+
+_builds_patch() {
+  local app="${APP:-}"
+  local build_id=""
+  local new_status=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --status) require_value "$1" "$2"; new_status="$2"; shift 2 ;;
+      --status=*) new_status=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) builds_patch_usage; return 0 ;;
+      -*) die "unknown builds patch option: $1" ;;
+      *)
+        [ -z "$build_id" ] || die "unexpected argument: $1"
+        build_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "build ID is required"
+  [ -n "$new_status" ] || die "--status is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id"
+  local body_file
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  printf '{"status":"%s"}' "$new_status" >"$body_file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'Build %s updated to %s\n' "$build_id" "$new_status"
+}
+
+
+# "logs" subcommands: get, post.
+
+logs_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] logs <action> [options]
+
+Actions:
+  get             Fetch build logs
+  post            Append log content to a build
+
+Options:
+  --app APP       App slug (default: APP_MANAGER_APP)
+  --build-id ID   Build ID (required)
+  --content TEXT  Log text to append (post)
+
+Run "appmctl logs <action> --help" for action-specific help.
+EOF
+}
+
+command_logs() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    get) _logs_get "$@" ;;
+    post) _logs_post "$@" ;;
+    -h|--help|"") logs_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown logs action: $action (use get, post)" ;;
+  esac
+}
+
+_logs_get() {
+  local app="${APP:-}"
+  local build_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl logs get [--app APP] --build-id ID\n'
+        return 0
+        ;;
+      *) die "unknown logs get option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id/logs"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  emit_response
+}
+
+_logs_post() {
+  local app="${APP:-}"
+  local build_id=""
+  local content=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --content) require_value "$1" "$2"; content="$2"; shift 2 ;;
+      --content=*) content=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl logs post [--app APP] --build-id ID --content TEXT\n'
+        return 0
+        ;;
+      *) die "unknown logs post option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  [ -n "$content" ] || die "--content is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id/logs"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'content: %s\n' "$content"
+    return 0
+  fi
+
+  require_curl
+  require_jq
+  ensure_tmpdir
+  post_log_text "$(build_url "$path")" "$content"
+  printf 'Log content appended to build %s\n' "$build_id"
+}
+
+
+# "artifacts" subcommands: list, get, upload, delete.
+
+artifacts_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] artifacts <action> [options]
+
+Actions:
+  list                List artifacts for a build
+  get                 Download an artifact
+  upload              Upload a build artifact
+  delete              Delete an artifact
+
+Options:
+  --app APP           App slug (default: APP_MANAGER_APP)
+  --build-id ID       Build ID (required)
+  --artifact-id ID    Artifact ID (required for get, delete)
+  --name NAME         Artifact name (upload)
+  --metadata JSON     Artifact metadata (upload)
+  --file FILE         File to upload (upload)
+
+Run "appmctl artifacts <action> --help" for action-specific help.
+EOF
+}
+
+command_artifacts() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _artifacts_list "$@" ;;
+    get) _artifacts_get "$@" ;;
+    upload) _artifacts_upload "$@" ;;
+    delete) _artifacts_delete "$@" ;;
+    -h|--help|"") artifacts_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown artifacts action: $action (use list, get, upload, delete)" ;;
+  esac
+}
+
+_artifacts_list() {
+  local app="${APP:-}"
+  local build_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl artifacts list [--app APP] --build-id ID\n'
+        return 0
+        ;;
+      *) die "unknown artifacts list option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id/artifacts"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_artifacts_get() {
+  local app="${APP:-}"
+  local build_id=""
+  local artifact_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl artifacts get [--app APP] --build-id ID <artifact-id>\n'
+        return 0
+        ;;
+      -*) die "unknown artifacts get option: $1" ;;
+      *)
+        [ -z "$artifact_id" ] || die "unexpected argument: $1"
+        artifact_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  [ -n "$artifact_id" ] || die "artifact ID is required"
+  validate_slug "build ID" "$build_id"
+  validate_slug "artifact ID" "$artifact_id"
+
+  local path="apps/$APP/builds/$build_id/artifacts/$artifact_id/file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  check_output_destination
+  api_get "$path" || return 1
+  emit_response
+}
+
+_artifacts_upload() {
+  local app="${APP:-}"
+  local build_id=""
+  local name=""
+  local metadata=""
+  local file_path=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; shift 2 ;;
+      --name=*) name=${1#*=}; shift ;;
+      --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
+      --metadata=*) metadata=${1#*=}; shift ;;
+      --file) require_value "$1" "$2"; file_path="$2"; shift 2 ;;
+      --file=*) file_path=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl artifacts upload [--app APP] --build-id ID --name NAME [--metadata JSON] --file FILE\n'
+        return 0
+        ;;
+      *) die "unknown artifacts upload option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  [ -n "$name" ] || die "--name is required"
+  [ -n "$file_path" ] || die "--file is required"
+  [ -f "$file_path" ] || die "file does not exist: $file_path"
+  validate_slug "build ID" "$build_id"
+
+  local path="apps/$APP/builds/$build_id/artifacts"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'name: %s\n' "$name"
+    printf 'file: %s\n' "$file_path"
+    [ -n "$metadata" ] && printf 'metadata: %s\n' "$metadata"
+    return 0
+  fi
+
+  require_curl
+  require_jq
+  ensure_tmpdir
+  local url
+  url=$(build_url "$path") || return 1
+
+  reset_request
+  REQUEST_BODY_KIND="multipart"
+  REQUEST_FORMS+=("name=$name")
+  [ -n "$metadata" ] && REQUEST_FORMS+=("metadata=$metadata")
+  REQUEST_FILES+=("file=$file_path")
+
+  perform_request POST "$url" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_artifacts_delete() {
+  local app="${APP:-}"
+  local build_id=""
+  local artifact_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --build-id) require_value "$1" "$2"; build_id="$2"; shift 2 ;;
+      --build-id=*) build_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl artifacts delete [--app APP] --build-id ID <artifact-id>\n'
+        return 0
+        ;;
+      -*) die "unknown artifacts delete option: $1" ;;
+      *)
+        [ -z "$artifact_id" ] || die "unexpected argument: $1"
+        artifact_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$build_id" ] || die "--build-id is required"
+  [ -n "$artifact_id" ] || die "artifact ID is required"
+  validate_slug "build ID" "$build_id"
+  validate_slug "artifact ID" "$artifact_id"
+
+  local path="apps/$APP/builds/$build_id/artifacts/$artifact_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  printf 'Artifact %s deleted\n' "$artifact_id"
+}
+
+
+# "apps" subcommands: list, get, create, update, delete.
+
+apps_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] apps <action> [options]
+
+Actions:
+  list                List team applications
+  get                 Show application details
+  create              Create a new application
+  update              Update an application
+  delete              Delete an application
+
+Run "appmctl apps <action> --help" for action-specific help.
+EOF
+}
+
+command_apps() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _apps_list "$@" ;;
+    get) _apps_get "$@" ;;
+    create) _apps_create "$@" ;;
+    update) _apps_update "$@" ;;
+    delete) _apps_delete "$@" ;;
+    -h|--help|"") apps_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown apps action: $action (use list, get, create, update, delete)" ;;
+  esac
+}
+
+_apps_list() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl apps list\n'
+        return 0
+        ;;
+      *) die "unknown apps list option: $1" ;;
+    esac
+  done
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "apps") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "apps" || return 1
+  local fmt='{"type":"table","fields":["slug","name","created_at"],"headers":["slug","name","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_apps_get() {
+  local slug=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl apps get <slug>\n'
+        return 0
+        ;;
+      -*) die "unknown apps get option: $1" ;;
+      *)
+        [ -z "$slug" ] || die "unexpected argument: $1"
+        slug="$1"
+        shift
+        ;;
+    esac
+  done
+
+  [ -n "$slug" ] || die "app slug is required"
+  validate_slug "app slug" "$slug"
+
+  local path="apps/$slug"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_apps_create() {
+  local name=""
+  local slug=""
+  local description=""
+  local metadata=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) require_value "$1" "$2"; name="$2"; shift 2 ;;
+      --name=*) name=${1#*=}; shift ;;
+      --slug) require_value "$1" "$2"; slug="$2"; shift 2 ;;
+      --slug=*) slug=${1#*=}; shift ;;
+      --description) require_value "$1" "$2"; description="$2"; shift 2 ;;
+      --description=*) description=${1#*=}; shift ;;
+      --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
+      --metadata=*) metadata=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]\n'
+        return 0
+        ;;
+      *) die "unknown apps create option: $1" ;;
+    esac
+  done
+
+  [ -n "$name" ] || die "--name is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg n "$name")
+  local jq_expr='{name: $n'
+  if [ -n "$slug" ]; then
+    jq_args+=(--arg s "$slug")
+    jq_expr="$jq_expr, slug: \$s"
+  fi
+  if [ -n "$description" ]; then
+    jq_args+=(--arg d "$description")
+    jq_expr="$jq_expr, description: \$d"
+  fi
+  if [ -n "$metadata" ]; then
+    jq_args+=(--argjson m "$metadata")
+    jq_expr="$jq_expr, metadata: \$m"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "apps") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "apps" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_apps_update() {
+  local slug=""
+  local name=""
+  local description=""
+  local metadata=""
+  local body_file
+  local has_fields=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) require_value "$1" "$2"; name="$2"; has_fields=1; shift 2 ;;
+      --name=*) name=${1#*=}; has_fields=1; shift ;;
+      --description) require_value "$1" "$2"; description="$2"; has_fields=1; shift 2 ;;
+      --description=*) description=${1#*=}; has_fields=1; shift ;;
+      --metadata) require_value "$1" "$2"; metadata="$2"; has_fields=1; shift 2 ;;
+      --metadata=*) metadata=${1#*=}; has_fields=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown apps update option: $1" ;;
+      *)
+        [ -z "$slug" ] || die "unexpected argument: $1"
+        slug="$1"
+        shift
+        ;;
+    esac
+  done
+
+  [ -n "$slug" ] || die "app slug is required"
+  [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+  validate_slug "app slug" "$slug"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n)
+  local jq_expr='{'
+  local first=1
+  if [ -n "$name" ]; then
+    jq_args+=(--arg n "$name")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr name: \$n"
+    first=0
+  fi
+  if [ -n "$description" ]; then
+    jq_args+=(--arg d "$description")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr description: \$d"
+    first=0
+  fi
+  if [ -n "$metadata" ]; then
+    jq_args+=(--argjson m "$metadata")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr metadata: \$m"
+    first=0
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  local path="apps/$slug"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'App %s updated\n' "$slug"
+}
+
+_apps_delete() {
+  local slug=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl apps delete <slug>\n'
+        return 0
+        ;;
+      -*) die "unknown apps delete option: $1" ;;
+      *)
+        [ -z "$slug" ] || die "unexpected argument: $1"
+        slug="$1"
+        shift
+        ;;
+    esac
+  done
+
+  [ -n "$slug" ] || die "app slug is required"
+  validate_slug "app slug" "$slug"
+
+  local path="apps/$slug"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  printf 'App %s deleted\n' "$slug"
+}
+
+
+# "credentials" subcommands: list, get, create, update, delete, download, upload, types.
+
+credentials_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] credentials <action> [options]
+
+Actions:
+  list                List credentials for an app
+  get                 Show credential details
+  create              Create a credential
+  update              Update a credential
+  delete              Delete a credential
+  download            Download a credential file
+  upload              Upload a credential file
+  types               List available credential types
+
+Options:
+  --app APP           App slug (default: APP_MANAGER_APP)
+  --credential-id ID  Credential ID (required for get, update, delete, download, upload)
+  --type TYPE         Credential type slug (create)
+  --profile PROFILE   Build profile (create)
+  --data JSON         Credential data as JSON (create, update)
+  --file FILE         Credential file to upload (create, upload)
+
+Run "appmctl credentials <action> --help" for action-specific help.
+EOF
+}
+
+command_credentials() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _credentials_list "$@" ;;
+    get) _credentials_get "$@" ;;
+    create) _credentials_create "$@" ;;
+    update) _credentials_update "$@" ;;
+    delete) _credentials_delete "$@" ;;
+    download) _credentials_download "$@" ;;
+    upload) _credentials_upload "$@" ;;
+    types) _credentials_types "$@" ;;
+    -h|--help|"") credentials_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown credentials action: $action (use list, get, create, update, delete, download, upload, types)" ;;
+  esac
+}
+
+_credentials_list() {
+  local app="${APP:-}"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials list [--app APP]\n'
+        return 0
+        ;;
+      *) die "unknown credentials list option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  local path="apps/$APP/credentials"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","credential_type.slug","build_profile","created_at"],"headers":["id","type","profile","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_credentials_get() {
+  local app="${APP:-}"
+  local cred_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials get [--app APP] <credential-id>\n'
+        return 0
+        ;;
+      -*) die "unknown credentials get option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+
+  local path="apps/$APP/credentials/$cred_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","type":"credential_type.slug","profile":"build_profile","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_credentials_create() {
+  local app="${APP:-}"
+  local cred_type=""
+  local profile=""
+  local data=""
+  local file_path=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --type) require_value "$1" "$2"; cred_type="$2"; shift 2 ;;
+      --type=*) cred_type=${1#*=}; shift ;;
+      --profile) require_value "$1" "$2"; profile="$2"; shift 2 ;;
+      --profile=*) profile=${1#*=}; shift ;;
+      --data) require_value "$1" "$2"; data="$2"; shift 2 ;;
+      --data=*) data=${1#*=}; shift ;;
+      --file) require_value "$1" "$2"; file_path="$2"; shift 2 ;;
+      --file=*) file_path=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data JSON] [--file FILE]\n'
+        return 0
+        ;;
+      *) die "unknown credentials create option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_type" ] || die "--type is required"
+  [ -n "$profile" ] || die "--profile is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg t "$cred_type" --arg p "$profile")
+  local jq_expr='{credential_type: {slug: $t}, build_profile: $p'
+  if [ -n "$data" ]; then
+    jq_args+=(--argjson d "$data")
+    jq_expr="$jq_expr, data: \$d"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  local path="apps/$APP/credentials"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"id":"id","type":"credential_type.slug","profile":"build_profile","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_credentials_update() {
+  local app="${APP:-}"
+  local cred_id=""
+  local data=""
+  local body_file
+  local has_fields=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --data) require_value "$1" "$2"; data="$2"; has_fields=1; shift 2 ;;
+      --data=*) data=${1#*=}; has_fields=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials update [--app APP] <credential-id> --data JSON\n'
+        return 0
+        ;;
+      -*) die "unknown credentials update option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+  [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  if [ -n "$data" ]; then
+    "$JQ_BIN" -n --argjson d "$data" '{data: $d}' >"$body_file"
+  fi
+
+  local path="apps/$APP/credentials/$cred_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'Credential %s updated\n' "$cred_id"
+}
+
+_credentials_delete() {
+  local app="${APP:-}"
+  local cred_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials delete [--app APP] <credential-id>\n'
+        return 0
+        ;;
+      -*) die "unknown credentials delete option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+
+  local path="apps/$APP/credentials/$cred_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  printf 'Credential %s deleted\n' "$cred_id"
+}
+
+_credentials_download() {
+  local app="${APP:-}"
+  local cred_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials download [--app APP] <credential-id> [-o FILE]\n'
+        return 0
+        ;;
+      -*) die "unknown credentials download option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+
+  local path="apps/$APP/credentials/$cred_id/file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  check_output_destination
+  api_get "$path" || return 1
+  emit_response
+}
+
+_credentials_upload() {
+  local app="${APP:-}"
+  local cred_id=""
+  local file_path=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --file) require_value "$1" "$2"; file_path="$2"; shift 2 ;;
+      --file=*) file_path=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials upload [--app APP] <credential-id> --file FILE\n'
+        return 0
+        ;;
+      -*) die "unknown credentials upload option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+  [ -n "$file_path" ] || die "--file is required"
+  [ -f "$file_path" ] || die "file does not exist: $file_path"
+
+  local path="apps/$APP/credentials/$cred_id/file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'file: %s\n' "$file_path"
+    return 0
+  fi
+
+  require_curl
+  ensure_tmpdir
+  local url
+  url=$(build_url "$path") || return 1
+
+  reset_request
+  REQUEST_BODY_KIND="multipart"
+  REQUEST_FILES+=("file=$file_path")
+
+  perform_request POST "$url" || return 1
+  printf 'Credential file uploaded to %s\n' "$cred_id"
+}
+
+_credentials_types() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials types\n'
+        return 0
+        ;;
+      *) die "unknown credentials types option: $1" ;;
+    esac
+  done
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "credential-types") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "credential-types" || return 1
+  local fmt='{"type":"table","fields":["slug","name","platform"],"headers":["slug","name","platform"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+
+# "integrations" subcommands: list, get, repos, workflows, refs.
+
+integrations_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] integrations <action> [options]
+
+Actions:
+  list                List team integrations
+  get                 Show integration details
+  repos               List repositories for an integration
+  workflows           List workflows for an integration
+  refs                List refs for an integration
+
+Run "appmctl integrations <action> --help" for action-specific help.
+EOF
+}
+
+command_integrations() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _integrations_list "$@" ;;
+    get) _integrations_get "$@" ;;
+    repos) _integrations_repos "$@" ;;
+    workflows) _integrations_workflows "$@" ;;
+    refs) _integrations_refs "$@" ;;
+    -h|--help|"") integrations_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown integrations action: $action (use list, get, repos, workflows, refs)" ;;
+  esac
+}
+
+_require_integration_id() {
+  local var_name="$1"
+  eval "[ -n \"\$$var_name\" ] || die \"--integration-id is required\""
+}
+
+_integrations_list() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl integrations list\n'
+        return 0
+        ;;
+      *) die "unknown integrations list option: $1" ;;
+    esac
+  done
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "integrations") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "integrations" || return 1
+  local fmt='{"type":"table","fields":["id","provider","name","created_at"],"headers":["id","provider","name","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_integrations_get() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl integrations get <integration-id>\n'
+        return 0
+        ;;
+      -*) die "unknown integrations get option: $1" ;;
+      *)
+        [ -z "$integration_id" ] || die "unexpected argument: $1"
+        integration_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "integration ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "integrations/$integration_id") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "integrations/$integration_id" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","provider":"provider","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_integrations_repos() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl integrations repos --integration-id ID\n'
+        return 0
+        ;;
+      -*) die "unknown integrations repos option: $1" ;;
+      *)
+        [ -z "$integration_id" ] || die "unexpected argument: $1"
+        integration_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "integrations/$integration_id/repositories") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "integrations/$integration_id/repositories" || return 1
+  emit_response
+}
+
+_integrations_workflows() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl integrations workflows --integration-id ID\n'
+        return 0
+        ;;
+      -*) die "unknown integrations workflows option: $1" ;;
+      *)
+        [ -z "$integration_id" ] || die "unexpected argument: $1"
+        integration_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "integrations/$integration_id/workflows") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "integrations/$integration_id/workflows" || return 1
+  emit_response
+}
+
+_integrations_refs() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl integrations refs --integration-id ID\n'
+        return 0
+        ;;
+      -*) die "unknown integrations refs option: $1" ;;
+      *)
+        [ -z "$integration_id" ] || die "unexpected argument: $1"
+        integration_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "integrations/$integration_id/refs") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "integrations/$integration_id/refs" || return 1
+  emit_response
+}
+
+
+# "pipelines" subcommands: list, get, create, run, inputs, update, delete.
+
+pipelines_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] pipelines <action> [options]
+
+Actions:
+  list                List pipelines for an integration
+  get                 Show pipeline details
+  create              Create a pipeline
+  update              Update a pipeline
+  delete              Delete a pipeline
+  run                 Trigger a pipeline run
+  inputs              Get required inputs for a pipeline
+
+Options:
+  --integration-id ID Integration ID (required for most actions)
+  --pipeline-id ID    Pipeline ID (required for get, update, delete, run, inputs)
+  --name NAME         Pipeline name (create, update)
+  --config JSON       Pipeline configuration (create, update)
+  --inputs JSON       Run inputs (run)
+
+Run "appmctl pipelines <action> --help" for action-specific help.
+EOF
+}
+
+command_pipelines() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _pipelines_list "$@" ;;
+    get) _pipelines_get "$@" ;;
+    create) _pipelines_create "$@" ;;
+    update) _pipelines_update "$@" ;;
+    delete) _pipelines_delete "$@" ;;
+    run) _pipelines_run "$@" ;;
+    inputs) _pipelines_inputs "$@" ;;
+    -h|--help|"") pipelines_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown pipelines action: $action (use list, get, create, update, delete, run, inputs)" ;;
+  esac
+}
+
+_pipelines_list() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines list --integration-id ID\n'
+        return 0
+        ;;
+      *) die "unknown pipelines list option: $1" ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  local path="integrations/$integration_id/pipelines"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_pipelines_get() {
+  local integration_id=""
+  local pipeline_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines get --integration-id ID <pipeline-id>\n'
+        return 0
+        ;;
+      -*) die "unknown pipelines get option: $1" ;;
+      *)
+        [ -z "$pipeline_id" ] || die "unexpected argument: $1"
+        pipeline_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$pipeline_id" ] || die "pipeline ID is required"
+
+  local path="integrations/$integration_id/pipelines/$pipeline_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_pipelines_create() {
+  local integration_id=""
+  local name=""
+  local config=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; shift 2 ;;
+      --name=*) name=${1#*=}; shift ;;
+      --config) require_value "$1" "$2"; config="$2"; shift 2 ;;
+      --config=*) config=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines create --integration-id ID --name NAME [--config JSON]\n'
+        return 0
+        ;;
+      *) die "unknown pipelines create option: $1" ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$name" ] || die "--name is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  if [ -n "$config" ]; then
+    "$JQ_BIN" -n --arg n "$name" --argjson c "$config" '{name: $n, config: $c}' >"$body_file"
+  else
+    "$JQ_BIN" -n --arg n "$name" '{name: $n}' >"$body_file"
+  fi
+
+  local path="integrations/$integration_id/pipelines"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_pipelines_update() {
+  local integration_id=""
+  local pipeline_id=""
+  local name=""
+  local config=""
+  local body_file
+  local has_fields=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; has_fields=1; shift 2 ;;
+      --name=*) name=${1#*=}; has_fields=1; shift ;;
+      --config) require_value "$1" "$2"; config="$2"; has_fields=1; shift 2 ;;
+      --config=*) config=${1#*=}; has_fields=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines update --integration-id ID <pipeline-id> [--name NAME] [--config JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown pipelines update option: $1" ;;
+      *)
+        [ -z "$pipeline_id" ] || die "unexpected argument: $1"
+        pipeline_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$pipeline_id" ] || die "pipeline ID is required"
+  [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n)
+  local jq_expr='{'
+  local first=1
+  if [ -n "$name" ]; then
+    jq_args+=(--arg n "$name")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr name: \$n"
+    first=0
+  fi
+  if [ -n "$config" ]; then
+    jq_args+=(--argjson c "$config")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr config: \$c"
+    first=0
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  local path="integrations/$integration_id/pipelines/$pipeline_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'Pipeline %s updated\n' "$pipeline_id"
+}
+
+_pipelines_delete() {
+  local integration_id=""
+  local pipeline_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines delete --integration-id ID <pipeline-id>\n'
+        return 0
+        ;;
+      -*) die "unknown pipelines delete option: $1" ;;
+      *)
+        [ -z "$pipeline_id" ] || die "unexpected argument: $1"
+        pipeline_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$pipeline_id" ] || die "pipeline ID is required"
+
+  local path="integrations/$integration_id/pipelines/$pipeline_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  printf 'Pipeline %s deleted\n' "$pipeline_id"
+}
+
+_pipelines_run() {
+  local integration_id=""
+  local pipeline_id=""
+  local inputs=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --inputs) require_value "$1" "$2"; inputs="$2"; shift 2 ;;
+      --inputs=*) inputs=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown pipelines run option: $1" ;;
+      *)
+        [ -z "$pipeline_id" ] || die "unexpected argument: $1"
+        pipeline_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$pipeline_id" ] || die "pipeline ID is required"
+
+  local path="integrations/$integration_id/pipelines/$pipeline_id/runs"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  if [ -n "$inputs" ]; then
+    "$JQ_BIN" -n --argjson i "$inputs" '{inputs: $i}' >"$body_file"
+  else
+    printf '{}' >"$body_file"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    [ -n "$inputs" ] && printf 'inputs: %s\n' "$inputs"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'Pipeline run triggered\n'
+}
+
+_pipelines_inputs() {
+  local integration_id=""
+  local pipeline_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl pipelines inputs --integration-id ID <pipeline-id>\n'
+        return 0
+        ;;
+      -*) die "unknown pipelines inputs option: $1" ;;
+      *)
+        [ -z "$pipeline_id" ] || die "unexpected argument: $1"
+        pipeline_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$pipeline_id" ] || die "pipeline ID is required"
+
+  local path="integrations/$integration_id/pipelines/$pipeline_id/inputs"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  emit_response
+}
+
+
+# "webhooks" subcommands: list, get, create, update, delete, test, rotate, deliveries, redeliver.
+
+webhooks_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] webhooks <action> [options]
+
+Actions:
+  list                List webhook endpoints
+  get                 Show webhook details
+  create              Create a webhook endpoint
+  update              Update a webhook endpoint
+  delete              Delete a webhook endpoint
+  test                Send a test delivery
+  rotate              Rotate the HMAC signing secret
+  deliveries          List deliveries for a webhook
+  redeliver           Redeliver a specific delivery
+
+Run "appmctl webhooks <action> --help" for action-specific help.
+EOF
+}
+
+command_webhooks() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _webhooks_list "$@" ;;
+    get) _webhooks_get "$@" ;;
+    create) _webhooks_create "$@" ;;
+    update) _webhooks_update "$@" ;;
+    delete) _webhooks_delete "$@" ;;
+    test) _webhooks_test "$@" ;;
+    rotate) _webhooks_rotate "$@" ;;
+    deliveries) _webhooks_deliveries "$@" ;;
+    redeliver) _webhooks_redeliver "$@" ;;
+    -h|--help|"") webhooks_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown webhooks action: $action (use list, get, create, update, delete, test, rotate, deliveries, redeliver)" ;;
+  esac
+}
+
+_webhooks_list() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks list\n'
+        return 0
+        ;;
+      *) die "unknown webhooks list option: $1" ;;
+    esac
+  done
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "webhooks" || return 1
+  local fmt='{"type":"table","fields":["id","url","events","created_at"],"headers":["id","url","events","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_webhooks_get() {
+  local webhook_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks get <webhook-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks get option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "webhooks/$webhook_id" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"events","active":"active","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_webhooks_create() {
+  local url_val=""
+  local events=""
+  local app_filter=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --url) require_value "$1" "$2"; url_val="$2"; shift 2 ;;
+      --url=*) url_val=${1#*=}; shift ;;
+      --events) require_value "$1" "$2"; events="$2"; shift 2 ;;
+      --events=*) events=${1#*=}; shift ;;
+      --app) require_value "$1" "$2"; app_filter="$2"; shift 2 ;;
+      --app=*) app_filter=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks create --url URL [--events JSON] [--app SLUG]\n'
+        return 0
+        ;;
+      *) die "unknown webhooks create option: $1" ;;
+    esac
+  done
+
+  [ -n "$url_val" ] || die "--url is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg u "$url_val")
+  local jq_expr='{url: $u'
+  if [ -n "$events" ]; then
+    jq_args+=(--argjson e "$events")
+    jq_expr="$jq_expr, events: \$e"
+  fi
+  if [ -n "$app_filter" ]; then
+    jq_args+=(--arg a "$app_filter")
+    jq_expr="$jq_expr, app_filter: \$a"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "webhooks" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"id":"id","url":"url","active":"active","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_webhooks_update() {
+  local webhook_id=""
+  local url_val=""
+  local events=""
+  local body_file
+  local has_fields=0
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --url) require_value "$1" "$2"; url_val="$2"; has_fields=1; shift 2 ;;
+      --url=*) url_val=${1#*=}; has_fields=1; shift ;;
+      --events) require_value "$1" "$2"; events="$2"; has_fields=1; shift 2 ;;
+      --events=*) events=${1#*=}; has_fields=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks update <webhook-id> [--url URL] [--events JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks update option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+  [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n)
+  local jq_expr='{'
+  local first=1
+  if [ -n "$url_val" ]; then
+    jq_args+=(--arg u "$url_val")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr url: \$u"
+    first=0
+  fi
+  if [ -n "$events" ]; then
+    jq_args+=(--argjson e "$events")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr events: \$e"
+    first=0
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
+
+  local path="webhooks/$webhook_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  printf 'Webhook %s updated\n' "$webhook_id"
+}
+
+_webhooks_delete() {
+  local webhook_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks delete <webhook-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks delete option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "webhooks/$webhook_id" || return 1
+  printf 'Webhook %s deleted\n' "$webhook_id"
+}
+
+_webhooks_test() {
+  local webhook_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks test <webhook-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks test option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id/test") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_post "webhooks/$webhook_id/test" "" || return 1
+  printf 'Test delivery sent for webhook %s\n' "$webhook_id"
+}
+
+_webhooks_rotate() {
+  local webhook_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks rotate <webhook-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks rotate option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id/rotate-secret") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_post "webhooks/$webhook_id/rotate-secret" "" || return 1
+  printf 'Secret rotated for webhook %s\n' "$webhook_id"
+}
+
+_webhooks_deliveries() {
+  local webhook_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks deliveries <webhook-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks deliveries option: $1" ;;
+      *)
+        [ -z "$webhook_id" ] || die "unexpected argument: $1"
+        webhook_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "webhook ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id/deliveries") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "webhooks/$webhook_id/deliveries" || return 1
+  local fmt='{"type":"table","fields":["id","event","status_code","delivered_at"],"headers":["id","event","status","delivered_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_webhooks_redeliver() {
+  local webhook_id=""
+  local delivery_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --webhook-id) require_value "$1" "$2"; webhook_id="$2"; shift 2 ;;
+      --webhook-id=*) webhook_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl webhooks redeliver --webhook-id ID <delivery-id>\n'
+        return 0
+        ;;
+      -*) die "unknown webhooks redeliver option: $1" ;;
+      *)
+        [ -z "$delivery_id" ] || die "unexpected argument: $1"
+        delivery_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$webhook_id" ] || die "--webhook-id is required"
+  [ -n "$delivery_id" ] || die "delivery ID is required"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "webhooks/$webhook_id/deliveries/$delivery_id/redeliver") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_post "webhooks/$webhook_id/deliveries/$delivery_id/redeliver" "" || return 1
+  printf 'Delivery %s redelivered\n' "$delivery_id"
+}
+
+main "$@"

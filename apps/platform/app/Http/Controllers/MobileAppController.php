@@ -31,6 +31,7 @@ class MobileAppController extends Controller
                 Rule::unique('mobile_apps')->where('team_id', $team->id),
             ],
             'description' => ['nullable', 'string', 'max:2000'],
+            'metadata' => ['sometimes', 'nullable', 'array'],
         ]);
 
         $baseSlug = Str::slug(($data['slug'] ?? null) ?: $data['name']) ?: 'app';
@@ -46,6 +47,7 @@ class MobileAppController extends Controller
                 'name' => $data['name'],
                 'slug' => $slug,
                 'description' => $data['description'] ?? null,
+                'metadata' => $data['metadata'] ?? null,
             ]);
             $this->webhookEvents->record(
                 $team,
@@ -67,13 +69,20 @@ class MobileAppController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:2000'],
+            'metadata' => ['sometimes', 'nullable', 'array'],
         ]);
 
         DB::transaction(function () use ($mobileApp, $team, $data) {
-            $mobileApp->update([
+            $attributes = [
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
-            ]);
+            ];
+
+            if (array_key_exists('metadata', $data)) {
+                $attributes['metadata'] = $data['metadata'];
+            }
+
+            $mobileApp->update($attributes);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppUpdated,

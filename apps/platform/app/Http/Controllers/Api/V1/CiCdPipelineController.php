@@ -75,7 +75,11 @@ class CiCdPipelineController extends Controller
 
     protected function assertIntegration(Team $team, Integration $integration): void
     {
-        abort_unless($integration->team_id === $team->id, 404);
+        abort_unless(
+            $integration->team_id === $team->id
+            && $integration->supportsCiCd(),
+            404,
+        );
     }
 
     protected function assertPipeline(Team $team, Integration $integration, CiCdPipeline $pipeline): void

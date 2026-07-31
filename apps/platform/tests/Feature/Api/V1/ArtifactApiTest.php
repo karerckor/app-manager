@@ -66,7 +66,7 @@ class ArtifactApiTest extends TestCase
 
     public function test_store_uploads_a_file_and_records_created_event(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app, $build] = $this->context();
         $this->authenticate($user, $team, [ApiKeyScope::ArtifactsWrite]);
 
@@ -123,7 +123,7 @@ class ArtifactApiTest extends TestCase
 
     private function makeArtifact(Team $team, BuildRecord $build, string $name): Artifact
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         $artifact = Artifact::factory()->for($build)->create(['team_id' => $team->id, 'name' => $name]);
         $artifact->addMedia(UploadedFile::fake()->create($name, 10))->toMediaCollection('file');
 

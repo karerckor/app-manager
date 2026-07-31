@@ -13,7 +13,7 @@ class ApiKeyScopeMappingTest extends TestCase
         $values = ApiKeyScope::values();
 
         foreach ([
-            'integrations:read',
+            'integrations:read', 'integrations:write', 'integrations:proxy',
             'pipelines:read', 'pipelines:write', 'pipelines:run',
             'webhooks:read', 'webhooks:write',
             'deliveries:read',
@@ -29,6 +29,8 @@ class ApiKeyScopeMappingTest extends TestCase
         $this->assertSame(TeamPermission::ManageApplications, ApiKeyScope::AppsWrite->requiredPermission());
         $this->assertSame(TeamPermission::ManageCredentials, ApiKeyScope::CredentialsWrite->requiredPermission());
         $this->assertSame(TeamPermission::ManageIntegrations, ApiKeyScope::IntegrationsRead->requiredPermission());
+        $this->assertSame(TeamPermission::ManageIntegrations, ApiKeyScope::IntegrationsWrite->requiredPermission());
+        $this->assertSame(TeamPermission::ManageIntegrations, ApiKeyScope::IntegrationsProxy->requiredPermission());
         $this->assertSame(TeamPermission::ManageIntegrations, ApiKeyScope::PipelinesWrite->requiredPermission());
         $this->assertSame(TeamPermission::RunPipelines, ApiKeyScope::PipelinesRun->requiredPermission());
         $this->assertSame(TeamPermission::ManageIntegrations, ApiKeyScope::WebhooksWrite->requiredPermission());

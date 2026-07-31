@@ -2,6 +2,8 @@
 
 namespace App\Actions\Builds;
 
+use App\Billing\Contracts\AuthorizesBuildCreation;
+use App\Billing\Contracts\RecordsUsage;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
@@ -19,7 +21,11 @@ use Illuminate\Support\Facades\DB;
 
 class CreateManualBuild
 {
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly AuthorizesBuildCreation $buildAuthorizer,
+        private readonly RecordsUsage $usage,
+    ) {}
 
     /** @param array<string, mixed> $context */
     public function handle(
@@ -43,6 +49,8 @@ class CreateManualBuild
 
             return $existing;
         }
+
+        $this->buildAuthorizer->authorize($team);
 
         abort_unless(
             $mobileApp->team_id === $team->id
@@ -96,6 +104,8 @@ class CreateManualBuild
                 WebhookPayload::build($build),
                 ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
+
+            $this->usage->recordBuildRun($build);
 
             return $build->refresh();
         });

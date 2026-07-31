@@ -20,12 +20,13 @@ class CredentialUpdateTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_user_can_fully_update_a_credential_from_an_app(): void
+    public function test_updating_a_shared_credential_preserves_all_attachments(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app] = $this->application();
         $firstIdentifier = $this->identifier($app, 'com.example.first');
-        $secondIdentifier = $this->identifier($app, 'com.example.second');
+        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $secondIdentifier = $this->identifier($otherApp, 'com.example.second');
         $credential = Credential::factory()->create([
             'team_id' => $team->id,
             'type' => CredentialType::AndroidKeystore,
@@ -41,15 +42,17 @@ class CredentialUpdateTest extends TestCase
             'name' => 'Production',
         ]);
         $oldProfile->credentials()->attach($credential);
+        $secondProfile = $secondIdentifier->profiles()->create([
+            'type' => ProfileType::Preview,
+            'name' => 'Preview',
+        ]);
+        $secondProfile->credentials()->attach($credential);
         $credential->addMediaFromString('old-keystore')
             ->usingFileName('old.keystore')
             ->toMediaCollection('file');
 
         $this->actingAs($user)->post(route('accounts.credentials.update', [$team, $credential]), [
-            'mobile_app_id' => $app->id,
-            'app_identifier_id' => $secondIdentifier->id,
             'type' => CredentialType::AndroidKeystore->value,
-            'profile_type' => ProfileType::Preview->value,
             'name' => 'Preview keystore',
             'expires_at' => '2027-08-09',
             'payload' => [
@@ -63,7 +66,6 @@ class CredentialUpdateTest extends TestCase
             ->assertSessionHas('status', 'Credential updated.');
 
         $credential->refresh();
-        $newProfile = $secondIdentifier->profiles()->where('type', ProfileType::Preview)->firstOrFail();
 
         $this->assertSame('Preview keystore', $credential->name);
         $this->assertSame('2027-08-09', $credential->expires_at->toDateString());
@@ -72,8 +74,9 @@ class CredentialUpdateTest extends TestCase
             'key_alias' => 'preview-alias',
             'key_password' => 'old-key-secret',
         ], $credential->payload);
-        $this->assertFalse($oldProfile->credentials()->whereKey($credential->id)->exists());
-        $this->assertTrue($newProfile->credentials()->whereKey($credential->id)->exists());
+        $this->assertTrue($oldProfile->credentials()->whereKey($credential->id)->exists());
+        $this->assertTrue($secondProfile->credentials()->whereKey($credential->id)->exists());
+        $this->assertCount(2, $credential->profiles);
         $this->assertSame('preview.jks', $credential->getFirstMedia('file')->file_name);
     }
 
@@ -108,33 +111,32 @@ class CredentialUpdateTest extends TestCase
                 ->where('identifier.build_targets.0.credentials.0.update_url', route('accounts.credentials.update', [$team, $credential])));
     }
 
-    public function test_credential_cannot_be_updated_through_an_app_it_is_not_attached_to(): void
+    public function test_unattached_credential_can_be_updated_without_application_context(): void
     {
-        [$user, $team, $app] = $this->application();
-        $attachedIdentifier = $this->identifier($app, 'com.example.attached');
-        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
-        $otherIdentifier = $this->identifier($otherApp, 'com.example.other');
+        Storage::fake(config('media-library.disk_name'));
+        [$user, $team] = $this->application();
         $credential = Credential::factory()->create([
             'team_id' => $team->id,
             'type' => CredentialType::GooglePlayServiceAccount,
             'name' => 'Play account',
         ]);
-        $attachedIdentifier->credentials()->attach($credential);
+        $credential->addMediaFromString('{}')
+            ->usingFileName('play.json')
+            ->toMediaCollection('file');
 
         $this->actingAs($user)->post(route('accounts.credentials.update', [$team, $credential]), [
-            'mobile_app_id' => $otherApp->id,
-            'app_identifier_id' => $otherIdentifier->id,
             'type' => CredentialType::GooglePlayServiceAccount->value,
             'name' => 'Changed account',
-        ])->assertNotFound();
+        ])->assertRedirect()
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame('Play account', $credential->fresh()->name);
-        $this->assertTrue($attachedIdentifier->credentials()->whereKey($credential->id)->exists());
+        $this->assertSame('Changed account', $credential->fresh()->name);
+        $this->assertDatabaseCount('credentialables', 0);
     }
 
-    public function test_changing_a_credential_type_requires_a_replacement_file(): void
+    public function test_attached_credential_type_cannot_be_changed(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app] = $this->application();
         $identifier = $this->identifier($app, 'com.example.app');
         $credential = Credential::factory()->create([
@@ -156,15 +158,14 @@ class CredentialUpdateTest extends TestCase
             ->toMediaCollection('file');
 
         $this->actingAs($user)->post(route('accounts.credentials.update', [$team, $credential]), [
-            'mobile_app_id' => $app->id,
-            'app_identifier_id' => $identifier->id,
             'type' => CredentialType::GooglePlayServiceAccount->value,
             'name' => 'Play account',
             'payload' => [],
-        ])->assertSessionHasErrors('file');
+        ])->assertSessionHasErrors('type');
 
         $this->assertSame(CredentialType::AndroidKeystore, $credential->fresh()->type);
         $this->assertSame('release.keystore', $credential->fresh()->getFirstMedia('file')->file_name);
+        $this->assertTrue($profile->credentials()->whereKey($credential->id)->exists());
     }
 
     private function application(): array

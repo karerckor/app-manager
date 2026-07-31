@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'actor_user_id',
     'source',
     'payload',
+    'filter_context',
     'occurred_at',
     'published_at',
 ])]
@@ -45,6 +46,7 @@ class WebhookEvent extends Model
         return [
             'event_type' => WebhookEventType::class,
             'payload' => 'array',
+            'filter_context' => 'array',
             'occurred_at' => 'datetime',
             'published_at' => 'datetime',
         ];

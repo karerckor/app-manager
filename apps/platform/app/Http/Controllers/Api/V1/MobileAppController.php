@@ -104,6 +104,7 @@ class MobileAppController extends Controller
                 Rule::unique('mobile_apps')->where('team_id', $team->id)->ignore($mobileApp?->id),
             ],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'metadata' => ['sometimes', 'nullable', 'array'],
         ];
     }
 

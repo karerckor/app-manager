@@ -14,58 +14,68 @@ use Illuminate\Support\Facades\DB;
 
 class BuildLifecycle
 {
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly BuildActorResolver $actors,
+    ) {}
 
-    public function start(BuildRecord $build, ?DateTimeInterface $startedAt = null): BuildRecord
-    {
-        return DB::transaction(function () use ($build, $startedAt) {
-            $current = $this->lock($build);
+    public function start(
+        BuildRecord $build,
+        ?DateTimeInterface $startedAt = null,
+        ?ActorContext $actor = null,
+    ): BuildRecord {
+        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $startedAt) {
+            return DB::transaction(function () use ($build, $startedAt, $actor) {
+                $current = $this->lock($build);
 
-            if ($current->status === BuildStatus::Running || $current->status !== BuildStatus::Pending) {
-                return $current;
-            }
+                if ($current->status === BuildStatus::Running || $current->status !== BuildStatus::Pending) {
+                    return $current;
+                }
 
-            $current->update([
-                'status' => BuildStatus::Running,
-                'started_at' => $current->started_at ?? $startedAt ?? now(),
-            ]);
+                $current->update([
+                    'status' => BuildStatus::Running,
+                    'started_at' => $current->started_at ?? $startedAt ?? now(),
+                ]);
 
-            $this->webhookEvents->record(
-                $current->team,
-                WebhookEventType::BuildStarted,
-                $current,
-                WebhookPayload::build($current),
-                $this->ciCdActor($current),
-            );
+                $this->webhookEvents->record(
+                    $current->team,
+                    WebhookEventType::BuildStarted,
+                    $current,
+                    WebhookPayload::build($current),
+                    $actor,
+                );
 
-            return $current->refresh();
-        });
+                return $current->refresh();
+            });
+        }, $actor);
     }
 
-    public function requestCancellation(BuildRecord $build): BuildRecord
+    public function requestCancellation(BuildRecord $build, ?ActorContext $actor = null): BuildRecord
     {
-        return DB::transaction(function () use ($build) {
-            $current = $this->lock($build);
+        return $this->actors->runAs($build, function (ActorContext $actor) use ($build) {
+            return DB::transaction(function () use ($build, $actor) {
+                $current = $this->lock($build);
 
-            if ($current->status === BuildStatus::CancelRequested || ! $current->status->canRequestCancellation()) {
-                return $current;
-            }
+                if ($current->status === BuildStatus::CancelRequested || ! $current->status->canRequestCancellation()) {
+                    return $current;
+                }
 
-            $current->update([
-                'status' => BuildStatus::CancelRequested,
-                'cancel_requested_at' => $current->cancel_requested_at ?? now(),
-            ]);
+                $current->update([
+                    'status' => BuildStatus::CancelRequested,
+                    'cancel_requested_at' => $current->cancel_requested_at ?? now(),
+                ]);
 
-            $this->webhookEvents->record(
-                $current->team,
-                WebhookEventType::BuildCancelRequested,
-                $current,
-                WebhookPayload::build($current),
-                $this->ciCdActor($current),
-            );
+                $this->webhookEvents->record(
+                    $current->team,
+                    WebhookEventType::BuildCancelRequested,
+                    $current,
+                    WebhookPayload::build($current),
+                    $actor,
+                );
 
-            return $current->refresh();
-        });
+                return $current->refresh();
+            });
+        }, $actor);
     }
 
     public function finish(
@@ -78,41 +88,34 @@ class BuildLifecycle
             throw InvalidBuildTransition::from($build->status, $status);
         }
 
-        return DB::transaction(function () use ($build, $status, $finishedAt, $actor) {
-            $current = $this->lock($build);
+        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $status, $finishedAt) {
+            return DB::transaction(function () use ($build, $status, $finishedAt, $actor) {
+                $current = $this->lock($build);
 
-            if ($current->status === $status) {
-                return $current;
-            }
+                if ($current->status === $status) {
+                    return $current;
+                }
 
-            if ($current->status->isTerminal()) {
-                throw InvalidBuildTransition::from($current->status, $status);
-            }
+                if ($current->status->isTerminal()) {
+                    throw InvalidBuildTransition::from($current->status, $status);
+                }
 
-            $current->update([
-                'status' => $status,
-                'finished_at' => $current->finished_at ?? $finishedAt ?? now(),
-            ]);
+                $current->update([
+                    'status' => $status,
+                    'finished_at' => $current->finished_at ?? $finishedAt ?? now(),
+                ]);
 
-            $this->webhookEvents->record(
-                $current->team,
-                WebhookEventType::BuildCompleted,
-                $current,
-                WebhookPayload::build($current),
-                $actor ?? $this->ciCdActor($current),
-            );
+                $this->webhookEvents->record(
+                    $current->team,
+                    WebhookEventType::BuildCompleted,
+                    $current,
+                    WebhookPayload::build($current),
+                    $actor,
+                );
 
-            return $current->refresh();
-        });
-    }
-
-    private function ciCdActor(BuildRecord $build): ActorContext
-    {
-        $requester = $build->requestedBy;
-
-        return $requester
-            ? ActorContext::forUser($requester, 'ci_cd')
-            : ActorContext::system();
+                return $current->refresh();
+            });
+        }, $actor);
     }
 
     private function lock(BuildRecord $build): BuildRecord

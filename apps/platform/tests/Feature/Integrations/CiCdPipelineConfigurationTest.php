@@ -54,6 +54,53 @@ class CiCdPipelineConfigurationTest extends TestCase
         $this->assertSame($identifier->id, $pipeline->app_identifier_id);
     }
 
+    public function test_owner_configures_the_same_pipeline_for_multiple_applications(): void
+    {
+        [$owner, $team, $app, , $integration] = $this->context(TeamRole::Owner);
+        $secondApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->fakeProvider();
+
+        $this->actingAs($owner)->post(route('accounts.integrations.pipelines.store', [$team, $integration]), [
+            'name' => 'Shared release',
+            'mobile_app_ids' => [$app->id, $secondApp->id],
+            'profile_type' => ProfileType::Production->value,
+            'repository_full_name' => 'octo/mobile',
+            'workflow_id' => '200',
+            'default_ref' => 'main',
+            'input_defaults' => ['channel' => 'internal'],
+        ])->assertRedirect()
+            ->assertSessionHas('status', 'Pipeline configured for 2 applications.');
+
+        $this->assertDatabaseCount('ci_cd_pipelines', 2);
+        $this->assertEqualsCanonicalizing(
+            [$app->id, $secondApp->id],
+            CiCdPipeline::query()->pluck('mobile_app_id')->all(),
+        );
+        $this->assertTrue(CiCdPipeline::query()->get()->every(
+            fn (CiCdPipeline $pipeline) => $pipeline->workflow_id === '200'
+                && $pipeline->app_identifier_id === null,
+        ));
+    }
+
+    public function test_specific_identifier_is_rejected_for_multiple_applications(): void
+    {
+        [$owner, $team, $app, $identifier, $integration] = $this->context(TeamRole::Owner);
+        $secondApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->fakeProvider();
+
+        $this->actingAs($owner)->post(route('accounts.integrations.pipelines.store', [$team, $integration]), [
+            'name' => 'Invalid shared release',
+            'mobile_app_ids' => [$app->id, $secondApp->id],
+            'app_identifier_id' => $identifier->id,
+            'profile_type' => ProfileType::Production->value,
+            'repository_full_name' => 'octo/mobile',
+            'workflow_id' => '200',
+            'default_ref' => 'main',
+        ])->assertSessionHasErrors('app_identifier_id');
+
+        $this->assertDatabaseCount('ci_cd_pipelines', 0);
+    }
+
     public function test_unavailable_repository_workflow_or_ref_is_rejected(): void
     {
         [$owner, $team, $app, $identifier, $integration] = $this->context(TeamRole::Owner);

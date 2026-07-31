@@ -28,7 +28,7 @@ class DemoApiKeyTest extends TestCase
     {
         parent::setUp();
 
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         $this->seed(DemoSeeder::class);
 
         $this->user = User::where('email', 'demo@example.com')->firstOrFail();
@@ -61,8 +61,9 @@ class DemoApiKeyTest extends TestCase
 
         $response = $this->getJson($this->api('/apps/example-app/credentials'))
             ->assertOk()
-            ->assertJsonCount(7, 'data')
+            ->assertJsonCount(8, 'data')
             ->assertJsonFragment(['type' => CredentialType::AndroidKeystore->value])
+            ->assertJsonFragment(['type' => CredentialType::FirebaseConfig->value])
             ->assertJsonFragment(['type' => CredentialType::IosCertificate->value])
             ->assertJsonFragment(['type' => CredentialType::ProvisioningProfile->value])
             ->assertJsonFragment(['type' => CredentialType::GooglePlayServiceAccount->value])

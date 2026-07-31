@@ -6,6 +6,7 @@ use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,7 +35,33 @@ use OwenIt\Auditing\Contracts\Auditable;
 ])]
 class Integration extends Model implements Auditable
 {
-    use HasFactory, HasUuids, SoftDeletes, AuditableTrait;
+    use AuditableTrait, HasFactory, HasUuids, SoftDeletes;
+
+    public function scopeConnectedExpo(Builder $query): Builder
+    {
+        return $query
+            ->where('provider', IntegrationProvider::Expo->value)
+            ->whereIn('status', [
+                IntegrationStatus::Active->value,
+                IntegrationStatus::Degraded->value,
+            ])
+            ->whereHas('oauthCredential');
+    }
+
+    public function scopeActiveExpo(Builder $query): Builder
+    {
+        return $query
+            ->where('provider', IntegrationProvider::Expo->value)
+            ->where('status', IntegrationStatus::Active->value)
+            ->whereHas('oauthCredential');
+    }
+
+    public function supportsCiCd(): bool
+    {
+        return $this->kind === IntegrationKind::CiCd
+            || ($this->kind === IntegrationKind::AppService
+                && $this->provider === IntegrationProvider::Expo);
+    }
 
     public function team(): BelongsTo
     {
@@ -61,9 +88,19 @@ class Integration extends Model implements Auditable
         return $this->hasMany(CiCdRun::class);
     }
 
+    public function oauthCredential(): HasOne
+    {
+        return $this->hasOne(IntegrationOAuthCredential::class);
+    }
+
     public function webhookEndpoint(): HasOne
     {
         return $this->hasOne(WebhookEndpoint::class);
+    }
+
+    public function expoProjects(): HasMany
+    {
+        return $this->hasMany(ExpoProject::class);
     }
 
     protected function casts(): array

@@ -12,7 +12,11 @@ use OwenIt\Auditing\Contracts\Auditable;
 class ApiKey extends PersonalAccessToken implements Auditable
 {
     /** @use HasFactory<ApiKeyFactory> */
-    use AuditableTrait, HasFactory;
+    use AuditableTrait {
+        readyForAuditing as private traitReadyForAuditing;
+    }
+
+    use HasFactory;
 
     protected $table = 'personal_access_tokens';
 
@@ -36,7 +40,25 @@ class ApiKey extends PersonalAccessToken implements Auditable
      *
      * @var list<string>
      */
-    protected array $auditExclude = ['token'];
+    protected array $auditExclude = ['token', 'last_used_at'];
+
+    public function readyForAuditing(): bool
+    {
+        if (! $this->traitReadyForAuditing()) {
+            return false;
+        }
+
+        if ($this->getAuditEvent() !== 'updated') {
+            return true;
+        }
+
+        $changes = array_values(array_diff(
+            array_keys($this->getChanges()),
+            [$this->getUpdatedAtColumn()],
+        ));
+
+        return $changes !== ['last_used_at'];
+    }
 
     public function team(): BelongsTo
     {

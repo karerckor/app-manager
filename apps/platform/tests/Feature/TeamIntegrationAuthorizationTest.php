@@ -55,6 +55,30 @@ class TeamIntegrationAuthorizationTest extends TestCase
                 ->where('auth.team.permissions.close_team', false));
     }
 
+    public function test_integration_sections_have_distinct_pages(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $urls = [
+            'ci_cd' => route('accounts.integrations.index', $team),
+            'expo' => route('accounts.integrations.eas.index', $team),
+            'webhooks' => route('accounts.integrations.webhooks.index', $team),
+        ];
+
+        foreach ([
+            'accounts.integrations.index' => 'ci_cd',
+            'accounts.integrations.eas.index' => 'expo',
+            'accounts.integrations.webhooks.index' => 'webhooks',
+        ] as $routeName => $activeTab) {
+            $this->actingAs($owner)
+                ->get(route($routeName, $team))
+                ->assertSuccessful()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->component('Integrations/Index')
+                    ->where('activeTab', $activeTab)
+                    ->where('integrationUrls', $urls));
+        }
+    }
+
     public static function roleMatrix(): array
     {
         return [

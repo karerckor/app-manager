@@ -6,6 +6,7 @@ use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppActivityFeed;
 use App\Support\Apps\AppContext;
+use App\Support\Apps\ExpoAppContext;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,13 +25,13 @@ class AppOverviewController extends Controller
             'stats' => [
                 'identifiers' => $mobileApp->appIdentifiers()->count(),
                 'builds' => $mobileApp->buildRecords()->count(),
-                'credentials' => $team->credentials()->count(),
                 'last_build' => $lastBuild ? [
                     'status' => $lastBuild->status->value,
                     'at' => $lastBuild->finished_at ?? $lastBuild->created_at,
                 ] : null,
             ],
             'activity' => AppActivityFeed::for($team, $mobileApp),
+            'expo' => ExpoAppContext::summary($request, $team, $mobileApp),
         ]);
     }
 }

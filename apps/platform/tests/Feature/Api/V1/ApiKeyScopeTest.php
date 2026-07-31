@@ -34,6 +34,8 @@ class ApiKeyScopeTest extends TestCase
             'artifacts:read',
             'artifacts:write',
             'integrations:read',
+            'integrations:write',
+            'integrations:proxy',
             'pipelines:read',
             'pipelines:write',
             'pipelines:run',
@@ -80,11 +82,13 @@ class ApiKeyScopeTest extends TestCase
 
     public function test_asset_scopes_are_enforced_per_http_operation(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team, $app] = $this->application();
         $url = $this->api($team, "/apps/{$app->slug}/assets/icon");
+        $filesUrl = $this->api($team, "/apps/{$app->slug}/assets");
 
         $this->authenticate($user, $team, ApiKeyScope::AssetsRead);
+        $this->getJson($filesUrl)->assertOk();
         $this->get($url, ['Authorization' => 'Bearer '.$this->token])->assertNotFound();
         $this->post($url, [
             'file' => UploadedFile::fake()->image('forbidden.png', 128, 128),
@@ -94,6 +98,7 @@ class ApiKeyScopeTest extends TestCase
         $this->post($url, [
             'file' => UploadedFile::fake()->image('icon.png', 1024, 1024),
         ], ['Accept' => 'application/json'])->assertOk();
+        $this->getJson($filesUrl)->assertForbidden();
         $this->get($url, ['Authorization' => 'Bearer '.$this->token])->assertForbidden();
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\CredentialType;
+use App\Enums\Platform;
 use App\Enums\TeamPermission;
 use App\Models\Credential;
 use App\Models\Profile;
@@ -89,7 +90,10 @@ class CredentialVaultController extends Controller
             ));
 
         $apps = $team->mobileApps()
-            ->with(['appIdentifiers' => fn ($query) => $query->orderBy('platform')->orderBy('name')])
+            ->with(['appIdentifiers' => fn ($query) => $query
+                ->whereIn('platform', [Platform::Ios->value, Platform::Android->value])
+                ->orderBy('platform')
+                ->orderBy('name')])
             ->orderBy('name')
             ->get()
             ->map(fn ($app) => [

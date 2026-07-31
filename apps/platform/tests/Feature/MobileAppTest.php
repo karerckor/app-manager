@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\MobileApp;
 use App\Models\Team;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ class MobileAppTest extends TestCase
         $team = Team::factory()->create();
         MobileApp::factory()->create(['team_id' => $team->id, 'slug' => 'my-app']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         MobileApp::factory()->create(['team_id' => $team->id, 'slug' => 'my-app']);
     }
 
@@ -36,5 +37,17 @@ class MobileAppTest extends TestCase
         $this->assertTrue($names->contains('splash_icon'));
         $appIcon = $app->getRegisteredMediaCollections()->firstWhere('name', 'app_icon');
         $this->assertTrue($appIcon->singleFile);
+    }
+
+    public function test_metadata_is_cast_to_an_array(): void
+    {
+        $metadata = [
+            'owner' => 'mobile-team',
+            'release' => ['channel' => 'production', 'automatic' => true],
+        ];
+
+        $app = MobileApp::factory()->create(['metadata' => $metadata]);
+
+        $this->assertSame($metadata, $app->fresh()->metadata);
     }
 }

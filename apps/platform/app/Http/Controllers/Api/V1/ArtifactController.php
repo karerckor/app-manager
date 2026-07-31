@@ -13,12 +13,13 @@ use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ArtifactController extends Controller
 {
@@ -43,12 +44,12 @@ class ArtifactController extends Controller
         return new ArtifactResource($this->artifact($team, $mobileApp, $buildRecord, $artifact));
     }
 
-    public function download(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): BinaryFileResponse
+    public function download(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): StreamedResponse
     {
         $media = $this->artifact($team, $mobileApp, $buildRecord, $artifact)->getFirstMedia('file');
         abort_unless($media, 404);
 
-        return response()->download($media->getPath(), $media->file_name);
+        return MediaFileResponse::download($media);
     }
 
     public function store(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse

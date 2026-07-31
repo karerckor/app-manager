@@ -8,6 +8,11 @@ use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CiCdPipelineController;
 use App\Http\Controllers\Api\V1\CredentialController;
 use App\Http\Controllers\Api\V1\CredentialTypeController;
+use App\Http\Controllers\Api\V1\ExpoCredentialController;
+use App\Http\Controllers\Api\V1\ExpoIdentifierController;
+use App\Http\Controllers\Api\V1\ExpoIntegrationController;
+use App\Http\Controllers\Api\V1\ExpoProjectController;
+use App\Http\Controllers\Api\V1\ExpoProxyController;
 use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
@@ -15,10 +20,11 @@ use App\Http\Controllers\Api\V1\PipelineBuildController;
 use App\Http\Controllers\Api\V1\TeamApiKeyController;
 use App\Http\Controllers\Api\V1\WebhookDeliveryController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
+use App\Http\Middleware\SetActorContext;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/{team:slug}')
-    ->middleware(['auth:sanctum', 'team.member', \App\Http\Middleware\SetActorContext::class])
+    ->middleware(['auth:sanctum', 'team.member', SetActorContext::class])
     ->scopeBindings()
     ->name('api.v1.')
     ->group(function () {
@@ -28,6 +34,38 @@ Route::prefix('v1/{team:slug}')
 
         Route::get('/integrations', [IntegrationController::class, 'index'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.index');
         Route::get('/integrations/{integration}', [IntegrationController::class, 'show'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.show');
+
+        Route::post('/integrations/expo', [ExpoIntegrationController::class, 'store'])
+            ->middleware(['abilities:integrations:write', 'team.permission:manage_integrations', 'throttle:5,1'])
+            ->name('integrations.expo.store');
+        Route::post('/integrations/{integration}/expo/sync', [ExpoIntegrationController::class, 'sync'])
+            ->middleware(['abilities:integrations:write', 'team.permission:manage_integrations'])
+            ->name('integrations.expo.sync');
+        Route::delete('/integrations/{integration}/expo', [ExpoIntegrationController::class, 'destroy'])
+            ->middleware(['abilities:integrations:write', 'team.permission:manage_integrations'])
+            ->name('integrations.expo.destroy');
+        Route::get('/integrations/{integration}/expo/projects', [ExpoIntegrationController::class, 'projects'])
+            ->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])
+            ->name('integrations.expo.projects.index');
+        Route::post('/integrations/{integration}/expo/projects/{expoProject}/import', [ExpoProjectController::class, 'import'])
+            ->middleware([
+                'abilities:integrations:write,apps:write,credentials:write',
+                'team.permission:manage_integrations',
+                'team.permission:manage_applications',
+                'team.permission:manage_credentials',
+            ])
+            ->name('integrations.expo.projects.import');
+        Route::post('/integrations/{integration}/expo/graphql', [ExpoProxyController::class, 'graphql'])
+            ->middleware(['abilities:integrations:proxy', 'team.permission:manage_integrations'])
+            ->name('integrations.expo.proxy.graphql');
+        Route::get('/integrations/{integration}/expo/proxy/{path}', [ExpoProxyController::class, 'rest'])
+            ->middleware(['abilities:integrations:proxy', 'team.permission:manage_integrations'])
+            ->where('path', '.*')
+            ->name('integrations.expo.proxy.read');
+        Route::match(['post', 'put', 'patch', 'delete'], '/integrations/{integration}/expo/proxy/{path}', [ExpoProxyController::class, 'rest'])
+            ->middleware(['abilities:integrations:proxy', 'team.permission:manage_integrations'])
+            ->where('path', '.*')
+            ->name('integrations.expo.proxy.write');
 
         Route::get('/integrations/{integration}/repositories', [IntegrationDiscoveryController::class, 'repositories'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.repositories.index');
         Route::get('/integrations/{integration}/workflows', [IntegrationDiscoveryController::class, 'workflows'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.workflows.index');
@@ -47,6 +85,74 @@ Route::prefix('v1/{team:slug}')
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.destroy');
 
+        Route::get('/apps/{mobileApp:slug}/expo', [ExpoProjectController::class, 'show'])
+            ->middleware([
+                'abilities:apps:read,integrations:read',
+                'team.permission:view',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.show');
+        Route::post('/apps/{mobileApp:slug}/expo', [ExpoProjectController::class, 'store'])
+            ->middleware([
+                'abilities:apps:write,credentials:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_credentials',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.store');
+        Route::post('/apps/{mobileApp:slug}/expo/sync', [ExpoProjectController::class, 'sync'])
+            ->middleware([
+                'abilities:apps:write,credentials:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_credentials',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.sync');
+        Route::delete('/apps/{mobileApp:slug}/expo', [ExpoProjectController::class, 'destroy'])
+            ->middleware([
+                'abilities:apps:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.destroy');
+        Route::get('/apps/{mobileApp:slug}/expo/identifiers', [ExpoIdentifierController::class, 'index'])
+            ->middleware([
+                'abilities:identifiers:read,integrations:read',
+                'team.permission:view',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.identifiers.index');
+        Route::post('/apps/{mobileApp:slug}/expo/identifiers/sync', [ExpoIdentifierController::class, 'sync'])
+            ->middleware([
+                'abilities:identifiers:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.identifiers.sync');
+        Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/provision', [ExpoCredentialController::class, 'provision'])
+            ->middleware([
+                'abilities:identifiers:write,credentials:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_credentials',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.identifiers.provision');
+        Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/credentials/{credential}', [ExpoCredentialController::class, 'store'])
+            ->withoutScopedBindings()
+            ->middleware([
+                'abilities:credentials:write,integrations:write',
+                'team.permission:manage_credentials',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.credentials.store');
+
+        Route::get('/apps/{mobileApp:slug}/assets', [AppAssetController::class, 'files'])
+            ->middleware(['abilities:assets:read', 'team.permission:view'])
+            ->name('apps.assets.files.index');
+        Route::get('/apps/{mobileApp:slug}/assets/{asset}/files/{file}', [AppAssetController::class, 'download'])
+            ->middleware(['abilities:assets:read', 'team.permission:view'])
+            ->whereIn('asset', ['icon', 'splashscreen'])
+            ->name('apps.assets.files.show');
         Route::get('/apps/{mobileApp:slug}/assets/{asset}', [AppAssetController::class, 'show'])
             ->middleware(['abilities:assets:read', 'team.permission:view'])
             ->whereIn('asset', ['icon', 'splashscreen'])

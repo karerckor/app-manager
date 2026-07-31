@@ -57,7 +57,7 @@
 <svelte:head><title>API Keys · App Manager</title></svelte:head>
 
 <AppShell {auth} teams={navigationTeams} currentTeam={navigationTeam} active="api-keys">
-    <main class="mx-auto max-w-[1120px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
+    <main class="mx-auto max-w-[1240px] px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
         <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
             <div>
                 <p class="eyebrow mb-2">Workspace security</p>

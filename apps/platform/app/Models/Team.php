@@ -13,11 +13,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
+use Laravel\Cashier\Billable;
 
-#[Fillable(['name', 'slug', 'owner_id'])]
+#[Fillable(['name', 'slug', 'owner_id', 'check_credential_uniqueness_by_default'])]
 class Team extends Model
 {
-    use HasFactory, HasUuids;
+    use Billable, HasFactory, HasUuids;
 
     public function owner(): BelongsTo
     {
@@ -27,6 +28,11 @@ class Team extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withPivot('role')->withTimestamps();
+    }
+
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(TeamInvitation::class);
     }
 
     public function mobileApps(): HasMany
@@ -49,9 +55,19 @@ class Team extends Model
         return $this->hasMany(BuildRecord::class);
     }
 
+    public function billingUsageEvents(): HasMany
+    {
+        return $this->hasMany(BillingUsageEvent::class);
+    }
+
     public function integrations(): HasMany
     {
         return $this->hasMany(Integration::class);
+    }
+
+    public function expoProjects(): HasMany
+    {
+        return $this->hasMany(ExpoProject::class);
     }
 
     public function ciCdPipelines(): HasMany
@@ -108,11 +124,7 @@ class Team extends Model
      * by the Auditable trait, which only observes the model's own attribute changes.
      * Call this at every membership add/remove/role-change call site.
      *
-     * NOTE: there is no add/remove/role-change *management* flow in this app yet
-     * (`addUser()` is only exercised by tests); this helper is forward-looking and is
-     * currently wired into the two real membership-creation sites today:
-     * `TeamController@store` and `CreateNewUser@create` (self-registration). Pivot
-     * changes are not auto-audited, so this explicit call is required at every
+     * Pivot changes are not auto-audited, so this explicit call is required at every
      * membership add/remove/role-change site.
      */
     public function recordMembershipAudit(User $member, string $event, ?string $role): Audit
@@ -138,6 +150,19 @@ class Team extends Model
         return 'slug';
     }
 
+    public function stripeEmail(): ?string
+    {
+        return $this->owner?->email;
+    }
+
+    public function stripeMetadata(): ?array
+    {
+        return [
+            'team_id' => (string) $this->id,
+            'team_slug' => (string) $this->slug,
+        ];
+    }
+
     protected static function booted(): void
     {
         static::creating(function (Team $team) {
@@ -156,5 +181,13 @@ class Team extends Model
             $team->mobileApps->each->delete();
             $team->credentials->each->delete();
         });
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'trial_ends_at' => 'datetime',
+            'check_credential_uniqueness_by_default' => 'boolean',
+        ];
     }
 }

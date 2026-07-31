@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\BuildReportingMode;
-use App\Enums\IntegrationKind;
+use App\Enums\IntegrationProvider;
 use App\Enums\ProfileType;
 use DomainException;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -92,11 +92,11 @@ class CiCdPipeline extends Model
     protected static function booted(): void
     {
         static::saving(function (CiCdPipeline $pipeline) {
-            $integrationMatches = Integration::query()
+            $integration = Integration::query()
                 ->whereKey($pipeline->integration_id)
                 ->where('team_id', $pipeline->team_id)
-                ->where('kind', IntegrationKind::CiCd->value)
-                ->exists();
+                ->first();
+            $integrationMatches = $integration?->supportsCiCd() ?? false;
             $appMatches = MobileApp::query()
                 ->whereKey($pipeline->mobile_app_id)
                 ->where('team_id', $pipeline->team_id)
@@ -107,7 +107,15 @@ class CiCdPipeline extends Model
                     ->where('mobile_app_id', $pipeline->mobile_app_id)
                     ->exists();
 
-            if (! $integrationMatches || ! $appMatches || ! $identifierMatches) {
+            $expoProjectMatches = $integration?->provider !== IntegrationProvider::Expo
+                || ExpoProject::query()
+                    ->where('integration_id', $integration->id)
+                    ->where('mobile_app_id', $pipeline->mobile_app_id)
+                    ->where('external_id', $pipeline->repository_id)
+                    ->where('exists_on_expo', true)
+                    ->exists();
+
+            if (! $integrationMatches || ! $appMatches || ! $identifierMatches || ! $expoProjectMatches) {
                 throw new DomainException('Pipeline resources must belong to the same team and application.');
             }
         });

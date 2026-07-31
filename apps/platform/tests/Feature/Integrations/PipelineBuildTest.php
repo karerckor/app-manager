@@ -26,6 +26,7 @@ use App\Jobs\Integrations\DispatchCiCdRun;
 use App\Jobs\Integrations\ReconcileCiCdRun;
 use App\Jobs\Integrations\SyncCiCdRunLogs;
 use App\Models\AppIdentifier;
+use App\Models\Audit;
 use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
 use App\Models\CiCdRun;
@@ -70,6 +71,92 @@ class PipelineBuildTest extends TestCase
         $this->assertSame('production', $run->request_snapshot['inputs']['channel']);
         $this->assertFalse($run->request_snapshot['inputs']['dry_run']);
         Queue::assertPushed(DispatchCiCdRun::class, 1);
+    }
+
+    public function test_batch_start_supports_per_application_parameters(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        $secondApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $secondPipeline = CiCdPipeline::factory()->create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $secondApp->id,
+            'created_by_user_id' => $owner->id,
+            'input_schema' => $pipeline->input_schema,
+        ]);
+        $this->bindProvider($this->provider());
+        Queue::fake();
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.pipelines.batch.runs.store', [$team, $integration]), [
+                'runs' => [
+                    [
+                        'pipeline_id' => $pipeline->id,
+                        'request_uuid' => (string) Str::uuid(),
+                        'ref' => 'main',
+                        'inputs' => ['channel' => 'internal'],
+                    ],
+                    [
+                        'pipeline_id' => $secondPipeline->id,
+                        'request_uuid' => (string) Str::uuid(),
+                        'ref' => 'main',
+                        'inputs' => ['channel' => 'production'],
+                    ],
+                ],
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('status', '2 builds queued.');
+
+        $this->assertDatabaseCount('build_records', 2);
+        $this->assertDatabaseCount('ci_cd_runs', 2);
+        $firstRun = CiCdRun::query()->where('pipeline_id', $pipeline->id)->firstOrFail();
+        $secondRun = CiCdRun::query()->where('pipeline_id', $secondPipeline->id)->firstOrFail();
+        $this->assertSame('internal', $firstRun->request_snapshot['inputs']['channel']);
+        $this->assertSame('production', $secondRun->request_snapshot['inputs']['channel']);
+        $this->assertSame('main', $firstRun->request_snapshot['ref']);
+        $this->assertSame('main', $secondRun->request_snapshot['ref']);
+        Queue::assertPushed(DispatchCiCdRun::class, 2);
+    }
+
+    public function test_batch_start_rejects_a_pipeline_from_another_integration_without_partial_writes(): void
+    {
+        [$owner, $team, $integration, $pipeline] = $this->context();
+        $otherIntegration = Integration::create([
+            'team_id' => $team->id,
+            'kind' => IntegrationKind::CiCd,
+            'provider' => IntegrationProvider::GitHub,
+            'name' => 'GitHub other',
+            'status' => IntegrationStatus::Active,
+            'external_id' => '99',
+        ]);
+        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $foreignPipeline = CiCdPipeline::factory()->create([
+            'team_id' => $team->id,
+            'integration_id' => $otherIntegration->id,
+            'mobile_app_id' => $otherApp->id,
+            'created_by_user_id' => $owner->id,
+        ]);
+        $this->bindProvider($this->provider());
+        Queue::fake();
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.pipelines.batch.runs.store', [$team, $integration]), [
+                'runs' => [
+                    [
+                        'pipeline_id' => $pipeline->id,
+                        'request_uuid' => (string) Str::uuid(),
+                    ],
+                    [
+                        'pipeline_id' => $foreignPipeline->id,
+                        'request_uuid' => (string) Str::uuid(),
+                    ],
+                ],
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('build_records', 0);
+        $this->assertDatabaseCount('ci_cd_runs', 0);
+        Queue::assertNothingPushed();
     }
 
     public function test_dispatch_accepts_exact_provider_run_and_status_sync_is_idempotent(): void
@@ -174,6 +261,17 @@ class PipelineBuildTest extends TestCase
         $this->assertStringContainsString('demo build started', $run->refresh()->log_output);
         $this->assertStringContainsString('demo build started', $build->refresh()->log_output);
         $this->assertNotNull($run->logs_synced_at);
+
+        $audits = Audit::query()
+            ->where('auditable_type', BuildRecord::class)
+            ->where('auditable_id', $build->id)
+            ->where('event', 'updated')
+            ->get();
+
+        $this->assertCount(2, $audits);
+        $this->assertTrue($audits->every(
+            fn (Audit $audit) => $audit->user_id === $owner->id && $audit->source === 'ci_cd',
+        ));
     }
 
     public function test_empty_provider_logs_finish_log_synchronization(): void
@@ -357,6 +455,25 @@ class PipelineBuildTest extends TestCase
         $this->actingAs($contributor)
             ->post(route('accounts.integrations.pipelines.runs.store', [$team, $integration, $pipeline]), [
                 'request_uuid' => (string) Str::uuid(),
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('build_records', 0);
+    }
+
+    public function test_contributor_cannot_batch_start_pipelines(): void
+    {
+        [, $team, $integration, $pipeline] = $this->context();
+        $contributor = User::factory()->create();
+        $team->addUser($contributor, TeamRole::Contributor);
+        $this->bindProvider($this->provider());
+
+        $this->actingAs($contributor)
+            ->post(route('accounts.integrations.pipelines.batch.runs.store', [$team, $integration]), [
+                'runs' => [[
+                    'pipeline_id' => $pipeline->id,
+                    'request_uuid' => (string) Str::uuid(),
+                ]],
             ])
             ->assertForbidden();
 

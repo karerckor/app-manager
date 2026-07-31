@@ -8,6 +8,7 @@ use App\Enums\IntegrationStatus;
 use App\Enums\WebhookEventType;
 use App\Http\Controllers\Controller;
 use App\Integrations\Webhooks\WebhookEventRecorder;
+use App\Integrations\Webhooks\WebhookSubscriptionFilters;
 use App\Integrations\Webhooks\WebhookUrlGuard;
 use App\Models\Integration;
 use App\Models\Team;
@@ -31,7 +32,7 @@ class WebhookEndpointController extends Controller
     {
         $this->ensureEnabled();
         Gate::forUser($request->user())->authorize('manageIntegrations', $team);
-        $data = $request->validate($this->rules());
+        $data = $request->validate($this->rules($team));
         $secret = $this->newSecret();
 
         $endpoint = DB::transaction(function () use ($team, $request, $data, $secret) {
@@ -52,6 +53,7 @@ class WebhookEndpointController extends Controller
                 'secret' => $secret,
                 'secret_hint' => substr($secret, -4),
                 'subscribed_events' => array_values(array_unique($data['events'])),
+                'filters' => WebhookSubscriptionFilters::normalize($data['filters'] ?? []),
             ]);
 
             $integration->update(['external_id' => $endpoint->id]);
@@ -72,13 +74,16 @@ class WebhookEndpointController extends Controller
         $this->ensureEnabled();
         Gate::forUser($request->user())->authorize('manageIntegrations', $team);
         $this->authorizeEndpoint($team, $webhookEndpoint);
-        $data = $request->validate($this->rules(updating: true));
+        $data = $request->validate($this->rules($team, updating: true));
 
         DB::transaction(function () use ($webhookEndpoint, $request, $data) {
             $webhookEndpoint->update(array_filter([
                 'url' => $data['url'] ?? null,
                 'subscribed_events' => isset($data['events'])
                     ? array_values(array_unique($data['events']))
+                    : null,
+                'filters' => array_key_exists('filters', $data)
+                    ? WebhookSubscriptionFilters::normalize($data['filters'])
                     : null,
             ], fn ($value) => $value !== null));
 
@@ -163,17 +168,17 @@ class WebhookEndpointController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function rules(bool $updating = false): array
+    private function rules(Team $team, bool $updating = false): array
     {
         $required = $updating ? 'sometimes' : 'required';
 
-        return [
+        return array_merge([
             'name' => [$required, 'string', 'max:255'],
             'url' => [$required, 'string', 'max:2048', new PublicWebhookUrl($this->urlGuard)],
             'events' => [$required, 'array', 'min:1'],
             'events.*' => ['string', 'distinct', Rule::in(WebhookEventType::subscribableValues())],
             'enabled' => ['sometimes', 'boolean'],
-        ];
+        ], WebhookSubscriptionFilters::rules($team));
     }
 
     private function authorizeEndpoint(Team $team, WebhookEndpoint $endpoint): void

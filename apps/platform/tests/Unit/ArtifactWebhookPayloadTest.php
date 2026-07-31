@@ -23,7 +23,7 @@ class ArtifactWebhookPayloadTest extends TestCase
 
     public function test_payload_includes_file_and_build_context(): void
     {
-        Storage::fake(config('filesystems.default'));
+        Storage::fake(config('media-library.disk_name'));
         $build = BuildRecord::factory()->create();
         $artifact = Artifact::factory()->for($build)->create([
             'team_id' => $build->team_id,

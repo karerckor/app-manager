@@ -79,7 +79,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_apns_key_requires_apple_metadata_and_a_valid_private_key(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Ios);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [
@@ -105,7 +105,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_service_account_json_requires_identity_fields_and_a_valid_private_key(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Android);
 
         $invalid = json_encode([
@@ -143,7 +143,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_ios_certificate_is_verified_with_its_password(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Ios);
         $certificate = $this->pkcs12('correct-password');
 
@@ -170,7 +170,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_replacing_a_file_uses_the_credentials_existing_schema(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Android);
         $credential = Credential::factory()->create([
             'team_id' => $app->team_id,
@@ -188,7 +188,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_google_services_json_requires_firebase_client_structure(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Android);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [
@@ -215,7 +215,7 @@ class CredentialInputValidationTest extends TestCase
 
     public function test_google_service_info_plist_requires_firebase_keys(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Ios);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [

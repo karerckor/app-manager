@@ -45,7 +45,7 @@ class BuildCredentialProfileTest extends TestCase
 
     public function test_signing_credential_requires_a_build_target(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Android);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [
@@ -65,7 +65,7 @@ class BuildCredentialProfileTest extends TestCase
 
     public function test_build_target_must_match_the_identifier_platform(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Android);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [
@@ -86,7 +86,7 @@ class BuildCredentialProfileTest extends TestCase
 
     public function test_ios_provisioning_profile_is_assigned_to_the_selected_build_target(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $app, $identifier] = $this->application(Platform::Ios);
 
         $this->actingAs($user)->post($this->credentialStoreUrl($app), [

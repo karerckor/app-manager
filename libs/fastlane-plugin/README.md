@@ -1,18 +1,43 @@
 # fastlane-plugin-app_manager
 
-Composable Fastlane actions for downloading application assets, signing credentials, push-notification keys and store-submission credentials from App Manager.
+`fastlane-plugin-app_manager` connects Fastlane lanes to the App Manager API. It provides composable actions for application metadata, assets, mobile signing credentials, store credentials, manual build reporting, build logs, and artifact uploads.
 
-The plugin targets the Platform API v1 served by `apps/platform` (locally: `http://localhost:8000`). Every download action writes to the exact `output_path` selected by the caller, so actions can be combined with native, Flutter, React Native or other mobile build pipelines.
+The plugin does not own the build itself. Every download action writes to the exact `output_path` selected by the caller, so the result can be combined with native Xcode/Gradle lanes, Flutter, React Native, Expo, or a custom pipeline.
+
+The plugin targets API v1 served by `apps/platform` (locally, `http://localhost:8000`). It is currently a pre-1.0 monorepo package: pin the source revision used by CI and expect the action contract to evolve with the API.
+
+## Requirements
+
+- Ruby 3.1 or later;
+- Fastlane 2.220 or later, but earlier than Fastlane 3;
+- an accessible App Manager instance;
+- a team API key with the scopes needed by the selected actions;
+- platform build tooling such as Xcode or the Android SDK only when the rest of the lane requires it.
 
 ## Installation
 
-Add the plugin to a mobile project's `fastlane/Pluginfile`. During monorepo development, point Bundler at this directory:
+The repository currently consumes the plugin as a local Bundler dependency. Add it to a mobile project's `Gemfile` or `fastlane/Pluginfile`:
 
 ```ruby
 gem "fastlane-plugin-app_manager", path: "../libs/fastlane-plugin"
 ```
 
-Adjust the relative path when the mobile project is not at the monorepo root.
+Adjust the relative path for the consuming project, then install and verify it:
+
+```bash
+bundle install
+bundle exec fastlane action app_manager_configure
+```
+
+For a source checkout outside this monorepo, pin the App Manager repository to a commit in your dependency workflow rather than following `main`. The gem has not yet established a public release and compatibility policy.
+
+To build the package manually:
+
+```bash
+cd libs/fastlane-plugin
+bundle install
+gem build fastlane-plugin-app_manager.gemspec
+```
 
 ## Configuration
 
@@ -40,6 +65,23 @@ APP_MANAGER_APP=customer-app
 
 `APP_MANAGER_BASE_URL` defaults to `http://localhost:8000`. The API key is marked as a sensitive Fastlane option and is never printed by the plugin.
 
+Explicit `app_manager_configure` arguments take effect for the current Fastlane process. If that action is not called, the client reads the four environment variables when the first App Manager action runs. Configure one app per lane execution; calling the action again replaces the in-process configuration.
+
+For non-local use, always use an HTTPS base URL. The HTTP client uses a 10-second connection timeout and a 60-second response timeout. It does not currently retry requests, so retry the complete idempotent lane step at the CI layer when transient network handling is required.
+
+### Required API scopes
+
+| Operation | Minimum scopes |
+| --- | --- |
+| `app_manager_app_info` | `apps:read`, `identifiers:read` |
+| Icon or splash-screen download | `assets:read` |
+| Any credential download | `credentials:read`; also `identifiers:read` when `app_identifier` is omitted |
+| Create/start/finish a manual build | `builds:write` |
+| Append a build log | `logs:write` |
+| Upload a build artifact | `artifacts:write` |
+
+App Manager also evaluates the team permissions associated with the API key creator. A scope does not grant access that the creator's team role does not have.
+
 ## Actions
 
 | Action | API resource | Platforms |
@@ -59,6 +101,23 @@ APP_MANAGER_APP=customer-app
 | `app_manager_build_log` | Append plain-text build output | iOS, Android |
 | `app_manager_build_finish` | Finish as `completed`, `failed`, or `cancelled` | iOS, Android |
 | `app_manager_add_artifact` | Upload and attach a build artifact | iOS, Android |
+
+### Action option reference
+
+| Action group | Required options | Optional options and defaults | Return value |
+| --- | --- | --- | --- |
+| `app_manager_configure` | Configuration must resolve `api_key`, `team`, and `app` | `base_url` defaults to `http://localhost:8000` | `true` |
+| `app_manager_app_info` | None | None | Normalized app/identifier hash |
+| Icon and splash-screen actions | `output_path` | `overwrite: true` | Absolute output path |
+| Signing credential actions | `profile_type`, `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
+| Service credential actions | `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
+| `app_manager_create_build` | `profile_type` | `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
+| `app_manager_build_start` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Updated build resource |
+| `app_manager_build_log` | `message` and a resolved build ID | `newline: true`, optional `build_id` | Build-log metadata |
+| `app_manager_build_finish` | A resolved build ID | `status: "completed"`; also accepts `failed`, `cancelled` | Updated build resource |
+| `app_manager_add_artifact` | `file` and a resolved build ID | `name` defaults to basename, `metadata: {}`, optional `build_id` | Artifact API resource |
+
+`app_manager_create_build` currently sends the API build `context` field but does not expose the API's separate `parameters` field. Use a pre-created build ID or the generic API/CLI when immutable user-supplied build parameters are required.
 
 All download actions require:
 
@@ -82,6 +141,7 @@ If more than one credential matches, the action stops and lists the candidates. 
 info = app_manager_app_info
 
 info[:name] # "Customer App"
+info[:metadata] # { "owner" => "mobile-team", "channel" => "production" }
 info[:app_identifiers]
 # [
 #   { platform: :ios, identifier: "com.example.customer", default: true, ... },
@@ -287,6 +347,14 @@ jobs:
 
 Each log request accepts a plain-text chunk up to 256 KiB; a build keeps up to 5 MB. Automatic pipelines continue to read status and logs directly from their CI provider and reject manual lifecycle writes.
 
+Build-reporting actions resolve the build ID in this order:
+
+1. the action's explicit `build_id` option;
+2. `APP_MANAGER_BUILD_ID` in Fastlane lane context, set by `app_manager_create_build`;
+3. the `APP_MANAGER_BUILD_ID` environment variable injected by CI.
+
+This allows one lane to create a standalone manual build, while the same lane can consume a build that App Manager created before dispatching a provider pipeline.
+
 ## Return values and file handling
 
 Asset actions return an absolute destination path. Credential actions return:
@@ -306,6 +374,41 @@ Asset actions return an absolute destination path. Credential actions return:
 
 Parent directories are created automatically. Downloads are written through a temporary file and renamed into place. Asset files use mode `0644`; credentials and private keys use mode `0600`.
 
+The API key is sent only in the HTTPS `Authorization` header and is marked sensitive in Fastlane configuration. Credential payloads are returned to the lane because signing tools need them; do not print the result hash or include it in build metadata. Keep download paths out of source control and remove ephemeral signing files when the runner is not disposable.
+
+## Error behavior and troubleshooting
+
+Actions stop the lane with a Fastlane user error when configuration is missing, a URL is invalid, the API cannot be reached, an HTTP response is unsuccessful, or a response has an unexpected shape.
+
+Common failures:
+
+| Symptom | Likely cause |
+| --- | --- |
+| `401` | Missing, invalid, or revoked API key |
+| `403` | The key lacks a required scope, or its creator lacks the team permission |
+| `404` | Wrong team/app slug, cross-team resource, or missing asset/credential file |
+| `409` during status/log updates | The build is automatic or already has a conflicting terminal state |
+| `422` | Invalid build profile, payload, state, or artifact metadata |
+| `Multiple App Manager credentials match` | Add `credential_id` or a unique `credential_name` |
+| No platform identifier | Create an identifier or pass the correct `app_identifier` |
+| Refusing to overwrite a path | Set `overwrite: true` or choose a fresh destination |
+
+Use Fastlane's generated action help to inspect options from the installed version:
+
+```bash
+bundle exec fastlane action app_manager_download_android_keystore
+bundle exec fastlane action app_manager_create_build
+```
+
+## Current boundaries
+
+- The plugin talks to one configured team and app at a time.
+- It downloads files and reports builds, but deliberately leaves compilation, signing-tool invocation, and store upload to normal Fastlane actions.
+- HTTP requests use fixed connection/read timeouts and no built-in retries.
+- Log actions send one message per request; use [`appmctl`](../cli/README.md) when a command's live stdout/stderr needs to be chunked and streamed automatically.
+- The Firebase action downloads the server-side Firebase HTTP v1 service account. The separate Android/iOS client configuration files are currently available through the API and demo preparation flow, not dedicated plugin actions.
+- There is no stable public gem release contract yet.
+
 ## Development
 
 ```bash
@@ -313,3 +416,5 @@ bundle install
 bundle exec rspec
 gem build fastlane-plugin-app_manager.gemspec
 ```
+
+The tests cover URL normalization and validation, API errors, credential selection, file modes and overwrite behavior, app metadata normalization, build lifecycle actions, log reporting, and artifact upload behavior. Keep the gem version, API contract, action documentation, and demo Fastfile aligned when adding an action.

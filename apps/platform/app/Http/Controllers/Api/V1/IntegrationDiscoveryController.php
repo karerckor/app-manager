@@ -46,6 +46,11 @@ class IntegrationDiscoveryController extends Controller
 
     private function assertDispatchable(Team $team, Integration $integration): void
     {
-        abort_unless($integration->team_id === $team->id && $integration->status->canDispatch(), 404);
+        abort_unless(
+            $integration->team_id === $team->id
+            && $integration->supportsCiCd()
+            && $integration->status->canDispatch(),
+            404,
+        );
     }
 }

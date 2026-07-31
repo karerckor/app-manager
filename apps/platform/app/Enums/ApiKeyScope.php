@@ -19,6 +19,8 @@ enum ApiKeyScope: string
     case ArtifactsRead = 'artifacts:read';
     case ArtifactsWrite = 'artifacts:write';
     case IntegrationsRead = 'integrations:read';
+    case IntegrationsWrite = 'integrations:write';
+    case IntegrationsProxy = 'integrations:proxy';
     case PipelinesRead = 'pipelines:read';
     case PipelinesWrite = 'pipelines:write';
     case PipelinesRun = 'pipelines:run';
@@ -73,7 +75,7 @@ enum ApiKeyScope: string
             self::BuildsWrite, self::LogsWrite,
             self::ArtifactsWrite => TeamPermission::ManageApplications,
             self::CredentialsWrite => TeamPermission::ManageCredentials,
-            self::IntegrationsRead,
+            self::IntegrationsRead, self::IntegrationsWrite, self::IntegrationsProxy,
             self::PipelinesRead, self::PipelinesWrite,
             self::WebhooksRead, self::WebhooksWrite,
             self::DeliveriesRead => TeamPermission::ManageIntegrations,
@@ -108,7 +110,12 @@ enum ApiKeyScope: string
 
     public function actionLabel(): string
     {
-        return str_ends_with($this->value, ':read') ? 'Read' : 'Write';
+        return match (true) {
+            str_ends_with($this->value, ':read') => 'Read',
+            str_ends_with($this->value, ':run') => 'Run',
+            str_ends_with($this->value, ':proxy') => 'Proxy',
+            default => 'Write',
+        };
     }
 
     public function description(): string
@@ -128,7 +135,9 @@ enum ApiKeyScope: string
             self::LogsWrite => 'Append build log entries.',
             self::ArtifactsRead => 'View and download build artifacts.',
             self::ArtifactsWrite => 'Upload and delete build artifacts.',
-            self::IntegrationsRead => 'List integrations and discover repositories, workflows and refs.',
+            self::IntegrationsRead => 'List integrations and discover provider resources.',
+            self::IntegrationsWrite => 'Connect, sync and disconnect integrations or perform provider mutations.',
+            self::IntegrationsProxy => 'Forward arbitrary authenticated provider requests, including access to remote secrets and mutations.',
             self::PipelinesRead => 'View pipeline configurations and their inputs.',
             self::PipelinesWrite => 'Create, update and delete pipeline configurations.',
             self::PipelinesRun => 'Dispatch and cancel automated builds.',

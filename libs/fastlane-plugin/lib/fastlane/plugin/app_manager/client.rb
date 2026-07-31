@@ -51,6 +51,7 @@ module Fastlane
           slug: app["slug"],
           name: required_response_value(app, "name", "app"),
           description: app["description"],
+          metadata: app["metadata"],
           assets: app["assets"] || {},
           app_identifiers: normalized_identifiers,
           default_app_identifiers: defaults,

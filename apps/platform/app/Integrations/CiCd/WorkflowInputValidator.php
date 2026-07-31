@@ -13,13 +13,13 @@ class WorkflowInputValidator
     public function validate(array $schema, array $inputs, bool $requireRequired = false): void
     {
         if (count($inputs) > 25 || strlen(json_encode($inputs, JSON_THROW_ON_ERROR)) > 65535) {
-            throw ValidationException::withMessages(['inputs' => 'Workflow inputs exceed GitHub limits.']);
+            throw ValidationException::withMessages(['inputs' => 'Pipeline inputs exceed the supported limits.']);
         }
 
         if ($requireRequired) {
             foreach ($schema as $name => $definition) {
                 if (($definition['required'] ?? false) && ! array_key_exists($name, $inputs)) {
-                    throw ValidationException::withMessages(["inputs.{$name}" => 'This GitHub workflow input is required.']);
+                    throw ValidationException::withMessages(["inputs.{$name}" => 'This pipeline input is required.']);
                 }
             }
         }
@@ -35,11 +35,18 @@ class WorkflowInputValidator
 
             $definition = $schema[$name];
             $valid = match ($definition['type'] ?? 'string') {
+                'array' => is_array($value),
                 'boolean' => is_bool($value),
                 'number' => is_int($value) || is_float($value),
                 'choice' => in_array($value, $definition['options'] ?? [], true),
                 default => is_string($value),
             };
+
+            if ($valid && ($definition['options'] ?? []) !== []) {
+                $valid = is_array($value)
+                    ? collect($value)->every(fn ($item) => in_array($item, $definition['options'], true))
+                    : in_array($value, $definition['options'], true);
+            }
 
             if (! $valid) {
                 throw ValidationException::withMessages(["inputs.{$name}" => 'Input value does not match the CI workflow type.']);

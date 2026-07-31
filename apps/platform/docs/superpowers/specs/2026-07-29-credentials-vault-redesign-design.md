@@ -50,7 +50,15 @@ This is one page inside an existing product, so the palette comes from `app.css`
 | `rose` | `#e11d48` / `#be123c` | expired, destructive |
 | `slate-400` | `#94a3b8` | the machine/meta layer |
 
-**One substantive change: emerald leaves the rows.** Color is reserved for what needs action. A credential with 284 days of runway gets no pill and no "Valid" label. The first color to appear on the page is the amber of a credential with 12 days left. Emerald survives in exactly one place: the "Encrypted at rest" badge in the table header, which is a property of the vault, not of a row.
+**One substantive change: emerald stops signalling status.** Colour that signals *state* is reserved for what needs action. A credential with 284 days of runway gets no pill and no "Valid" label. The first status colour to appear on the page is the amber of a credential with 12 days left.
+
+Three things are deliberately **not** covered by that rule, because none of them signals state:
+
+- the "Encrypted at rest" badge, which is a property of the vault rather than of any row
+- **the emerald-tinted Android platform mark.** It sits in the leftmost column at the 50 tint, while status lives in the right-hand Validity column at the 500 tint — a full-width `rose-500` flood or an `amber-500` stub. They neither compete for attention nor occupy the same space, and the mark answers "which platform", never "is this healthy".
+- **user-chosen tag colours.** `TagEditor` lets people pick from a palette that includes emerald; a tag reading "Secret synced from Expo" in green is the user's data, not our signal.
+
+The first draft of this rule said simply "emerald leaves the rows", which read as absolute and collided with the platform mark. The rule was always about status pills claiming "Valid"; it is narrowed here to say what it meant.
 
 ### Typography — two voices
 
@@ -218,7 +226,14 @@ Clicking the credential name expands a full-width region below the row containin
 - Secure field names, and `Show passwords` when `reveal_url` is present
 - `Updated {relative time}`
 
-Revealed secrets render inside this region, keeping the existing flow: password confirmation modal → `POST reveal_url` → 60-second auto-hide → copy buttons. Only the styling changes. The inline delete confirmation also lands here, restyled.
+Revealed secrets render inside this region, keeping the existing flow: password confirmation modal → `POST reveal_url` → 60-second auto-hide → copy buttons. Only the styling changes.
+
+Two consequences of nesting the reveal panel inside a collapsible region, both of which must be handled:
+
+- **Revealing opens the row.** Otherwise a user could confirm their password and have the secrets render into a collapsed row, seeing nothing.
+- **Collapsing the row hides the secrets.** Collapsing reads as "put this away", so it must clear the revealed state rather than merely hiding it from view — otherwise re-expanding within the 60-second window re-displays the secret with no further confirmation. The explicit "Hide" button stays, for hiding without collapsing.
+
+The delete confirmation stays **outside** this region, as a direct child of the row: a credential must be deletable without opening it.
 
 ### Empty states
 

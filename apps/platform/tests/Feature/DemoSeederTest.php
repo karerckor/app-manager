@@ -22,7 +22,7 @@ class DemoSeederTest extends TestCase
 
     public function test_it_seeds_the_demo_account_graph(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
 
         $this->seed(DemoSeeder::class);
 
@@ -137,6 +137,17 @@ class DemoSeederTest extends TestCase
         $this->assertSame('service_account', $googlePlayJson['type']);
         $this->assertArrayHasKey('private_key', $googlePlayJson);
 
+        // Firebase HTTP v1 uses a distinct EAS credential slot from Google Play submissions.
+        $firebaseHttpV1 = Credential::where('name', 'Firebase HTTP v1 Service Account')->firstOrFail();
+        $this->assertSame(CredentialType::FirebaseConfig, $firebaseHttpV1->type);
+        $this->assertTrue($androidIdentifier->credentials()->whereKey($firebaseHttpV1->id)->exists());
+        $firebaseHttpV1Json = json_decode(
+            file_get_contents($firebaseHttpV1->getFirstMedia('file')->getPath()),
+            true,
+        );
+        $this->assertSame('service_account', $firebaseHttpV1Json['type']);
+        $this->assertArrayHasKey('private_key', $firebaseHttpV1Json);
+
         // App Store Connect API key, attached directly to the iOS identifier.
         $appleKey = Credential::where('name', 'App Store Connect API Key')->firstOrFail();
         $this->assertSame(CredentialType::AppleApiKey, $appleKey->type);
@@ -163,7 +174,7 @@ class DemoSeederTest extends TestCase
 
     public function test_it_is_idempotent(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
 
         $this->seed(DemoSeeder::class);
         $this->seed(DemoSeeder::class);
@@ -174,19 +185,20 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertSame(1, Credential::where('name', 'Google Play Service Account')->count());
+        $this->assertSame(1, Credential::where('name', 'Firebase HTTP v1 Service Account')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Connect API Key')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase google-services.json')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase GoogleService-Info.plist')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
         $this->assertDatabaseCount('app_identifiers', 2);
         $this->assertDatabaseCount('profiles', 2);
-        $this->assertDatabaseCount('credentialables', 7);
-        $this->assertDatabaseCount('media', 9);
+        $this->assertDatabaseCount('credentialables', 8);
+        $this->assertDatabaseCount('media', 10);
     }
 
     public function test_database_seeder_is_idempotent(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
 
         $this->seed(DatabaseSeeder::class);
         $this->seed(DatabaseSeeder::class);
@@ -197,6 +209,6 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 9);
+        $this->assertDatabaseCount('media', 10);
     }
 }

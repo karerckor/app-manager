@@ -47,8 +47,14 @@ class PlatformApiTest extends TestCase
         $created = $this->postJson("/api/v1/{$team->slug}/apps", [
             'name' => 'Customer App',
             'description' => 'Public mobile client',
+            'metadata' => [
+                'owner' => 'mobile-team',
+                'release' => ['channel' => 'production'],
+            ],
         ])->assertCreated()
             ->assertJsonPath('data.slug', 'customer-app')
+            ->assertJsonPath('data.metadata.owner', 'mobile-team')
+            ->assertJsonPath('data.metadata.release.channel', 'production')
             ->assertJsonPath('data.assets.icon', null);
 
         $appId = $created->json('data.id');
@@ -60,8 +66,18 @@ class PlatformApiTest extends TestCase
         $this->patchJson("/api/v1/{$team->slug}/apps/customer-app", [
             'name' => 'Customer App 2',
             'slug' => 'customer-app-2',
+            'metadata' => ['owner' => 'release-team'],
         ])->assertOk()
-            ->assertJsonPath('data.name', 'Customer App 2');
+            ->assertJsonPath('data.name', 'Customer App 2')
+            ->assertJsonPath('data.metadata.owner', 'release-team');
+
+        $this->getJson("/api/v1/{$team->slug}/apps/customer-app-2")
+            ->assertOk()
+            ->assertJsonPath('data.metadata.owner', 'release-team');
+
+        $this->getJson("/api/v1/{$team->slug}/apps")
+            ->assertOk()
+            ->assertJsonPath('data.0.metadata.owner', 'release-team');
 
         $this->getJson("/api/v1/{$team->slug}/apps/{$foreignApp->slug}")
             ->assertNotFound();
@@ -69,6 +85,28 @@ class PlatformApiTest extends TestCase
         $this->deleteJson("/api/v1/{$team->slug}/apps/customer-app-2")
             ->assertNoContent();
         $this->assertDatabaseMissing('mobile_apps', ['id' => $appId]);
+    }
+
+    public function test_mobile_app_metadata_must_be_a_json_object_and_can_be_cleared(): void
+    {
+        [$user, $team] = $this->teamMember();
+        $app = MobileApp::factory()->create([
+            'team_id' => $team->id,
+            'metadata' => ['owner' => 'mobile-team'],
+        ]);
+        $this->authenticate($user, $team);
+
+        $this->patchJson("/api/v1/{$team->slug}/apps/{$app->slug}", [
+            'metadata' => 'not-an-object',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('metadata');
+
+        $this->patchJson("/api/v1/{$team->slug}/apps/{$app->slug}", [
+            'metadata' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.metadata', null);
+
+        $this->assertNull($app->fresh()->metadata);
     }
 
     public function test_identifiers_can_be_managed_but_not_cross_scoped_between_apps(): void
@@ -129,9 +167,31 @@ class PlatformApiTest extends TestCase
             ->assertJsonValidationErrors('version_code');
     }
 
+    public function test_web_identifier_uses_a_normalized_domain(): void
+    {
+        [$user, $team] = $this->teamMember();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->authenticate($user, $team);
+        $url = "/api/v1/{$team->slug}/apps/{$app->slug}/identifiers";
+
+        $created = $this->postJson($url, [
+            'platform' => Platform::Web->value,
+            'identifier' => 'Shop.Example.COM',
+            'name' => 'Web shop',
+        ])->assertCreated()
+            ->assertJsonPath('data.platform', Platform::Web->value)
+            ->assertJsonPath('data.identifier', 'shop.example.com')
+            ->assertJsonPath('data.version_code', null);
+
+        $this->patchJson("{$url}/{$created->json('data.id')}", [
+            'identifier' => 'https://shop.example.com',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('identifier');
+    }
+
     public function test_icon_and_splashscreen_can_be_uploaded_read_and_deleted(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $this->authenticate($user, $team);
@@ -154,7 +214,7 @@ class PlatformApiTest extends TestCase
 
     public function test_credentials_can_be_managed_with_encrypted_payload_and_file(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $identifier = AppIdentifier::factory()->create([
@@ -223,7 +283,7 @@ class PlatformApiTest extends TestCase
 
     public function test_identifier_scoped_credential_is_listed_with_identifier_and_file(): void
     {
-        Storage::fake('public');
+        Storage::fake(config('media-library.disk_name'));
         [$user, $team] = $this->teamMember();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $identifier = AppIdentifier::factory()->create([

@@ -21,6 +21,7 @@ class WebhookEndpointFactory extends Factory
             'secret' => $secret,
             'secret_hint' => substr($secret, -4),
             'subscribed_events' => [WebhookEventType::subscribableValues()[0] ?? 'mobile_app.created'],
+            'filters' => [],
             'consecutive_failures' => 0,
         ];
     }

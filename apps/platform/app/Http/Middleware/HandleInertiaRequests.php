@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Enums\TeamPermission;
 use App\Models\Team;
+use App\Support\Installation\SelfHostedConfiguration;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -17,11 +18,17 @@ class HandleInertiaRequests extends Middleware
         $routeTeam = $request->route('team');
         $navigationTeam = $routeTeam instanceof Team ? $routeTeam : $user?->currentTeam;
         $teamRole = $user && $navigationTeam ? $navigationTeam->roleFor($user) : null;
+        $selfHostedConfiguration = app(SelfHostedConfiguration::class);
 
         return [
             ...parent::share($request),
             'auth' => [
                 'user' => $user?->only('id', 'name', 'email', 'current_team_id'),
+                'billing' => [
+                    'enabled' => (bool) config('billing.enabled'),
+                ],
+                'registration_enabled' => ! $selfHostedConfiguration->enabled()
+                    || ! $selfHostedConfiguration->installed(),
                 'team' => $navigationTeam && $teamRole ? [
                     'id' => $navigationTeam->id,
                     'role' => $teamRole->value,

@@ -10,10 +10,11 @@ use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BuildArtifactController extends Controller
 {
@@ -69,14 +70,14 @@ class BuildArtifactController extends Controller
         return back()->with('status', 'Artifact deleted.');
     }
 
-    public function download(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): BinaryFileResponse
+    public function download(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): StreamedResponse
     {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
         $this->assertBuildBelongs($team, $mobileApp, $buildRecord);
         $media = $buildRecord->artifacts()->whereKey($artifact)->firstOrFail()->getFirstMedia('file');
         abort_unless($media, 404);
 
-        return response()->download($media->getPath(), $media->file_name);
+        return MediaFileResponse::download($media);
     }
 
     private function assertBuildBelongs(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): void
