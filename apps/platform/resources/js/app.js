@@ -4,5 +4,5 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 
 createInertiaApp({
     resolve: (name) => resolvePageComponent(`./Pages/${name}.svelte`, import.meta.glob('./Pages/**/*.svelte')),
-    progress: { color: '#a78bfa' },
+    progress: { color: '#14508C' },
 });
