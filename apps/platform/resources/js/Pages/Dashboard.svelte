@@ -68,12 +68,12 @@
 <svelte:head><title>Applications · App Manager</title></svelte:head>
 
 <WorkspacePage {auth} {navigationTeams} {navigationTeam} active="apps" eyebrow="Workspace catalog" title="Applications" {flash}>
-    <svelte:fragment slot="actions">
+    {#snippet actions()}
         <button class="flex items-center gap-2" on:click={() => showCreate = true}>
             <Plus class="h-4 w-4" strokeWidth={2.2} />
             New application
         </button>
-    </svelte:fragment>
+    {/snippet}
 
         <div class="mb-4">
             <TabSelector

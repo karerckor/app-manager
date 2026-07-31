@@ -282,7 +282,7 @@
 <svelte:window on:keydown={onWindowKeydown} />
 
 <WorkspacePage {auth} {navigationTeams} {navigationTeam} active="credentials" eyebrow="Workspace security" title="Credentials Vault" {flash}>
-    <svelte:fragment slot="actions">
+    {#snippet actions()}
             {#if canManage}
                 <button class="flex items-center gap-2" disabled={!hasConfiguredApps} title={hasConfiguredApps ? 'Add credential' : 'Create an application identifier first'} on:click={openCreate}>
                     <Plus class="h-4 w-4" strokeWidth={2.2} />
@@ -291,7 +291,7 @@
             {:else}
                 <span class="text-xs font-semibold text-slate-500">Read-only access</span>
             {/if}
-    </svelte:fragment>
+    {/snippet}
 
         <div class="mb-4">
             <TabSelector

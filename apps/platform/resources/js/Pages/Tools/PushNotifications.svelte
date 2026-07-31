@@ -237,15 +237,15 @@
 <svelte:head><title>Push Notifications · App Manager</title></svelte:head>
 
 <WorkspacePage {auth} {navigationTeams} {navigationTeam} active="push-notifications" title="Push Notifications">
-    <svelte:fragment slot="breadcrumbs">
+    {#snippet breadcrumbs()}
         <nav class="mb-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
             <span class="text-slate-400">Tools</span>
             <span class="text-slate-300">/</span>
             <span class="text-slate-600">Push Notifications</span>
         </nav>
-    </svelte:fragment>
+    {/snippet}
 
-    <svelte:fragment slot="heading">
+    {#snippet heading()}
         <div class="flex items-center gap-2">
             <h1 class="truncate text-2xl font-extrabold tracking-tight text-slate-950">Push Notifications</h1>
             <span class="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
@@ -253,7 +253,7 @@
             </span>
         </div>
         <p class="mt-1.5 text-xs text-slate-500 max-w-2xl">Send debug notifications through Expo Push Service or Firebase Cloud Messaging HTTP v1 and inspect each provider response.</p>
-    </svelte:fragment>
+    {/snippet}
 
         {#if !canSend}
             <div class="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
