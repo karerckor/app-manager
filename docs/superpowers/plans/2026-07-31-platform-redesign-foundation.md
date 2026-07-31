@@ -622,13 +622,19 @@ test('flags raw palette classes across every prefix and utility', () => {
 });
 
 test('flags radii outside the three-step scale', () => {
-    const found = findViolations('<div class="rounded-md rounded-2xl rounded-3xl rounded-lg rounded-xl">', 'c.svelte');
-    assert.equal(found.length, 5);
+    const found = findViolations('<div class="rounded-2xl rounded-3xl rounded-lg rounded-xl">', 'c.svelte');
+    assert.equal(found.length, 4);
     for (const violation of found) assert.equal(violation.rule, 'off-scale-radius');
 });
 
 test('allows the three permitted radii', () => {
-    assert.deepEqual(findViolations('<div class="rounded-sm rounded-md-not rounded-full">', 'd.svelte'), []);
+    assert.deepEqual(findViolations('<div class="rounded-sm rounded-md rounded-full">', 'd.svelte'), []);
+});
+
+test('flags an off-scale step behind a directional infix', () => {
+    const found = findViolations('<div class="rounded-t-lg rounded-b-sm">', 'g.svelte');
+    assert.equal(found.length, 1);
+    assert.equal(found[0].match, 'rounded-t-lg');
 });
 
 test('allows semantic tokens and named type steps', () => {
@@ -664,6 +670,7 @@ import { join, relative } from 'node:path';
 
 const RAW_PALETTES = ['slate', 'gray', 'zinc', 'neutral', 'stone', 'indigo', 'violet', 'purple', 'rose', 'red', 'emerald', 'green', 'teal', 'amber', 'yellow', 'orange', 'blue', 'sky', 'cyan'];
 const UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'divide', 'from', 'via', 'to', 'outline', 'shadow', 'accent', 'fill', 'stroke', 'decoration', 'placeholder', 'caret'];
+const RADIUS_STEPS = new Set(['none', 'xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', 'full']);
 const ALLOWED_RADII = new Set(['sm', 'md', 'full', 'none']);
 
 const RULES = [
@@ -683,7 +690,14 @@ const RULES = [
         hint: 'radius is three steps: rounded-sm (controls), rounded-md (containers), rounded-full (avatars and dots)',
         reject: (match) => {
             const suffix = match.replace(/^rounded-?/, '');
-            return suffix !== '' && !ALLOWED_RADII.has(suffix);
+            if (suffix === '') return false;
+            // The pattern also swallows a trailing directional infix (the "t" in
+            // "rounded-t-lg") or trailing noise. The size step is always the last
+            // dash-separated segment, and only a real Tailwind radius keyword that
+            // is not one of the permitted three counts as a violation — otherwise
+            // any hyphenated class beginning "rounded" becomes a false positive.
+            const step = suffix.split('-').pop();
+            return RADIUS_STEPS.has(step) && !ALLOWED_RADII.has(step);
         },
     },
 ];
