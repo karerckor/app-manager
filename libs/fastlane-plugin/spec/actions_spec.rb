@@ -419,4 +419,60 @@ RSpec.describe "App Manager actions" do
     expect(credential_keys).not_to include(:app)
     expect(asset_keys).not_to include(:app)
   end
+
+  it "lists app files and exposes them through lane context" do
+    files = [{ "name" => "release-notes.pdf" }]
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:list_files).and_return(files)
+
+    result = Fastlane::Actions::AppManagerListFilesAction.run({})
+
+    expect(result).to eq(files)
+    expect(
+      Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_FILES]
+    ).to eq(files)
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_FILES] = nil
+  end
+
+  it "uploads an app file with metadata" do
+    file = { "name" => "release-notes.pdf" }
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:upload_file).and_return(file)
+
+    result = Fastlane::Actions::AppManagerUploadFileAction.run(
+      file_path: "/tmp/release-notes.pdf",
+      metadata: { "channel" => "beta" }
+    )
+
+    expect(result).to eq(file)
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:upload_file).with(
+      file_path: "/tmp/release-notes.pdf",
+      metadata: { "channel" => "beta" }
+    )
+  end
+
+  it "downloads an app file to the requested path" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:download_file).and_return("/tmp/notes.pdf")
+
+    result = Fastlane::Actions::AppManagerDownloadFileAction.run(
+      name: "release-notes.pdf",
+      output_path: "/tmp/notes.pdf",
+      overwrite: true
+    )
+
+    expect(result).to eq("/tmp/notes.pdf")
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:download_file).with(
+      name: "release-notes.pdf",
+      output_path: "/tmp/notes.pdf",
+      overwrite: true
+    )
+  end
+
+  it "deletes an app file by name" do
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:delete_file).and_return(true)
+
+    expect(Fastlane::Actions::AppManagerDeleteFileAction.run(name: "release-notes.pdf")).to be(true)
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:delete_file).with(
+      name: "release-notes.pdf"
+    )
+  end
 end

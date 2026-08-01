@@ -100,6 +100,30 @@ module Fastlane
           UI.user_error!(e.message)
         end
 
+        def list_files
+          client.list_files
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def upload_file(**options)
+          client.upload_file(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def download_file(**options)
+          client.download_file(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
+        def delete_file(**options)
+          client.delete_file(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
         def client
           Fastlane::AppManager::Client.new
         end

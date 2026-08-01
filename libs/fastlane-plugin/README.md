@@ -123,6 +123,8 @@ app_manager_configure(
 | `app_manager_list_credentials` | `credentials:read` |
 | `app_manager_list_identifiers` | `identifiers:read` |
 | `app_manager_download_artifact` | `artifacts:read` |
+| `app_manager_list_files`, `app_manager_download_file` | `files:read` |
+| `app_manager_upload_file`, `app_manager_delete_file` | `files:write` |
 | Icon or splash-screen download | `assets:read` |
 | Any credential download | `credentials:read`; also `identifiers:read` when `app_identifier` is omitted |
 | Create/start/finish a manual build | `builds:write` |
@@ -149,6 +151,10 @@ App Manager also evaluates the team permissions associated with the API key crea
 | `app_manager_download_google_play_service_account` | Google Play service-account JSON | Android |
 | `app_manager_download_apple_api_key` | App Store Connect API key (`.p8`) | iOS |
 | `app_manager_download_artifact` | Download a build artifact | iOS, Android |
+| `app_manager_list_files` | List files attached to the app | iOS, Android |
+| `app_manager_upload_file` | Attach a file to the app | iOS, Android |
+| `app_manager_download_file` | Download a file attached to the app | iOS, Android |
+| `app_manager_delete_file` | Delete a file attached to the app | iOS, Android |
 | `app_manager_list_credentials` | List all credentials for the app | iOS, Android |
 | `app_manager_list_identifiers` | List app identifiers (bundle IDs, package names) | iOS, Android |
 | `app_manager_create_build` | Create an API-managed build in `pending` | iOS, Android |

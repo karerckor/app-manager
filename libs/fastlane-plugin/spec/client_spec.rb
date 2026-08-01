@@ -445,4 +445,78 @@ RSpec.describe Fastlane::AppManager::Client do
       expect(http).to have_received(:request).twice
     end
   end
+
+  describe "#list_files" do
+    it "fetches files from the app files endpoint" do
+      files = [{ "name" => "release-notes.pdf" }, { "name" => "mapping.txt" }]
+      expect(client).to receive(:get_json).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/files"
+      ).and_return("data" => files)
+
+      expect(client.list_files.length).to eq(2)
+    end
+
+    it "raises when the payload is not a list" do
+      allow(client).to receive(:get_json).and_return("data" => {})
+
+      expect { client.list_files }.to raise_error(Fastlane::AppManager::Error, /invalid files response/)
+    end
+  end
+
+  describe "#upload_file" do
+    it "posts a multipart request to the app files endpoint" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "release-notes.pdf")
+        File.binwrite(path, "PDFBYTES")
+        response = Struct.new(:body).new(JSON.generate(
+          "data" => { "name" => "release-notes.pdf", "size" => 8 }
+        ))
+
+        expect(client).to receive(:request).with(
+          "https://manager.example/api/v1/mobile-team/apps/customer-app/files",
+          method: :post,
+          body: an_instance_of(String),
+          content_type: a_string_matching(%r{\Amultipart/form-data; boundary=})
+        ) do |_path, method:, body:, content_type:|
+          expect(body).to include("release-notes.pdf")
+          expect(body).to include("PDFBYTES")
+          expect(body).to include("channel")
+          response
+        end
+
+        file = client.upload_file(file_path: path, metadata: { "channel" => "beta" })
+
+        expect(file).to include("name" => "release-notes.pdf")
+      end
+    end
+  end
+
+  describe "#download_file" do
+    it "downloads the file content to the requested path" do
+      response = Struct.new(:body).new("pdf-bytes")
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/files/release-notes.pdf/content"
+      ).and_return(response)
+
+      Dir.mktmpdir do |directory|
+        output = File.join(directory, "release-notes.pdf")
+
+        expect(client.download_file(name: "release-notes.pdf", output_path: output)).to eq(output)
+        expect(File.binread(output)).to eq("pdf-bytes")
+      end
+    end
+  end
+
+  describe "#delete_file" do
+    it "deletes the file by name" do
+      response = Struct.new(:body).new("")
+      expect(client).to receive(:request).with(
+        "https://manager.example/api/v1/mobile-team/apps/customer-app/files/release-notes.pdf",
+        method: :delete,
+        body: nil
+      ).and_return(response)
+
+      expect(client.delete_file(name: "release-notes.pdf")).to be(true)
+    end
+  end
 end

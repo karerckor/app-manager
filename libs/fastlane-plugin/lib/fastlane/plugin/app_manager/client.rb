@@ -145,6 +145,52 @@ module Fastlane
         )
       end
 
+      def list_files
+        body = get_json(app_endpoint("files"))
+        files = body["data"]
+        raise Error, "App Manager returned an invalid files response" unless files.is_a?(Array)
+
+        files
+      end
+
+      def upload_file(file_path:, metadata: {})
+        raise Error, "file_path #{file_path} does not exist" unless File.file?(file_path)
+
+        fields = {}
+        fields["metadata"] = JSON.generate(metadata) if metadata && !metadata.empty?
+        body, content_type = multipart_body(
+          fields: fields,
+          file_field: "file",
+          file_path: file_path
+        )
+        response = request(
+          app_endpoint("files"),
+          method: :post,
+          body: body,
+          content_type: content_type
+        )
+        parsed = JSON.parse(response.body)
+        raise Error, "App Manager returned an invalid file response" unless parsed.is_a?(Hash) && parsed["data"].is_a?(Hash)
+
+        parsed["data"]
+      rescue JSON::ParserError, TypeError
+        raise Error, "App Manager returned invalid JSON for file upload"
+      end
+
+      def download_file(name:, output_path:, overwrite: true)
+        download(
+          app_endpoint("files", name, "content"),
+          output_path,
+          overwrite: overwrite,
+          mode: ASSET_FILE_MODE
+        )
+      end
+
+      def delete_file(name:)
+        request(app_endpoint("files", name), method: :delete, body: nil)
+        true
+      end
+
       def list_credentials
         body = get_json(app_endpoint("credentials"))
         credentials = body["data"]
