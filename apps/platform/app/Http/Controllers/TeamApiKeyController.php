@@ -36,6 +36,7 @@ class TeamApiKeyController extends Controller
         return Inertia::render('ApiKeys/Index', [
             'apiKeys' => $apiKeys,
             'scopeGroups' => ApiKeyScope::groups(),
+            'keyPresets' => ApiKeyScope::presets(),
             'createUrl' => route('accounts.api-keys.store', ['team' => $team]),
         ]);
     }

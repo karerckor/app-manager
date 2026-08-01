@@ -162,11 +162,13 @@ class AuditLogPageTest extends TestCase
             ->assertOk();
     }
 
-    public function test_audits_can_be_filtered_by_app_user_and_event(): void
+    public function test_audits_can_be_filtered_by_multiple_apps_actors_events_sources_and_dates(): void
     {
         [$owner, $team] = $this->owner();
         $actor = User::factory()->create(['name' => 'Ada']);
+        $secondActor = User::factory()->create(['name' => 'Lin']);
         $team->addUser($actor, TeamRole::Contributor);
+        $team->addUser($secondActor, TeamRole::Contributor);
 
         MobileApp::disableAuditing();
         AppIdentifier::disableAuditing();
@@ -188,13 +190,16 @@ class AuditLogPageTest extends TestCase
         }
 
         foreach ([
-            [$selectedApp, $actor, 'updated'],
-            [$selectedIdentifier, $actor, 'updated'],
-            [$selectedBuild, $actor, 'updated'],
+            [$selectedApp, $actor, 'updated', 'web', '2026-07-10'],
+            [$selectedIdentifier, $actor, 'updated', 'api', '2026-07-11'],
+            [$selectedBuild, $secondActor, 'created', 'ci_cd', '2026-07-12'],
             [$selectedApp, $owner, 'created'],
             [$otherApp, $actor, 'updated'],
-        ] as [$auditable, $user, $event]) {
-            Audit::create([
+        ] as $row) {
+            [$auditable, $user, $event] = $row;
+            $source = $row[3] ?? 'web';
+            $createdAt = $row[4] ?? null;
+            $audit = Audit::create([
                 'user_type' => User::class,
                 'user_id' => $user->id,
                 'event' => $event,
@@ -203,31 +208,41 @@ class AuditLogPageTest extends TestCase
                 'old_values' => [],
                 'new_values' => [],
                 'team_id' => $team->id,
-                'source' => 'web',
+                'source' => $source,
             ]);
+
+            if ($createdAt) {
+                $audit->forceFill(['created_at' => $createdAt, 'updated_at' => $createdAt])->save();
+            }
         }
 
         $this->actingAs($owner)
             ->get(route('accounts.audit.index', [
                 'team' => $team,
-                'app' => $selectedApp->id,
-                'user' => $actor->id,
-                'event' => 'updated',
+                'apps' => [$selectedApp->id],
+                'actors' => [$actor->id, $secondActor->id],
+                'events' => ['created', 'updated'],
+                'sources' => ['api', 'ci_cd'],
+                'from' => '2026-07-11',
+                'to' => '2026-07-12',
             ]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('audits.data', 3)
+                ->has('audits.data', 2)
                 ->where('audits.data', fn ($rows) => collect($rows)->pluck('auditable_id')->sort()->values()->all() === collect([
-                    $selectedApp->id,
                     $selectedIdentifier->id,
                     $selectedBuild->id,
                 ])->sort()->values()->all())
-                ->where('filters.app', $selectedApp->id)
-                ->where('filters.user', $actor->id)
-                ->where('filters.event', 'updated')
+                ->where('filters.apps', [$selectedApp->id])
+                ->where('filters.actors', [$actor->id, $secondActor->id])
+                ->where('filters.events', ['created', 'updated'])
+                ->where('filters.sources', ['api', 'ci_cd'])
+                ->where('filters.from', '2026-07-11')
+                ->where('filters.to', '2026-07-12')
                 ->has('filterOptions.apps', 2)
-                ->has('filterOptions.users', 2)
-                ->where('filterOptions.events', ['created', 'updated']));
+                ->has('filterOptions.users', 3)
+                ->where('filterOptions.events', ['created', 'updated'])
+                ->where('filterOptions.sources', ['api', 'ci_cd', 'web']));
     }
 
     public function test_non_member_is_forbidden(): void

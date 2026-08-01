@@ -1,5 +1,6 @@
 <script>
     import { useForm } from '@inertiajs/svelte';
+    import Select from '../../../Components/Select.svelte';
 
     export let app;
     export let editing = null;
@@ -43,7 +44,7 @@
         }
     };
     const changeIdentifierPlatform = (event) => {
-        identifierForm.platform = event.currentTarget.value;
+        identifierForm.platform = event.detail;
         if (identifierForm.platform !== 'android') identifierForm.version_code = '';
     };
     const identifierLabel = (platform) => ({
@@ -66,7 +67,7 @@
         <form class="modal" on:submit|preventDefault={saveIdentifier}>
             <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">{editing ? 'Edit app identifier' : 'Add app identifier'}</h2><p class="mt-1 text-sm text-slate-500">{editing ? 'Update this platform target.' : 'Connect a platform target to this project.'}</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closeIdentifier}>✕</button></div>
             <div class="space-y-5 p-6">
-                <label><span class="label">Platform</span><select value={identifierForm.platform} on:change={changeIdentifierPlatform}><option value="ios">iOS</option><option value="android">Android</option><option value="web">Web</option></select></label>
+                <label><span class="label">Platform</span><Select bind:value={identifierForm.platform} options={[{ value: 'ios', label: 'iOS' }, { value: 'android', label: 'Android' }, { value: 'web', label: 'Web' }]} ariaLabel="Platform" on:change={changeIdentifierPlatform} /></label>
                 <label>
                     <span class="label">{identifierLabel(identifierForm.platform)}</span>
                     <input bind:value={identifierForm.identifier} placeholder={identifierPlaceholder(identifierForm.platform)} required />

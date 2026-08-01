@@ -16,7 +16,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 #[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code'])]
 class AppIdentifier extends Model implements Auditable
 {
-    use HasFactory, HasUuids, AuditableTrait;
+    use AuditableTrait, HasFactory, HasUuids;
 
     public function mobileApp(): BelongsTo
     {

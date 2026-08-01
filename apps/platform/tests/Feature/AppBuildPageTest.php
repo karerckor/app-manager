@@ -2,8 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CiCdDispatchStatus;
 use App\Enums\ProfileType;
+use App\Models\Artifact;
 use App\Models\BuildRecord;
+use App\Models\CiCdPipeline;
+use App\Models\CiCdRun;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -56,6 +61,77 @@ class AppBuildPageTest extends TestCase
 
         $this->actingAs($user)->get(route('accounts.apps.builds.index', [$foreignApp->team, $foreignApp]))
             ->assertForbidden();
+    }
+
+    public function test_index_filters_builds_by_tag_status_dates_duration_artifacts_and_reporting_mode(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $integration = Integration::factory()->create(['team_id' => $team->id]);
+        $pipeline = CiCdPipeline::factory()->create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $app->id,
+            'name' => 'Release',
+        ]);
+        $alternatePipeline = CiCdPipeline::factory()->create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $app->id,
+            'name' => 'Nightly',
+        ]);
+        $matching = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => null,
+            'requested_by_user_id' => null,
+            'status' => 'completed',
+            'reporting_mode' => 'automatic',
+            'tags' => [['release', '#22c55e']],
+            'started_at' => now()->subDays(2),
+            'finished_at' => now()->subDays(2)->addMinutes(12),
+        ]);
+        CiCdRun::create([
+            'team_id' => $team->id,
+            'build_record_id' => $matching->id,
+            'pipeline_id' => $pipeline->id,
+            'integration_id' => $integration->id,
+            'requested_by_user_id' => $user->id,
+            'dispatch_status' => CiCdDispatchStatus::Accepted,
+            'request_snapshot' => [],
+        ]);
+        Artifact::factory()->create(['team_id' => $team->id, 'build_record_id' => $matching->id]);
+        BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => null,
+            'requested_by_user_id' => null,
+            'status' => 'completed',
+            'reporting_mode' => 'automatic',
+            'tags' => ['release'],
+            'started_at' => now()->subDays(2),
+            'finished_at' => now()->subDays(2)->addMinutes(3),
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.builds.index', [
+            $team,
+            $app,
+            'tags' => ['release', 'candidate'],
+            'statuses' => ['completed', 'failed'],
+            'started_from' => now()->subDays(3)->toDateString(),
+            'started_to' => now()->subDay()->toDateString(),
+            'duration_min' => 10,
+            'duration_max' => 15,
+            'artifacts' => 'with',
+            'reporting_mode' => 'automatic',
+            'pipelines' => [$pipeline->id, $alternatePipeline->id],
+        ]))->assertInertia(fn (Assert $page) => $page
+            ->has('builds', 1)
+            ->where('builds.0.id', $matching->id)
+            ->where('filters.tags', ['release', 'candidate'])
+            ->where('filters.statuses', ['completed', 'failed'])
+            ->where('filters.pipelines', [$pipeline->id, $alternatePipeline->id])
+            ->where('filters.duration_min', '10'));
     }
 
     public function test_show_returns_single_build(): void

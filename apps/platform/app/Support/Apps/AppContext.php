@@ -2,8 +2,13 @@
 
 namespace App\Support\Apps;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationProvider;
+use App\Enums\IntegrationStatus;
+use App\Enums\ProfileType;
 use App\Enums\TeamPermission;
+use App\Models\CiCdPipeline;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Credentials\BuildProfileSchema;
@@ -52,6 +57,7 @@ class AppContext
             'created_at' => $app->created_at,
             'updated_at' => $app->updated_at,
             'assets' => $assets,
+            'pipeline_configuration' => self::pipelineConfigurationProp($request, $team, $app),
             'urls' => [
                 'index' => route('accounts.apps.index', [$team]),
                 'overview' => route('accounts.apps.show', [$team, $app]),
@@ -70,6 +76,82 @@ class AppContext
                 'assets' => route('accounts.apps.assets.upload', [$team, $app, '__collection__']),
                 'manual_builds' => route('accounts.apps.builds.store', [$team, $app]),
             ],
+        ];
+    }
+
+    private static function pipelineConfigurationProp(Request $request, Team $team, MobileApp $app): ?array
+    {
+        if (! $team->allows($request->user(), TeamPermission::ManageIntegrations)) {
+            return null;
+        }
+
+        $integrations = $team->integrations()
+            ->where('status', IntegrationStatus::Active->value)
+            ->with([
+                'oauthCredential',
+                'expoProjects' => fn ($query) => $query
+                    ->where('mobile_app_id', $app->id)
+                    ->where('exists_on_expo', true),
+                'pipelines' => fn ($query) => $query
+                    ->where('mobile_app_id', $app->id)
+                    ->with('appIdentifier')
+                    ->latest(),
+            ])
+            ->latest()
+            ->get()
+            ->filter(fn (Integration $integration) => $integration->supportsCiCd())
+            ->filter(fn (Integration $integration) => $integration->provider !== IntegrationProvider::Expo
+                || ($integration->oauthCredential !== null && $integration->expoProjects->isNotEmpty()))
+            ->map(fn (Integration $integration) => [
+                'id' => $integration->id,
+                'name' => $integration->name,
+                'provider' => $integration->provider->value,
+                'provider_name' => $integration->provider === IntegrationProvider::Expo
+                    ? 'Expo EAS'
+                    : $integration->provider->label(),
+                'account_name' => $integration->external_account_name,
+                'repositories_url' => route('accounts.integrations.repositories.index', [$team, $integration]),
+                'workflows_url' => route('accounts.integrations.workflows.index', [$team, $integration]),
+                'refs_url' => route('accounts.integrations.refs.index', [$team, $integration]),
+                'pipelines_store_url' => route('accounts.integrations.pipelines.store', [$team, $integration]),
+                'pipelines' => $integration->pipelines
+                    ->map(fn (CiCdPipeline $pipeline) => self::configurablePipelineProp($team, $integration, $pipeline))
+                    ->values(),
+            ])
+            ->values();
+
+        return [
+            'integrations_url' => route('accounts.integrations.index', $team),
+            'profile_types' => array_map(fn (ProfileType $type) => $type->value, ProfileType::cases()),
+            'reporting_modes' => array_map(fn (BuildReportingMode $mode) => $mode->value, BuildReportingMode::cases()),
+            'integrations' => $integrations,
+        ];
+    }
+
+    private static function configurablePipelineProp(
+        Team $team,
+        Integration $integration,
+        CiCdPipeline $pipeline,
+    ): array {
+        return [
+            'id' => $pipeline->id,
+            'name' => $pipeline->name,
+            'enabled' => $pipeline->enabled,
+            'mobile_app_id' => $pipeline->mobile_app_id,
+            'app_identifier_id' => $pipeline->app_identifier_id,
+            'target_name' => $pipeline->appIdentifier?->name ?: $pipeline->appIdentifier?->identifier,
+            'profile_type' => $pipeline->profile_type->value,
+            'reporting_mode' => $pipeline->reporting_mode->value,
+            'build_id_input' => $pipeline->build_id_input,
+            'repository_full_name' => $pipeline->repository_full_name,
+            'workflow_name' => $pipeline->workflow_name,
+            'workflow_id' => $pipeline->workflow_id,
+            'default_ref' => $pipeline->default_ref,
+            'input_schema' => $pipeline->input_schema ?? [],
+            'input_defaults' => $pipeline->input_defaults ?? [],
+            'run_url' => route('accounts.integrations.pipelines.runs.store', [$team, $integration, $pipeline]),
+            'update_url' => route('accounts.integrations.pipelines.update', [$team, $integration, $pipeline]),
+            'destroy_url' => route('accounts.integrations.pipelines.destroy', [$team, $integration, $pipeline]),
         ];
     }
 

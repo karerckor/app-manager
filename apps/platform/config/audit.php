@@ -1,5 +1,14 @@
 <?php
 
+use App\Models\Audit;
+use App\Support\Audit\Resolvers\ApiKeyIdResolver;
+use App\Support\Audit\Resolvers\SourceResolver;
+use App\Support\Audit\Resolvers\TeamIdResolver;
+use App\Support\Audit\Resolvers\UserResolver;
+use OwenIt\Auditing\Resolvers\IpAddressResolver;
+use OwenIt\Auditing\Resolvers\UrlResolver;
+use OwenIt\Auditing\Resolvers\UserAgentResolver;
+
 return [
 
     'enabled' => env('AUDITING_ENABLED', true),
@@ -13,7 +22,7 @@ return [
     |
     */
 
-    'implementation' => \App\Models\Audit::class,
+    'implementation' => Audit::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -30,7 +39,7 @@ return [
             'web',
             'api',
         ],
-        'resolver' => \App\Support\Audit\Resolvers\UserResolver::class,
+        'resolver' => UserResolver::class,
     ],
 
     /*
@@ -42,12 +51,12 @@ return [
     |
     */
     'resolvers' => [
-        'ip_address' => OwenIt\Auditing\Resolvers\IpAddressResolver::class,
-        'user_agent' => OwenIt\Auditing\Resolvers\UserAgentResolver::class,
-        'url'        => OwenIt\Auditing\Resolvers\UrlResolver::class,
-        'source'     => \App\Support\Audit\Resolvers\SourceResolver::class,
-        'api_key_id' => \App\Support\Audit\Resolvers\ApiKeyIdResolver::class,
-        'team_id'    => \App\Support\Audit\Resolvers\TeamIdResolver::class,
+        'ip_address' => IpAddressResolver::class,
+        'user_agent' => UserAgentResolver::class,
+        'url' => UrlResolver::class,
+        'source' => SourceResolver::class,
+        'api_key_id' => ApiKeyIdResolver::class,
+        'team_id' => TeamIdResolver::class,
     ],
 
     /*

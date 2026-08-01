@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Audit;
 
+use App\Http\Middleware\SetActorContext;
 use App\Models\Team;
 use App\Models\User;
 use App\Support\Audit\ActorContextManager;
@@ -15,7 +16,7 @@ class SetActorContextMiddlewareTest extends TestCase
 
     public function test_authenticated_web_request_sets_web_context(): void
     {
-        Route::middleware(['web', 'auth', \App\Http\Middleware\SetActorContext::class])
+        Route::middleware(['web', 'auth', SetActorContext::class])
             ->get('/_test/actor', fn () => response()->json([
                 'source' => app(ActorContextManager::class)->current()->source,
             ]));

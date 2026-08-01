@@ -33,7 +33,7 @@
 
     $: working = (tags || []).map((t) => [t[0], t[1] ?? null]);
     $: canEdit = !disabled && !!url;
-    $: toolClass = quiet ? 'row-tools' : '';
+    $: toolClass = quiet && working.length ? 'row-tools' : '';
     $: available = (suggestions || [])
         .map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]))
         .filter((t) => t[0] && !working.some((w) => w[0].toLowerCase() === t[0].toLowerCase()))
@@ -58,7 +58,7 @@
     function place() {
         if (!anchorEl) return;
         const r = anchorEl.getBoundingClientRect();
-        const w = 244;
+        const w = 272;
         let left = align === 'right' ? r.right - w : r.left;
         left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
         pos = { top: Math.round(r.bottom + 6), left: Math.round(left) };
@@ -124,13 +124,13 @@
 
 <svelte:window on:pointerdown={onWindowPointer} on:keydown={onKeydown} />
 
-<span class="inline-flex flex-wrap items-center gap-1">
+<span class="group inline-flex flex-wrap items-center gap-1">
     {#each working as tag, i (tag[0])}
         <span
-            class="group/tag inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset"
+            class="group/tag inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset"
             style={tag[1]
                 ? `background-color:${tint(tag[1])};color:${tag[1]};--tw-ring-color:${tint(tag[1])}`
-                : 'background-color:#f1f5f9;color:#475569;--tw-ring-color:#e2e8f0'}
+                : 'background-color:var(--surface-sunken);color:var(--text-muted);--tw-ring-color:var(--border)'}
         >
             <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background-color:${tag[1] || '#94a3b8'}`}></span>
             {tag[0]}
@@ -146,7 +146,7 @@
         <button
             type="button"
             bind:this={anchorEl}
-            class="inline-flex items-center gap-1 rounded-md border border-dashed border-slate-300 bg-transparent px-1.5 py-0.5 text-[11px] font-medium text-slate-400 shadow-none transition hover:border-indigo-400 hover:bg-indigo-50/60 hover:text-indigo-600 {open ? 'border-indigo-400 text-indigo-600' : ''} {toolClass}"
+            class="inline-flex items-center gap-1 rounded-sm border border-dashed border-border-control bg-transparent px-2 py-1 text-xs font-semibold text-muted shadow-none transition hover:border-brand hover:bg-brand-soft hover:text-brand {open ? 'border-brand bg-brand-soft text-brand' : ''} {toolClass}"
             aria-label="Add tag"
             aria-expanded={open}
             on:click={() => (open ? closePop() : openPop())}
@@ -155,18 +155,20 @@
             {#if !working.length}Tag{/if}
         </button>
     {:else if !working.length && emptyLabel}
-        <span class="text-[11px] text-slate-400">{emptyLabel}</span>
+        <span class="text-xs text-faint">{emptyLabel}</span>
     {/if}
 </span>
 
 {#if open}
-    <div bind:this={popEl} class="fixed z-[60] w-[244px] rounded-xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-950/10" style="top:{pos.top}px;left:{pos.left}px">
-        <p class="mb-2 text-[10px] font-semibold tracking-[0.12em] text-slate-400 uppercase">New tag</p>
-        <div class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10">
+    <div bind:this={popEl} class="fixed z-[60] w-[272px] rounded-md border border-border bg-surface-raised p-4 shadow-2xl" style="top:{pos.top}px;left:{pos.left}px">
+        <div class="mb-3 flex items-start justify-between gap-3">
+            <div><p class="eyebrow">New tag</p><p class="mt-1 text-xs text-muted">Label and color make filters easier to scan.</p></div>
+        </div>
+        <div class="flex items-center gap-2 rounded-md border border-border-control bg-surface-raised px-3 py-2 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10">
             <span class="h-2 w-2 shrink-0 rounded-full" style={`background-color:${color || '#94a3b8'}`}></span>
             <input
                 type="text"
-                class="w-full border-0 bg-transparent p-0 text-xs text-slate-800 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:ring-0"
+                class="w-full border-0 bg-transparent p-0 text-sm text-text shadow-none outline-none ring-0 placeholder:text-faint focus:ring-0"
                 placeholder="Label…"
                 maxlength="32"
                 bind:value={text}
@@ -178,28 +180,28 @@
             {#each PALETTE as swatch}
                 <button
                     type="button"
-                    class="grid h-5 w-5 place-items-center rounded-full p-0 shadow-none transition hover:scale-110 {color === swatch.value ? 'ring-2 ring-slate-900 ring-offset-1' : 'ring-1 ring-slate-200'}"
-                    style={`background-color:${swatch.value || '#f1f5f9'}`}
+                    class="grid h-6 w-6 place-items-center rounded-full p-0 shadow-none transition hover:scale-110 {color === swatch.value ? 'ring-2 ring-text ring-offset-2 ring-offset-surface-raised' : 'ring-1 ring-border'}"
+                    style={`background-color:${swatch.value || 'var(--surface-sunken)'}`}
                     title={swatch.name}
                     aria-label={swatch.name}
                     aria-pressed={color === swatch.value}
                     on:click={() => (color = swatch.value)}
                 >
-                    {#if !swatch.value}<span class="h-2 w-2 rounded-full ring-1 ring-slate-300"></span>{/if}
+                    {#if !swatch.value}<span class="h-2 w-2 rounded-full ring-1 ring-border-control"></span>{/if}
                 </button>
             {/each}
         </div>
 
         {#if available.length}
-            <p class="mt-3 mb-1.5 text-[10px] font-semibold tracking-[0.12em] text-slate-400 uppercase">Reuse</p>
-            <div class="flex flex-wrap gap-1">
+            <p class="eyebrow mt-4 mb-2">Reuse</p>
+            <div class="flex flex-wrap gap-1.5">
                 {#each available as tag}
                     <button
                         type="button"
-                        class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium shadow-none ring-1 ring-inset"
+                        class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium shadow-none ring-1 ring-inset"
                         style={tag[1]
                             ? `background-color:${tint(tag[1])};color:${tag[1]};--tw-ring-color:${tint(tag[1])}`
-                            : 'background-color:#f1f5f9;color:#475569;--tw-ring-color:#e2e8f0'}
+                            : 'background-color:var(--surface-sunken);color:var(--text-muted);--tw-ring-color:var(--border)'}
                         on:click={() => addSuggestion(tag)}
                     >
                         <span class="h-1.5 w-1.5 rounded-full" style={`background-color:${tag[1] || '#94a3b8'}`}></span>
@@ -209,7 +211,7 @@
             </div>
         {/if}
 
-        <div class="mt-3 flex justify-end gap-2">
+        <div class="mt-4 flex justify-end gap-2 border-t border-border-subtle pt-3">
             <button type="button" class="ghost px-2.5 py-1 text-xs" on:click={closePop}>Cancel</button>
             <button type="button" class="px-2.5 py-1 text-xs" disabled={!text.trim() || saving} on:click={addFromInput}>Add tag</button>
         </div>

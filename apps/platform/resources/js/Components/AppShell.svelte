@@ -3,6 +3,7 @@
     import { Link, router } from '@inertiajs/svelte';
     import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, CreditCard, ShieldCheck, BellRing, Menu, X } from '@lucide/svelte';
     import ThemeToggle from './ui/ThemeToggle.svelte';
+    import Select from './Select.svelte';
 
     let { auth, teams = [], currentTeam = null, active = 'apps', children } = $props();
 
@@ -25,7 +26,7 @@
         { key: 'push-notifications', label: 'Push notifications', href: url('/tools/push-notifications'), icon: BellRing },
     ]);
 
-    const switchTeam = (event) => router.put(`/accounts/${event.currentTarget.value}/switch`);
+    const switchTeam = (event) => router.put(`/accounts/${event.detail}/switch`);
     const logout = () => router.post('/logout');
     const initials = (name = '') => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
 
@@ -104,15 +105,14 @@
          document order — the hidden desktop select — so the drawer's visible label
          would click through to a control that cannot take focus. -->
     <div class="mb-5 rounded-sm border border-nav-border p-2">
-        <label for="team-{scope}" class="mb-1 block font-condensed text-2xs font-semibold tracking-[0.18em] text-nav-text uppercase">Workspace</label>
-        <select
-            id="team-{scope}"
-            class="w-full border-0 bg-transparent p-0.5 text-sm font-medium text-nav-strong shadow-none focus:ring-0"
+        <span class="mb-1 block font-condensed text-2xs font-semibold tracking-[0.18em] text-nav-text uppercase">Workspace</span>
+        <Select
+            className="w-full"
             value={currentTeam?.slug ?? ''}
-            onchange={switchTeam}
-        >
-            {#each teams as team (team.slug)}<option class="text-text" value={team.slug}>{team.name}</option>{/each}
-        </select>
+            options={teams.map((team) => ({ value: team.slug, label: team.name }))}
+            ariaLabel="Workspace"
+            on:change={switchTeam}
+        />
     </div>
 
     <nav class="space-y-0.5" aria-label="Main">
@@ -155,8 +155,8 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="min-h-screen lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
-    <aside class="hidden min-h-screen flex-col bg-nav px-3 py-4 lg:flex">
+<div class="min-h-screen lg:pl-[248px]">
+    <aside class="hidden flex-col bg-nav px-3 py-4 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-[248px]">
         {@render nav('desktop')}
     </aside>
 

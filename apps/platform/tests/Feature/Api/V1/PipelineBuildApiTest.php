@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Actions\Integrations\StartPipelineBuild;
 use App\Enums\ApiKeyScope;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
@@ -68,7 +69,7 @@ class PipelineBuildApiTest extends TestCase
         [$user, $team, $integration, $pipeline] = $this->ctx();
         $this->bindProvider();
         Queue::fake();
-        $build = app(\App\Actions\Integrations\StartPipelineBuild::class)
+        $build = app(StartPipelineBuild::class)
             ->handle($team, $integration, $pipeline, $user, (string) Str::uuid());
         $token = $user->createTeamApiKey($team, 'k', [ApiKeyScope::PipelinesRun->value])->plainTextToken;
         $app = $pipeline->mobileApp;

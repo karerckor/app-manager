@@ -20,27 +20,27 @@
 
     /* ── colour maps ─────────────────────────────────────── */
     const activeTone = {
-        indigo:  'border-indigo-200 bg-indigo-50 text-indigo-700',
-        violet:  'border-violet-200 bg-violet-50 text-violet-700',
-        emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        rose:    'border-rose-200 bg-rose-50 text-rose-700',
-        amber:   'border-amber-200 bg-amber-50 text-amber-700',
-        neutral: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+        indigo:  'border-brand-soft-line bg-brand-soft text-brand',
+        violet:  'border-brand-soft-line bg-brand-soft text-brand',
+        emerald: 'border-ok/30 bg-ok/10 text-ok',
+        rose:    'border-danger/30 bg-danger/10 text-danger',
+        amber:   'border-warn-fill/30 bg-warn-text/10 text-warn-fill',
+        neutral: 'border-brand-soft-line bg-brand-soft text-brand',
     };
     const hoverTone = {
-        indigo:  'hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700',
-        violet:  'hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700',
-        emerald: 'hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700',
-        rose:    'hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700',
-        amber:   'hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700',
-        neutral: 'hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700',
+        indigo:  'hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand',
+        violet:  'hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand',
+        emerald: 'hover:border-ok/30 hover:bg-ok/10 hover:text-ok',
+        rose:    'hover:border-danger/30 hover:bg-danger/10 hover:text-danger',
+        amber:   'hover:border-warn-fill/30 hover:bg-warn-text/10 hover:text-warn-fill',
+        neutral: 'hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand',
     };
     const restTone = {
-        rose:   'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300',
-        amber:  'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300',
+        rose:   'border-danger/30 bg-danger/10 text-danger hover:border-danger/40',
+        amber:  'border-warn-fill/30 bg-warn-text/10 text-warn-fill hover:border-warn-fill/40',
     };
-    const disabledClass = 'border-slate-100 bg-slate-50/60 text-slate-300';
-    const inactiveDefault = 'border-slate-200 bg-white text-slate-600';
+    const disabledClass = 'border-border-subtle bg-surface-sunken text-border-control';
+    const inactiveDefault = 'border-border bg-surface-raised text-muted';
 
     /* ── helpers ──────────────────────────────────────────── */
     /* currentValue is threaded through explicitly (rather than closed over) so Svelte's
@@ -60,18 +60,18 @@
     };
 
     const segmentClass = (item, currentValue) => isActive(item, currentValue)
-        ? 'bg-white text-slate-950 shadow-sm'
-        : 'bg-transparent text-slate-500 hover:bg-white/60';
+        ? 'bg-surface-raised text-text shadow-sm'
+        : 'bg-transparent text-muted hover:bg-surface-raised/60';
 </script>
 
 {#if variant === 'segmented'}
-    <div class="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label={ariaLabel}>
+    <div class="inline-flex rounded-sm bg-surface-sunken p-0.5" role="tablist" aria-label={ariaLabel}>
         {#each items as item (item.value)}
             <button
                 type="button"
                 role="tab"
                 aria-selected={isActive(item, value)}
-                class="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold shadow-none transition {segmentClass(item, value)}"
+                class="flex items-center gap-2 rounded-sm px-3 py-1.5 text-xs font-semibold shadow-none transition {segmentClass(item, value)}"
                 on:click={() => onChange(item.value)}
             >
                 {#if item.icon}<svelte:component this={item.icon} class="h-3.5 w-3.5" />{/if}

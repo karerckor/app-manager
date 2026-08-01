@@ -1,6 +1,7 @@
 <script>
     import { useForm } from '@inertiajs/svelte';
     import { parseParameters } from '../lib.js';
+    import Select from '../../../Components/Select.svelte';
 
     export let app;
     export let identifiers = [];
@@ -52,7 +53,7 @@
     }
 
     const changeManualIdentifier = (event) => {
-        manualBuildForm.app_identifier_id = event.currentTarget.value;
+        manualBuildForm.app_identifier_id = event.detail;
         const profiles = profilesForIdentifier(manualBuildForm.app_identifier_id);
 
         if (!profiles.some((profile) => profile.value === manualBuildForm.profile_type)) {
@@ -78,8 +79,8 @@
             <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">Create manual build</h2><p class="mt-1 text-sm text-slate-500">This creates a build directly in App Manager and does not start GitHub Actions.</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closeManualBuild}>✕</button></div>
             <div class="space-y-5 p-6">
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <label><span class="label">App identifier <span class="font-normal text-slate-400">(optional)</span></span><select value={manualBuildForm.app_identifier_id} on:change={changeManualIdentifier}><option value="">No app identifier</option>{#each identifiers as identifier}<option value={identifier.id}>{identifier.platform.toUpperCase()} · {identifier.identifier}</option>{/each}</select>{#if manualBuildForm.errors.app_identifier_id}<span class="error">{manualBuildForm.errors.app_identifier_id}</span>{/if}</label>
-                    <label><span class="label">Build profile</span><select bind:value={manualBuildForm.profile_type} required>{#each manualProfileOptions as profile}<option value={profile.value}>{profile.label}{manualBuildForm.app_identifier_id ? '' : ` · ${profile.platform}`}</option>{/each}</select>{#if manualBuildForm.errors.profile_type}<span class="error">{manualBuildForm.errors.profile_type}</span>{/if}</label>
+                    <label><span class="label">App identifier <span class="font-normal text-slate-400">(optional)</span></span><Select bind:value={manualBuildForm.app_identifier_id} options={[{ value: '', label: 'No app identifier' }, ...identifiers.map((identifier) => ({ value: identifier.id, label: `${identifier.platform.toUpperCase()} · ${identifier.identifier}` }))]} ariaLabel="App identifier" on:change={changeManualIdentifier} />{#if manualBuildForm.errors.app_identifier_id}<span class="error">{manualBuildForm.errors.app_identifier_id}</span>{/if}</label>
+                    <label><span class="label">Build profile</span><Select bind:value={manualBuildForm.profile_type} options={manualProfileOptions.map((profile) => ({ value: profile.value, label: `${profile.label}${manualBuildForm.app_identifier_id ? '' : ` · ${profile.platform}`}` }))} ariaLabel="Build profile" required />{#if manualBuildForm.errors.profile_type}<span class="error">{manualBuildForm.errors.profile_type}</span>{/if}</label>
                 </div>
                 <label><span class="label">Parameters (JSON)</span><textarea class="min-h-48 font-mono text-xs leading-5" bind:value={manualParametersText} spellcheck="false" placeholder={'{\n  "channel": "internal"\n}'}></textarea><span class="mt-1 block text-[10px] text-slate-400">These values are saved with the build and included in its webhook payloads.</span>{#if manualParametersError || manualBuildForm.errors.parameters}<span class="error">{manualParametersError || manualBuildForm.errors.parameters}</span>{/if}</label>
             </div>

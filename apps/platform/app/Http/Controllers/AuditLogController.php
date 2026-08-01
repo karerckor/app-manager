@@ -23,45 +23,54 @@ class AuditLogController extends Controller
         $role = $request->user() ? $team->roleFor($request->user()) : null;
         abort_unless(in_array($role, [TeamRole::Owner, TeamRole::Admin], true), 403);
 
+        $request->validate([
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+
         $filters = [
-            'app' => $request->string('app')->toString(),
-            'user' => $request->string('user')->toString(),
-            'event' => $request->string('event')->toString(),
+            'apps' => $this->filterValues($request->input('apps', $request->input('app'))),
+            'actors' => $this->filterValues($request->input('actors', $request->input('user'))),
+            'events' => $this->filterValues($request->input('events', $request->input('event'))),
+            'sources' => $this->filterValues($request->input('sources')),
+            'from' => $request->string('from')->toString(),
+            'to' => $request->string('to')->toString(),
         ];
 
         $audits = Audit::query()
             ->where('team_id', $team->id)
-            ->when($filters['app'], function ($query, string $appId) use ($team) {
-                $app = $team->mobileApps()->find($appId);
+            ->when($filters['apps'], function ($query, array $appIds) use ($team) {
+                $apps = $team->mobileApps()->whereIn('id', $appIds)->get();
 
-                $query->where(function ($query) use ($app) {
-                    if (! $app) {
+                $query->where(function ($query) use ($apps) {
+                    if ($apps->isEmpty()) {
                         $query->whereRaw('1 = 0');
 
                         return;
                     }
 
-                    $query
-                        ->where(fn ($query) => $query
-                            ->where('auditable_type', MobileApp::class)
-                            ->where('auditable_id', $app->id))
-                        // audits.auditable_id is VARCHAR, while related model IDs are native UUIDs in PostgreSQL.
-                        ->orWhere(fn ($query) => $query
-                            ->where('auditable_type', AppIdentifier::class)
-                            ->whereIn(
-                                'auditable_id',
-                                $app->appIdentifiers()->selectRaw('CAST(app_identifiers.id AS VARCHAR)')
-                            ))
-                        ->orWhere(fn ($query) => $query
-                            ->where('auditable_type', BuildRecord::class)
-                            ->whereIn(
-                                'auditable_id',
-                                $app->buildRecords()->selectRaw('CAST(build_records.id AS VARCHAR)')
-                            ));
+                    foreach ($apps as $app) {
+                        $query->orWhere(function ($query) use ($app) {
+                            $query
+                                ->where(fn ($query) => $query
+                                    ->where('auditable_type', MobileApp::class)
+                                    ->where('auditable_id', $app->id))
+                                // audits.auditable_id is VARCHAR, while related model IDs are native UUIDs in PostgreSQL.
+                                ->orWhere(fn ($query) => $query
+                                    ->where('auditable_type', AppIdentifier::class)
+                                    ->whereIn('auditable_id', $app->appIdentifiers()->selectRaw('CAST(app_identifiers.id AS VARCHAR)')))
+                                ->orWhere(fn ($query) => $query
+                                    ->where('auditable_type', BuildRecord::class)
+                                    ->whereIn('auditable_id', $app->buildRecords()->selectRaw('CAST(build_records.id AS VARCHAR)')));
+                        });
+                    }
                 });
             })
-            ->when($filters['event'], fn ($query, $event) => $query->where('event', $event))
-            ->when($filters['user'], fn ($query, $user) => $query->where('user_id', $user))
+            ->when($filters['events'], fn ($query, array $events) => $query->whereIn('event', $events))
+            ->when($filters['actors'], fn ($query, array $actors) => $query->whereIn('user_id', $actors))
+            ->when($filters['sources'], fn ($query, array $sources) => $query->whereIn('source', $sources))
+            ->when($filters['from'], fn ($query, string $from) => $query->whereDate('created_at', '>=', $from))
+            ->when($filters['to'], fn ($query, string $to) => $query->whereDate('created_at', '<=', $to))
             ->with([
                 'user:id,name',
                 'apiKey:id,team_id,name',
@@ -106,7 +115,23 @@ class AuditLogController extends Controller
                     ->distinct()
                     ->orderBy('event')
                     ->pluck('event'),
+                'sources' => Audit::query()
+                    ->where('team_id', $team->id)
+                    ->whereNotNull('source')
+                    ->distinct()
+                    ->orderBy('source')
+                    ->pluck('source'),
             ],
         ]);
+    }
+
+    /** @return list<string> */
+    private function filterValues(mixed $values): array
+    {
+        return collect(is_array($values) ? $values : [$values])
+            ->filter(fn ($value) => is_string($value) && $value !== '')
+            ->unique()
+            ->values()
+            ->all();
     }
 }

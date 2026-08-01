@@ -2,12 +2,13 @@
 
 namespace Database\Factories;
 
+use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<\App\Models\Artifact>
+ * @extends Factory<Artifact>
  */
 class ArtifactFactory extends Factory
 {

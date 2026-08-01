@@ -8,6 +8,7 @@ use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\TeamRole;
 use App\Enums\WebhookDeliveryStatus;
+use App\Enums\WebhookEventType;
 use App\Jobs\Webhooks\DeliverWebhook;
 use App\Models\Integration;
 use App\Models\Team;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
 use App\Models\WebhookEvent;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -69,7 +71,7 @@ class WebhookDeliveryApiTest extends TestCase
     {
         [, , $endpoint, $delivery] = $this->ctx();
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         WebhookDelivery::create([
             'team_id' => $delivery->team_id,
@@ -98,7 +100,7 @@ class WebhookDeliveryApiTest extends TestCase
         ]);
         $event = WebhookEvent::create([
             'team_id' => $team->id,
-            'event_type' => \App\Enums\WebhookEventType::MobileAppCreated,
+            'event_type' => WebhookEventType::MobileAppCreated,
             'schema_version' => 1,
             'aggregate_type' => 'MobileApp',
             'aggregate_id' => null,

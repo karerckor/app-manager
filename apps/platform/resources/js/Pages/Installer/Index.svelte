@@ -20,6 +20,7 @@
     import InstallerField from './InstallerField.svelte';
     import InstallerSummary from './InstallerSummary.svelte';
     import InstallerUrlRow from './InstallerUrlRow.svelte';
+    import Select from '../../Components/Select.svelte';
 
     let { requirements = [], urls, defaults } = $props();
     let step = $state(0);
@@ -316,19 +317,12 @@
 
                                         <label>
                                             <span class="label">Object ownership</span>
-                                            <select bind:value={form.storage.s3.object_acl}>
-                                                <option value="bucket-owner-full-control">AWS · bucket owner enforced</option>
-                                                <option value="private">S3-compatible · private ACL</option>
-                                            </select>
+                                            <Select bind:value={form.storage.s3.object_acl} options={[{ value: 'bucket-owner-full-control', label: 'AWS · bucket owner enforced' }, { value: 'private', label: 'S3-compatible · private ACL' }]} ariaLabel="Object ownership" />
                                             {#if error('storage.s3.object_acl')}<span class="error">{error('storage.s3.object_acl')}</span>{/if}
                                         </label>
                                         <label>
                                             <span class="label">Server-side encryption</span>
-                                            <select bind:value={form.storage.s3.server_side_encryption}>
-                                                <option value="">Provider or bucket default</option>
-                                                <option value="AES256">SSE-S3 / AES-256</option>
-                                                <option value="aws:kms">SSE-KMS</option>
-                                            </select>
+                                            <Select bind:value={form.storage.s3.server_side_encryption} options={[{ value: '', label: 'Provider or bucket default' }, { value: 'AES256', label: 'SSE-S3 / AES-256' }, { value: 'aws:kms', label: 'SSE-KMS' }]} ariaLabel="Server-side encryption" />
                                             {#if error('storage.s3.server_side_encryption')}<span class="error">{error('storage.s3.server_side_encryption')}</span>{/if}
                                         </label>
                                         {#if form.storage.s3.server_side_encryption === 'aws:kms'}

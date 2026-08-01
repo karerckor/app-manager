@@ -45,7 +45,24 @@ class TeamApiKeyTest extends TestCase
                 ->has('apiKeys', 1)
                 ->where('apiKeys.0.name', 'GitHub Actions')
                 ->where('apiKeys.0.created_by.id', $owner->id)
-                ->has('scopeGroups', 13));
+                ->has('scopeGroups', 13)
+                ->has('keyPresets', 2)
+                ->where('keyPresets.0.key', 'build-runner')
+                ->where('keyPresets.0.scopes', [
+                    ApiKeyScope::BuildsWrite->value,
+                    ApiKeyScope::LogsWrite->value,
+                ])
+                ->where('keyPresets.1.key', 'ci-cd-pipeline')
+                ->where('keyPresets.1.scopes', [
+                    ApiKeyScope::AppsRead->value,
+                    ApiKeyScope::IdentifiersRead->value,
+                    ApiKeyScope::AssetsRead->value,
+                    ApiKeyScope::FilesRead->value,
+                    ApiKeyScope::CredentialsRead->value,
+                    ApiKeyScope::BuildsWrite->value,
+                    ApiKeyScope::LogsWrite->value,
+                    ApiKeyScope::ArtifactsWrite->value,
+                ]));
 
         $this->delete(route('accounts.api-keys.destroy', [$team, $apiKey]))
             ->assertRedirect()

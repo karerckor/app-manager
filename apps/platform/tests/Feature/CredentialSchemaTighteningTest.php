@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CredentialType;
 use App\Models\AppIdentifier;
 use App\Models\Credential;
+use App\Support\Credentials\CredentialSchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -36,16 +38,16 @@ class CredentialSchemaTighteningTest extends TestCase
 
     public function test_google_services_client_config_types_are_identifier_scoped_file_only(): void
     {
-        $json = \App\Support\Credentials\CredentialSchema::definition(
-            \App\Enums\CredentialType::GoogleServicesJson,
+        $json = CredentialSchema::definition(
+            CredentialType::GoogleServicesJson,
         );
         $this->assertSame(['android'], $json['platforms']);
         $this->assertSame('identifier', $json['attachment']);
         $this->assertSame(['json'], $json['file']['extensions']);
         $this->assertSame([], $json['fields']);
 
-        $plist = \App\Support\Credentials\CredentialSchema::definition(
-            \App\Enums\CredentialType::GoogleServiceInfoPlist,
+        $plist = CredentialSchema::definition(
+            CredentialType::GoogleServiceInfoPlist,
         );
         $this->assertSame(['ios'], $plist['platforms']);
         $this->assertSame('identifier', $plist['attachment']);

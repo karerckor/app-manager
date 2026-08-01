@@ -17,6 +17,7 @@
     } from '@lucide/svelte';
     import WorkspacePage from '../../Components/WorkspacePage.svelte';
     import TabSelector from '../../Components/TabSelector.svelte';
+    import Select from '../../Components/Select.svelte';
 
     export let auth;
     export let navigationTeams = [];
@@ -238,25 +239,25 @@
 
 <WorkspacePage {auth} {navigationTeams} {navigationTeam} active="push-notifications" title="Push Notifications">
     {#snippet breadcrumbs()}
-        <nav class="mb-4 flex items-center gap-2 text-[11px] font-medium text-slate-400">
-            <span class="text-slate-400">Tools</span>
-            <span class="text-slate-300">/</span>
-            <span class="text-slate-600">Push Notifications</span>
+        <nav class="mb-4 flex items-center gap-2 text-[11px] font-medium text-faint">
+            <span class="text-faint">Tools</span>
+            <span class="text-faint">/</span>
+            <span class="text-muted">Push Notifications</span>
         </nav>
     {/snippet}
 
     {#snippet heading()}
         <div class="flex items-center gap-2">
-            <h1 class="truncate text-2xl font-extrabold tracking-tight text-slate-950">Push Notifications</h1>
-            <span class="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+            <h1 class="truncate text-2xl font-extrabold tracking-tight text-text">Push Notifications</h1>
+            <span class="inline-flex items-center gap-2 rounded-full border border-brand-soft-line bg-brand-soft px-2.5 py-0.5 text-[10px] font-bold text-brand uppercase">
                 Debug tool
             </span>
         </div>
-        <p class="mt-1.5 text-xs text-slate-500 max-w-2xl">Send debug notifications through Expo Push Service or Firebase Cloud Messaging HTTP v1 and inspect each provider response.</p>
+        <p class="mt-1.5 text-xs text-muted max-w-2xl">Send debug notifications through Expo Push Service or Firebase Cloud Messaging HTTP v1 and inspect each provider response.</p>
     {/snippet}
 
         {#if !canSend}
-            <div class="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div class="mb-6 flex items-start gap-3 rounded-md border border-warn-fill bg-warn-text/10 px-4 py-3 text-sm text-warn-fill">
                 <CircleAlert class="mt-0.5 h-4.5 w-4.5 shrink-0" />
                 <div><strong class="font-semibold">Read-only access.</strong> Ask a workspace owner or admin for credential management permission to send test notifications.</div>
             </div>
@@ -278,20 +279,20 @@
         <div class="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.8fr)] xl:items-start">
             <div class="space-y-6">
                 <section class="card overflow-clip p-0">
-                    <div class="border-b border-slate-100 px-5 py-3.5 flex items-start justify-between gap-4">
+                    <div class="border-b border-border-subtle px-5 py-3.5 flex items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-xs font-bold text-slate-900">Recipients</h2>
-                            <p class="mt-0.5 text-[11px] text-slate-500">Add up to 100 device tokens. Paste a comma-, space-, or line-separated list.</p>
+                            <h2 class="text-xs font-bold text-text">Recipients</h2>
+                            <p class="mt-0.5 text-[11px] text-muted">Add up to 100 device tokens. Paste a comma-, space-, or line-separated list.</p>
                         </div>
-                        <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{recipients.length}/100</span>
+                        <span class="rounded-full bg-border-subtle px-2.5 py-1 text-[11px] font-semibold text-muted">{recipients.length}/100</span>
                     </div>
                     <div class="p-5">
-                        <div class="min-h-24 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm transition focus-within:border-indigo-500 focus-within:ring-4 focus-within:ring-indigo-500/10">
+                        <div class="min-h-24 rounded-md border border-border bg-surface-raised p-2.5 shadow-sm transition focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10">
                             <div class="flex flex-wrap gap-2">
                                 {#each recipients as recipient, index (recipient)}
-                                    <span class="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 py-1 pr-1 pl-2.5 text-xs font-medium text-indigo-800">
+                                    <span class="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-brand-soft-line bg-brand-soft py-1 pr-1 pl-2.5 text-xs font-medium text-brand">
                                         <span class="max-w-[520px] truncate" title={recipient}>{recipient}</span>
-                                        <button type="button" class="ghost grid h-6 w-6 shrink-0 place-items-center rounded-md p-0 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-800" aria-label={`Remove ${recipient}`} on:click={() => removeRecipient(index)}>
+                                        <button type="button" class="ghost grid h-6 w-6 shrink-0 place-items-center rounded-md p-0 text-brand hover:bg-brand-soft-line hover:text-brand" aria-label={`Remove ${recipient}`} on:click={() => removeRecipient(index)}>
                                             <X class="h-3.5 w-3.5" />
                                         </button>
                                     </span>
@@ -313,10 +314,10 @@
 
                 {#if provider === 'expo'}
                     <section class="card overflow-clip p-0">
-                        <div class="border-b border-slate-100 px-5 py-3.5 flex items-center justify-between gap-4">
+                        <div class="border-b border-border-subtle px-5 py-3.5 flex items-center justify-between gap-4">
                             <div>
-                                <h2 class="text-xs font-bold text-slate-900">Message payload</h2>
-                                <p class="mt-0.5 text-[11px] text-slate-500">Fields match the Expo push notification tester.</p>
+                                <h2 class="text-xs font-bold text-text">Message payload</h2>
+                                <p class="mt-0.5 text-[11px] text-muted">Fields match the Expo push notification tester.</p>
                             </div>
                             <a class="secondary gap-1.5 px-2.5 py-1.5 text-xs" href="https://expo.dev/notifications" target="_blank" rel="noreferrer">
                                 Expo tester
@@ -327,7 +328,7 @@
                         <div class="p-5">
                             <div class="grid gap-4 md:grid-cols-2">
                                 <label class="md:col-span-2">
-                                    <span class="label">Access token <span class="font-normal text-slate-400">· optional</span></span>
+                                    <span class="label">Access token <span class="font-normal text-faint">· optional</span></span>
                                     <input type="password" placeholder="Required only when Expo push security is enabled" bind:value={accessToken} disabled={!canSend} />
                                 </label>
                                 <label>
@@ -339,27 +340,23 @@
                                     <input type="text" placeholder="Notification body" bind:value={body} disabled={!canSend} />
                                 </label>
                                 <label class="md:col-span-2">
-                                    <span class="label">Data <span class="font-normal text-slate-400">· JSON object</span></span>
+                                    <span class="label">Data <span class="font-normal text-faint">· JSON object</span></span>
                                     <textarea class="min-h-32 font-mono text-xs leading-5" spellcheck="false" bind:value={dataJson} disabled={!canSend}></textarea>
                                 </label>
                                 <label>
-                                    <span class="label">TTL <span class="font-normal text-slate-400">· seconds</span></span>
+                                    <span class="label">TTL <span class="font-normal text-faint">· seconds</span></span>
                                     <input type="number" min="0" max="2419200" placeholder="Provider default" bind:value={ttl} disabled={!canSend} />
                                 </label>
                                 <label>
                                     <span class="label">Priority</span>
-                                    <select bind:value={priority} disabled={!canSend}>
-                                        <option value="default">Default</option>
-                                        <option value="normal">Normal</option>
-                                        <option value="high">High</option>
-                                    </select>
+                                    <Select bind:value={priority} options={[{ value: 'default', label: 'Default' }, { value: 'normal', label: 'Normal' }, { value: 'high', label: 'High' }]} ariaLabel="Priority" disabled={!canSend} />
                                 </label>
                             </div>
 
-                            <div class="mt-6 grid gap-6 border-t border-slate-100 pt-6 md:grid-cols-2 md:gap-x-8">
+                            <div class="mt-6 grid gap-6 border-t border-border-subtle pt-6 md:grid-cols-2 md:gap-x-8">
                                 <div class="space-y-4">
-                                    <div class="flex items-center gap-2 text-xs font-bold tracking-wider text-slate-400 uppercase">
-                                        <Smartphone class="h-4 w-4 text-slate-400" />
+                                    <div class="flex items-center gap-2 text-xs font-bold tracking-wider text-faint uppercase">
+                                        <Smartphone class="h-4 w-4 text-faint" />
                                         iOS Options
                                     </div>
                                     <div class="space-y-4">
@@ -378,8 +375,8 @@
                                     </div>
                                 </div>
                                 <div class="space-y-4">
-                                    <div class="flex items-center gap-2 text-xs font-bold tracking-wider text-slate-400 uppercase">
-                                        <Smartphone class="h-4 w-4 text-slate-400" />
+                                    <div class="flex items-center gap-2 text-xs font-bold tracking-wider text-faint uppercase">
+                                        <Smartphone class="h-4 w-4 text-faint" />
                                         Android Options
                                     </div>
                                     <div class="space-y-4">
@@ -387,7 +384,7 @@
                                             <span class="label">Channel ID</span>
                                             <input type="text" placeholder="default" bind:value={channelId} disabled={!canSend} />
                                         </label>
-                                        <div class="mt-4 flex gap-2 rounded-xl bg-blue-50 p-3.5 text-xs leading-5 text-blue-800">
+                                        <div class="mt-4 flex gap-2 rounded-md bg-brand-soft p-3.5 text-xs leading-5 text-brand">
                                             <Info class="mt-0.5 h-4 w-4 shrink-0" />
                                             <span>The channel must already exist in the application or Android may not display the notification.</span>
                                         </div>
@@ -398,36 +395,31 @@
                     </section>
                 {:else}
                     <section class="card overflow-clip p-0">
-                        <div class="border-b border-slate-100 px-5 py-3.5">
-                            <h2 class="text-xs font-bold text-slate-900">Firebase HTTP v1</h2>
-                            <p class="mt-0.5 text-[11px] text-slate-500">Mints a short-lived OAuth token from the selected service account. The private key never reaches the browser.</p>
+                        <div class="border-b border-border-subtle px-5 py-3.5">
+                            <h2 class="text-xs font-bold text-text">Firebase HTTP v1</h2>
+                            <p class="mt-0.5 text-[11px] text-muted">Mints a short-lived OAuth token from the selected service account. The private key never reaches the browser.</p>
                         </div>
 
                         <div class="p-5 space-y-5">
                             <label>
                                 <span class="label">FCM HTTP v1 credential</span>
-                                <select bind:value={credentialId} disabled={!canSend || !readyCredentials.length}>
-                                    <option value="" disabled>Select a service account</option>
-                                    {#each firebaseCredentials as credential}
-                                        <option value={credential.id} disabled={!credential.ready}>{credential.name}{credential.ready ? '' : ' · file missing'}</option>
-                                    {/each}
-                                </select>
+                                <Select bind:value={credentialId} options={[{ value: '', label: 'Select a service account', disabled: true }, ...firebaseCredentials.map((credential) => ({ value: credential.id, label: `${credential.name}${credential.ready ? '' : ' · file missing'}`, disabled: !credential.ready }))]} ariaLabel="FCM HTTP v1 credential" disabled={!canSend || !readyCredentials.length} />
                             </label>
 
                             {#if !firebaseCredentials.length}
-                                <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                                <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warn-fill bg-warn-text/10 px-4 py-3 text-xs text-warn-fill">
                                     <span>Add a Firebase HTTP v1 service-account JSON in Credentials Vault first.</span>
-                                    <Link href={credentialsUrl} class="font-bold text-amber-900 underline underline-offset-2">Open vault</Link>
+                                    <Link href={credentialsUrl} class="font-bold text-warn-fill underline underline-offset-2">Open vault</Link>
                                 </div>
                             {:else if !readyCredentials.length}
-                                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">Upload the service-account JSON file for an FCM credential before sending.</div>
+                                <div class="rounded-md border border-warn-fill bg-warn-text/10 px-4 py-3 text-xs text-warn-fill">Upload the service-account JSON file for an FCM credential before sending.</div>
                             {/if}
 
-                            <div class="border-t border-slate-100 pt-5">
+                            <div class="border-t border-border-subtle pt-5">
                                 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                                     <div>
-                                        <h3 class="text-xs font-bold text-slate-900">JSON template</h3>
-                                        <p class="mt-0.5 text-[11px] text-slate-500">The recipient placeholder is replaced with every token at send time.</p>
+                                        <h3 class="text-xs font-bold text-text">JSON template</h3>
+                                        <p class="mt-0.5 text-[11px] text-muted">The recipient placeholder is replaced with every token at send time.</p>
                                     </div>
                                     <button type="button" class="secondary gap-1.5 px-2.5 py-1.5 text-xs" on:click={copyTemplate}>
                                         {#if copied}<Check class="h-3.5 w-3.5" />Copied{:else}<Copy class="h-3.5 w-3.5" />Copy JSON{/if}
@@ -461,25 +453,25 @@
             <aside class="space-y-6 xl:sticky xl:top-6">
                 <section class="card">
                     <div class="flex items-center gap-3">
-                        <span class="grid h-9 w-9 place-items-center rounded-lg {provider === 'expo' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-700'}">
+                        <span class="grid h-9 w-9 place-items-center rounded-lg {provider === 'expo' ? 'bg-brand-soft text-brand' : 'bg-warn-text/10 text-warn-fill'}">
                             {#if provider === 'expo'}<Send class="h-4 w-4" />{:else}<Flame class="h-4 w-4" />{/if}
                         </span>
                         <div>
-                            <h3 class="text-xs font-bold text-slate-900">Ready to send</h3>
-                            <p class="mt-0.5 text-[11px] text-slate-500">{provider === 'expo' ? 'Expo Push Service' : `Firebase · ${fcmPlatform === 'ios' ? 'iOS' : 'Android'}`}</p>
+                            <h3 class="text-xs font-bold text-text">Ready to send</h3>
+                            <p class="mt-0.5 text-[11px] text-muted">{provider === 'expo' ? 'Expo Push Service' : `Firebase · ${fcmPlatform === 'ios' ? 'iOS' : 'Android'}`}</p>
                         </div>
                     </div>
 
-                    <dl class="mt-4 space-y-3 border-y border-slate-100 py-3.5 text-[11px]">
-                        <div class="flex items-center justify-between gap-4"><dt class="text-slate-500 font-medium">Recipients</dt><dd class="font-bold text-slate-900">{recipients.length}</dd></div>
-                        <div class="flex items-center justify-between gap-4"><dt class="text-slate-500 font-medium">Provider</dt><dd class="font-bold text-slate-900">{provider === 'expo' ? 'Expo' : 'FCM HTTP v1'}</dd></div>
+                    <dl class="mt-4 space-y-3 border-y border-border-subtle py-3.5 text-[11px]">
+                        <div class="flex items-center justify-between gap-4"><dt class="text-muted font-medium">Recipients</dt><dd class="font-bold text-text">{recipients.length}</dd></div>
+                        <div class="flex items-center justify-between gap-4"><dt class="text-muted font-medium">Provider</dt><dd class="font-bold text-text">{provider === 'expo' ? 'Expo' : 'FCM HTTP v1'}</dd></div>
                         {#if provider === 'firebase'}
-                            <div class="flex items-center justify-between gap-4"><dt class="text-slate-500 font-medium">Template</dt><dd class="font-bold text-slate-900 uppercase">{fcmPlatform}</dd></div>
+                            <div class="flex items-center justify-between gap-4"><dt class="text-muted font-medium">Template</dt><dd class="font-bold text-text uppercase">{fcmPlatform}</dd></div>
                         {/if}
                     </dl>
 
                     {#if error}
-                        <div class="mt-4 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] leading-5 text-rose-800">
+                        <div class="mt-4 flex gap-2 rounded-md border border-danger bg-danger/10 p-3 text-[11px] leading-5 text-danger">
                             <CircleAlert class="mt-0.5 h-4 w-4 shrink-0" />
                             <span>{error}</span>
                         </div>
@@ -495,45 +487,45 @@
                         {/if}
                     </button>
                     {#if !recipients.length}
-                        <p class="mt-2 text-center text-[10px] text-slate-400">Add at least one recipient to continue.</p>
+                        <p class="mt-2 text-center text-[10px] text-faint">Add at least one recipient to continue.</p>
                     {/if}
                 </section>
 
                 {#if results}
                     <section class="card overflow-clip p-0">
-                        <div class="border-b border-slate-100 px-5 py-3.5 flex items-center justify-between gap-3">
+                        <div class="border-b border-border-subtle px-5 py-3.5 flex items-center justify-between gap-3">
                             <div>
-                                <h2 class="text-xs font-bold text-slate-900">Provider response</h2>
-                                <p class="mt-0.5 text-[11px] text-slate-500">{results.successful} of {results.sent} accepted</p>
+                                <h2 class="text-xs font-bold text-text">Provider response</h2>
+                                <p class="mt-0.5 text-[11px] text-muted">{results.successful} of {results.sent} accepted</p>
                             </div>
-                            <span class="grid h-8 w-8 place-items-center rounded-full {results.successful === results.sent ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'}">
+                            <span class="grid h-8 w-8 place-items-center rounded-full {results.successful === results.sent ? 'bg-ok/10 text-ok' : 'bg-warn-text/10 text-warn-fill'}">
                                 {#if results.successful === results.sent}<CheckCircle2 class="h-4 w-4" />{:else}<CircleAlert class="h-4 w-4" />{/if}
                             </span>
                         </div>
                         <div class="p-5">
                             <div class="max-h-[480px] space-y-2 overflow-y-auto pr-1">
                                 {#each results.results as result}
-                                    <details class="rounded-xl border p-3 {result.status === 'ok' ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}">
+                                    <details class="rounded-md border p-3 {result.status === 'ok' ? 'border-ok bg-ok/10' : 'border-danger bg-danger/10'}">
                                         <summary class="cursor-pointer list-none">
                                             <div class="flex items-center gap-2">
-                                                <span class="h-2 w-2 shrink-0 rounded-full {result.status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
-                                                <span class="min-w-0 flex-1 truncate text-xs font-semibold text-slate-900" title={result.recipient}>{result.recipient}</span>
-                                                <span class="text-[10px] font-bold uppercase {result.status === 'ok' ? 'text-emerald-700' : 'text-rose-700'}">{result.status}</span>
+                                                <span class="h-2 w-2 shrink-0 rounded-full {result.status === 'ok' ? 'bg-ok' : 'bg-danger'}"></span>
+                                                <span class="min-w-0 flex-1 truncate text-xs font-semibold text-text" title={result.recipient}>{result.recipient}</span>
+                                                <span class="text-[10px] font-bold uppercase {result.status === 'ok' ? 'text-ok' : 'text-danger'}">{result.status}</span>
                                             </div>
                                         </summary>
-                                        {#if result.id}<p class="mt-2 break-all font-mono text-[10px] leading-4 text-slate-600">{result.id}</p>{/if}
-                                        {#if result.message}<p class="mt-2 text-xs leading-5 text-rose-800">{result.message}</p>{/if}
-                                        {#if result.details}<pre class="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-2.5 text-[10px] leading-4 text-slate-200">{resultDetails(result)}</pre>{/if}
+                                        {#if result.id}<p class="mt-2 break-all font-mono text-[10px] leading-4 text-muted">{result.id}</p>{/if}
+                                        {#if result.message}<p class="mt-2 text-xs leading-5 text-danger">{result.message}</p>{/if}
+                                        {#if result.details}<pre class="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-text p-2.5 text-[10px] leading-4 text-faint">{resultDetails(result)}</pre>{/if}
                                     </details>
                                 {/each}
                             </div>
                         </div>
                     </section>
                 {:else}
-                    <section class="card border-dashed bg-slate-50/50 text-center py-10">
-                        <Braces class="mx-auto h-6 w-6 text-slate-300" />
-                        <h3 class="mt-3 text-sm font-semibold text-slate-600">Responses appear here</h3>
-                        <p class="mt-1.5 text-xs text-slate-400 max-w-xs mx-auto">Each recipient gets an individual status and provider message for easier debugging.</p>
+                    <section class="card border-dashed bg-surface-sunken/50 text-center py-10">
+                        <Braces class="mx-auto h-6 w-6 text-faint" />
+                        <h3 class="mt-3 text-sm font-semibold text-muted">Responses appear here</h3>
+                        <p class="mt-1.5 text-xs text-faint max-w-xs mx-auto">Each recipient gets an individual status and provider message for easier debugging.</p>
                     </section>
                 {/if}
             </aside>

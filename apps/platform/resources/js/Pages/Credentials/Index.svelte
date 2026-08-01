@@ -30,6 +30,7 @@
     import WorkspacePage from '../../Components/WorkspacePage.svelte';
     import TabSelector from '../../Components/TabSelector.svelte';
     import TagEditor from '../../Components/TagEditor.svelte';
+    import Select from '../../Components/Select.svelte';
     import VaultCredentialFormModal from './VaultCredentialFormModal.svelte';
 
     export let auth;
@@ -121,17 +122,17 @@
         return 'mixed';
     };
     const markClass = (credential) => ({
-        ios: 'bg-slate-900 text-white',
-        android: 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200',
-    }[markPlatform(credential)] ?? 'bg-slate-100 text-slate-600 ring-1 ring-inset ring-slate-200');
+        ios: 'bg-text text-white',
+        android: 'bg-ok/10 text-ok ring-1 ring-inset ring-ok/30',
+    }[markPlatform(credential)] ?? 'bg-surface-sunken text-muted ring-1 ring-inset ring-border');
 
     const RUNWAY_DAYS = 90;
     const runwayWidth = ({ status: state, days }) => state === 'valid' || state === 'expiring'
         ? Math.min(100, Math.max(0, (days / RUNWAY_DAYS) * 100))
         : 0;
     const runwayFill = ({ status: state, days }) => {
-        if (state === 'expiring') return 'bg-amber-500';
-        return days >= RUNWAY_DAYS ? 'bg-slate-300' : 'bg-slate-400';
+        if (state === 'expiring') return 'bg-warn-fill';
+        return days >= RUNWAY_DAYS ? 'bg-border-control' : 'bg-faint';
     };
     const validityLabel = ({ status: state, days }) => {
         if (state === 'never') return 'no expiry';
@@ -141,9 +142,9 @@
         return `+${days}d`;
     };
     const validityTone = (state) => ({
-        expired: 'text-rose-700',
-        expiring: 'text-amber-700',
-    }[state] ?? 'text-slate-500');
+        expired: 'text-danger',
+        expiring: 'text-warn-fill',
+    }[state] ?? 'text-muted');
     const visitFilters = () => router.get(credentials.path, {
         search: query.trim() || undefined,
         type: type || undefined,
@@ -170,11 +171,11 @@
     };
     const chipDisabled = (chip) => Boolean(chip.value) && !chip.count;
     const chipClass = (chip) => {
-        if (status === chip.value) return 'border-indigo-200 bg-indigo-50 text-indigo-700';
-        if (chipDisabled(chip)) return 'border-slate-100 bg-slate-50/60 text-slate-300';
-        if (chip.tone === 'rose') return 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300';
-        if (chip.tone === 'amber') return 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300';
-        return 'border-slate-200 bg-white text-slate-600 hover:border-slate-300';
+        if (status === chip.value) return 'border-brand-soft-line bg-brand-soft text-brand';
+        if (chipDisabled(chip)) return 'border-border-subtle bg-surface-sunken text-border-control';
+        if (chip.tone === 'rose') return 'border-danger/30 bg-danger/10 text-danger hover:border-danger/40';
+        if (chip.tone === 'amber') return 'border-warn-fill/30 bg-warn-text/10 text-warn-fill hover:border-warn-fill/40';
+        return 'border-border bg-surface-raised text-muted hover:border-border-control';
     };
     const applyStatus = (value) => {
         status = status === value ? '' : value;
@@ -289,7 +290,7 @@
                     Add credential
                 </button>
             {:else}
-                <span class="text-xs font-semibold text-slate-500">Read-only access</span>
+                <span class="text-xs font-semibold text-muted">Read-only access</span>
             {/if}
     {/snippet}
 
@@ -306,69 +307,55 @@
         <div class="mb-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_190px_180px_170px_auto]">
             <label class="relative">
                 <span class="sr-only">Search credentials</span>
-                <Search class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-faint" />
                 <input class="py-2 pl-9" type="search" placeholder="Search credentials, apps, identifiers…" bind:value={query} on:input={scheduleSearch} />
             </label>
             <label>
                 <span class="sr-only">Credential type</span>
-                <select class="py-2" bind:value={type} on:change={visitFilters}>
-                    <option value="">All credential types</option>
-                    <optgroup label="iOS">
-                        {#each iosCredentialTypes as definition}<option value={definition.value}>{definition.label}</option>{/each}
-                    </optgroup>
-                    <optgroup label="Android">
-                        {#each androidCredentialTypes as definition}<option value={definition.value}>{definition.label}</option>{/each}
-                    </optgroup>
-                </select>
+                <Select bind:value={type} options={[{ value: '', label: 'All credential types' }, ...iosCredentialTypes, ...androidCredentialTypes]} ariaLabel="Credential type" on:change={visitFilters} />
             </label>
             <label>
                 <span class="sr-only">Application</span>
-                <select class="py-2" bind:value={app} on:change={visitFilters}>
-                    <option value="">All applications</option>
-                    {#each apps as item}<option value={item.id}>{item.name}</option>{/each}
-                </select>
+                <Select bind:value={app} options={[{ value: '', label: 'All applications' }, ...apps.map((item) => ({ value: item.id, label: item.name }))]} ariaLabel="Application" on:change={visitFilters} />
             </label>
             <label>
                 <span class="sr-only">Sort order</span>
-                <select class="py-2" bind:value={sort} on:change={visitFilters}>
-                    <option value="updated">Recently updated</option>
-                    <option value="expiry">Soonest expiry</option>
-                </select>
+                <Select bind:value={sort} options={[{ value: 'updated', label: 'Recently updated' }, { value: 'expiry', label: 'Soonest expiry' }]} ariaLabel="Sort order" on:change={visitFilters} />
             </label>
             {#if hasFilters}<button class="ghost px-3 py-2 text-xs" on:click={clearFilters}>Clear</button>{/if}
         </div>
 
         <section class="card overflow-clip p-0">
             <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                <h2 class="text-xs font-bold text-slate-900">
+                <h2 class="text-xs font-bold text-text">
                     Team credentials
-                    <span class="ml-1 font-mono text-[11px] font-medium text-slate-400 tabular-nums">{credentials.total ?? 0}{hasFilters ? ' matching' : ''} in {navigationTeam?.name}</span>
+                    <span class="ml-1 font-mono text-[11px] font-medium text-faint tabular-nums">{credentials.total ?? 0}{hasFilters ? ' matching' : ''} in {navigationTeam?.name}</span>
                 </h2>
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700"><CheckCircle2 class="h-3.5 w-3.5" />Encrypted at rest</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-1 text-[10px] font-semibold text-ok"><CheckCircle2 class="h-3.5 w-3.5" />Encrypted at rest</span>
             </div>
 
             {#if credentialItems.length}
-                <div class="vault-head vault-grid sticky top-0 z-10 hidden border-y border-slate-100 bg-slate-50/80 px-5 py-2 backdrop-blur lg:grid">
+                <div class="vault-head vault-grid sticky top-0 z-10 hidden border-y border-border-subtle bg-surface-sunken px-5 py-2 backdrop-blur lg:grid">
                     <span>Credential</span>
                     <span>Used by</span>
                     <span>Validity</span>
                     <span class="sr-only">Actions</span>
                 </div>
-                <div class="divide-y divide-slate-100">
+                <div class="divide-y divide-border-subtle">
                     {#each credentialItems as credential (credential.id)}
-                        <article class="group px-5 py-2.5 transition hover:bg-slate-50/60">
+                        <article class="group px-5 py-2.5 transition hover:bg-surface-sunken">
                             <div class="vault-grid">
                                 <div class="flex min-w-0 items-start gap-3">
-                                    <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg {markClass(credential)}">
+                                    <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md {markClass(credential)}">
                                         <svelte:component this={typeIcon(credential.type)} class="h-3.5 w-3.5" strokeWidth={1.9} />
                                     </span>
                                     <div class="min-w-0 flex-1">
-                                        <button type="button" class="block max-w-full truncate bg-transparent p-0 text-left text-[13px] font-semibold text-slate-900 shadow-none hover:text-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:outline-none" aria-expanded={expandedId === credential.id} aria-controls={`vault-detail-${credential.id}`} on:click={() => toggleExpanded(credential)}>
+                                        <button type="button" class="block max-w-full truncate bg-transparent p-0 text-left text-[13px] font-semibold text-text shadow-none hover:text-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none" aria-expanded={expandedId === credential.id} aria-controls={`vault-detail-${credential.id}`} on:click={() => toggleExpanded(credential)}>
                                             {credential.name}
                                         </button>
-                                        <p class="mt-0.5 truncate text-[11px] text-slate-400">
+                                        <p class="mt-0.5 truncate text-[11px] text-faint">
                                             {typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} secure field${credential.fields.length === 1 ? '' : 's'}` : ''} ·
-                                            {#if credential.file}<span class="font-mono">{credential.file.name}</span>{:else}<span class="font-medium text-amber-600">no secure file uploaded</span>{/if}
+                                            {#if credential.file}<span class="font-mono">{credential.file.name}</span>{:else}<span class="font-medium text-warn-fill">no secure file uploaded</span>{/if}
                                         </p>
                                         {#if credential.tags.length || canManage}
                                             <div class="mt-1">
@@ -380,25 +367,25 @@
 
                                 <div class="min-w-0">
                                     {#if credential.attachments.length}
-                                        <Link href={credential.attachments[0].url} class="block min-w-0 truncate text-[11px] font-semibold text-slate-700 hover:text-indigo-700">{credential.attachments[0].app_name}</Link>
-                                        <p class="truncate font-mono text-[10px] text-slate-400">{credential.attachments[0].identifier}</p>
+                                        <Link href={credential.attachments[0].url} class="block min-w-0 truncate text-[11px] font-semibold text-text hover:text-brand">{credential.attachments[0].app_name}</Link>
+                                        <p class="truncate font-mono text-[10px] text-faint">{credential.attachments[0].identifier}</p>
                                         {#if credential.attachments.length > 1}
-                                            <p class="font-mono text-[10px] text-slate-400">+{credential.attachments.length - 1} more</p>
+                                            <p class="font-mono text-[10px] text-faint">+{credential.attachments.length - 1} more</p>
                                         {/if}
                                     {:else}
-                                        <span class="text-[11px] font-semibold text-amber-600">Unattached</span>
+                                        <span class="text-[11px] font-semibold text-warn-fill">Unattached</span>
                                     {/if}
                                 </div>
 
                                 <div>
                                     {#if credential.expiration.status === 'never'}
-                                        <div class="border-t border-dashed border-slate-200" aria-hidden="true"></div>
+                                        <div class="border-t border-dashed border-border" aria-hidden="true"></div>
                                     {:else if credential.expiration.status === 'expired'}
-                                        <div class="h-1 overflow-hidden rounded-full bg-rose-100" aria-hidden="true">
-                                            <span class="block h-full w-full rounded-full bg-rose-500"></span>
+                                        <div class="h-1 overflow-hidden rounded-full bg-danger/10" aria-hidden="true">
+                                            <span class="block h-full w-full rounded-full bg-danger"></span>
                                         </div>
                                     {:else}
-                                        <div class="h-1 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+                                        <div class="h-1 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true">
                                             <span class="block h-full rounded-full {runwayFill(credential.expiration)} motion-safe:transition-[width] motion-safe:duration-300" style="width: {runwayWidth(credential.expiration)}%"></span>
                                         </div>
                                     {/if}
@@ -414,7 +401,7 @@
                                             <label for={`vault-file-${credential.id}`} class="icon-btn cursor-pointer" title={credential.file ? 'Replace file' : 'Upload file'} aria-label={credential.file ? 'Replace file' : 'Upload file'}><Upload class="h-4 w-4" strokeWidth={1.9} /></label>
                                             <input id={`vault-file-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />
                                             <button type="button" class="icon-btn" title="Edit credential" aria-label={`Edit ${credential.name}`} on:click={() => openEdit(credential)}><Pencil class="h-4 w-4" strokeWidth={1.9} /></button>
-                                            <button type="button" class="icon-btn text-rose-500 hover:bg-rose-50 hover:text-rose-600" title="Delete credential" aria-label={`Delete ${credential.name}`} on:click={() => confirmingDelete = credential.id}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
+                                            <button type="button" class="icon-btn text-danger hover:bg-danger/10 hover:text-danger" title="Delete credential" aria-label={`Delete ${credential.name}`} on:click={() => confirmingDelete = credential.id}><Trash2 class="h-4 w-4" strokeWidth={1.9} /></button>
                                         {/if}
                                     </div>
                                     <button type="button" class="icon-btn" aria-expanded={expandedId === credential.id} aria-controls={`vault-detail-${credential.id}`} aria-label={`Details for ${credential.name}`} on:click={() => toggleExpanded(credential)}>
@@ -424,24 +411,24 @@
                             </div>
 
                             {#if expandedId === credential.id}
-                                <div id={`vault-detail-${credential.id}`} class="mt-3 grid gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2">
+                                <div id={`vault-detail-${credential.id}`} class="mt-3 grid gap-4 rounded-md border border-border bg-surface-sunken p-4 sm:grid-cols-2">
                                     <div>
                                         <p class="vault-head mb-1.5">Used by</p>
                                         {#if credential.attachments.length}
                                             <ul class="space-y-1">
                                                 {#each credential.attachments as attachment}
                                                     <li>
-                                                        <Link href={attachment.url} class="group/att inline-flex max-w-full items-center gap-1.5 text-[11px] text-slate-600 hover:text-indigo-700">
-                                                            <span class="h-1.5 w-1.5 shrink-0 rounded-full {attachment.platform === 'ios' ? 'bg-slate-900' : 'bg-emerald-500'}"></span>
+                                                        <Link href={attachment.url} class="group/att inline-flex max-w-full items-center gap-1.5 text-[11px] text-muted hover:text-brand">
+                                                            <span class="h-1.5 w-1.5 shrink-0 rounded-full {attachment.platform === 'ios' ? 'bg-text' : 'bg-ok'}"></span>
                                                             <span class="truncate font-semibold">{attachment.app_name}</span>
-                                                            <span class="truncate font-mono text-[10px] text-slate-400">{attachment.identifier}</span>
-                                                            {#if attachment.profile}<span class="rounded bg-indigo-50 px-1 py-0.5 text-[10px] font-bold text-indigo-600">{attachment.profile.label}</span>{/if}
+                                                            <span class="truncate font-mono text-[10px] text-faint">{attachment.identifier}</span>
+                                                            {#if attachment.profile}<span class="rounded bg-brand-soft px-1 py-0.5 text-[10px] font-bold text-brand">{attachment.profile.label}</span>{/if}
                                                         </Link>
                                                     </li>
                                                 {/each}
                                             </ul>
                                         {:else}
-                                            <p class="text-[11px] font-medium text-amber-600">Not attached to an application yet. Attach it from an app identifier to use it in builds.</p>
+                                            <p class="text-[11px] font-medium text-warn-fill">Not attached to an application yet. Attach it from an app identifier to use it in builds.</p>
                                         {/if}
                                     </div>
 
@@ -449,14 +436,14 @@
                                         <div>
                                             <p class="vault-head mb-1.5">Secure file</p>
                                             {#if credential.file}
-                                                <p class="font-mono text-[11px] break-all text-slate-600">{credential.file.name}<span class="text-slate-400"> · {formatBytes(credential.file.size)}</span></p>
+                                                <p class="font-mono text-[11px] break-all text-muted">{credential.file.name}<span class="text-faint"> · {formatBytes(credential.file.size)}</span></p>
                                             {:else}
-                                                <p class="text-[11px] font-medium text-amber-600">No file uploaded. Upload one to use this credential in builds.</p>
+                                                <p class="text-[11px] font-medium text-warn-fill">No file uploaded. Upload one to use this credential in builds.</p>
                                             {/if}
                                         </div>
                                         <div>
                                             <p class="vault-head mb-1.5">Updated</p>
-                                            <p class="text-[11px] text-slate-600">{formatRelative(credential.updated_at)}</p>
+                                            <p class="text-[11px] text-muted">{formatRelative(credential.updated_at)}</p>
                                         </div>
                                         {#if credential.reveal_url && revealedCredentialId !== credential.id}
                                             <button type="button" class="secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" on:click={() => openReveal(credential)}>
@@ -467,25 +454,25 @@
                                     </div>
 
                                     {#if revealedCredentialId === credential.id}
-                                        <div class="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+                                        <div class="sm:col-span-2 rounded-md border border-brand-soft-line bg-brand-soft p-4">
                                             <div class="flex flex-wrap items-start justify-between gap-3">
                                                 <div class="flex items-start gap-2.5">
-                                                    <LockKeyhole class="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                                                    <LockKeyhole class="mt-0.5 h-4 w-4 shrink-0 text-brand" />
                                                     <div>
-                                                        <h4 class="text-xs font-bold text-indigo-950">Passwords revealed</h4>
-                                                        <p class="mt-0.5 text-[11px] text-indigo-700">They will be hidden automatically after 60 seconds.</p>
+                                                        <h4 class="text-xs font-bold text-text">Passwords revealed</h4>
+                                                        <p class="mt-0.5 text-[11px] text-brand">They will be hidden automatically after 60 seconds.</p>
                                                     </div>
                                                 </div>
-                                                <button type="button" class="ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-indigo-700 hover:bg-indigo-100" on:click={hideSecrets}><EyeOff class="h-3.5 w-3.5" /> Hide</button>
+                                                <button type="button" class="ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-brand hover:bg-brand-soft-line" on:click={hideSecrets}><EyeOff class="h-3.5 w-3.5" /> Hide</button>
                                             </div>
                                             <div class="mt-3 grid gap-3 sm:grid-cols-2">
                                                 {#each revealedSecrets as secret (secret.name)}
-                                                    <div class="rounded-xl border border-indigo-100 bg-white p-3 shadow-sm">
-                                                        <p class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">{secret.label}</p>
+                                                    <div class="rounded-md border border-brand-soft-line bg-surface-raised p-3">
+                                                        <p class="text-[10px] font-semibold tracking-wider text-faint uppercase">{secret.label}</p>
                                                         <div class="mt-1.5 flex items-center gap-2">
-                                                            <code class="min-w-0 flex-1 overflow-x-auto rounded-lg bg-slate-950 px-3 py-2 font-mono text-xs text-slate-100">{secret.value}</code>
+                                                            <code class="min-w-0 flex-1 overflow-x-auto rounded-sm bg-text px-3 py-2 font-mono text-xs text-surface-raised">{secret.value}</code>
                                                             <button type="button" class="secondary grid h-8 w-8 shrink-0 place-items-center p-0" title={`Copy ${secret.label}`} aria-label={`Copy ${secret.label}`} on:click={() => copySecret(secret)}>
-                                                                {#if copiedSecret === secret.name}<Check class="h-4 w-4 text-emerald-600" />{:else}<Copy class="h-4 w-4" />{/if}
+                                                                    {#if copiedSecret === secret.name}<Check class="h-4 w-4 text-ok" />{:else}<Copy class="h-4 w-4" />{/if}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -497,8 +484,8 @@
                             {/if}
 
                             {#if confirmingDelete === credential.id}
-                                <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-                                    <span class="text-[11px] font-medium text-rose-700">{credential.attachments.length > 1 ? `Delete this credential permanently? ${credential.attachments.length} build targets use it.` : 'Delete this credential permanently?'}</span>
+                                <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-4 py-3">
+                                    <span class="text-[11px] font-medium text-danger">{credential.attachments.length > 1 ? `Delete this credential permanently? ${credential.attachments.length} build targets use it.` : 'Delete this credential permanently?'}</span>
                                     <span class="flex gap-2">
                                         <button type="button" class="ghost px-2.5 py-1.5 text-xs" on:click={() => confirmingDelete = null}>Cancel</button>
                                         <button type="button" class="danger px-2.5 py-1.5 text-xs" on:click={() => deleteCredential(credential)}>Delete</button>
@@ -511,12 +498,12 @@
 
                 {#if credentials.last_page > 1}
                     {#key paginationKey}
-                        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4" aria-label="Credential pagination">
-                            <p class="font-mono text-[11px] text-slate-400 tabular-nums">{credentials.from}–{credentials.to} of {credentials.total}</p>
+                        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle px-5 py-4" aria-label="Credential pagination">
+                            <p class="font-mono text-[11px] text-faint tabular-nums">{credentials.from}–{credentials.to} of {credentials.total}</p>
                             <div class="flex items-center gap-1.5">
                                 {#if credentials.prev_page_url}<Link href={credentials.prev_page_url} class="secondary px-3 py-2 text-xs" preserveScroll>Previous</Link>{:else}<span class="secondary pointer-events-none px-3 py-2 text-xs opacity-40">Previous</span>{/if}
                                 {#each pageLinks as link}
-                                    {#if link.url}<Link href={link.url} class="secondary min-w-9 px-3 py-2 text-center font-mono text-xs tabular-nums {link.active ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : ''}" preserveScroll aria-current={link.active ? 'page' : undefined}>{link.label}</Link>{:else}<span class="px-1 text-xs text-slate-400">{link.label}</span>{/if}
+                                    {#if link.url}<Link href={link.url} class="secondary min-w-9 px-3 py-2 text-center font-mono text-xs tabular-nums {link.active ? 'border-brand-soft-line bg-brand-soft text-brand' : ''}" preserveScroll aria-current={link.active ? 'page' : undefined}>{link.label}</Link>{:else}<span class="px-1 text-xs text-faint">{link.label}</span>{/if}
                                 {/each}
                                 {#if credentials.next_page_url}<Link href={credentials.next_page_url} class="secondary px-3 py-2 text-xs" preserveScroll>Next</Link>{:else}<span class="secondary pointer-events-none px-3 py-2 text-xs opacity-40">Next</span>{/if}
                             </div>
@@ -525,17 +512,17 @@
                 {/if}
             {:else}
                 <div class="px-6 py-14 text-center">
-                    <span class="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><ShieldCheck class="h-5 w-5" strokeWidth={1.7} /></span>
+                    <span class="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-md bg-brand-soft text-brand"><ShieldCheck class="h-5 w-5" strokeWidth={1.7} /></span>
                     {#if hasFilters}
                         <h3 class="text-sm font-bold">No credentials match these filters</h3>
-                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Try a different search, or clear the filters.</p>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-muted">Try a different search, or clear the filters.</p>
                         <button class="secondary mt-4" on:click={clearFilters}>Clear filters</button>
                     {:else if !hasConfiguredApps}
                         <h3 class="text-sm font-bold">Nothing in the vault yet</h3>
-                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Create an application identifier first — credentials attach to identifiers.</p>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-muted">Create an application identifier first — credentials attach to identifiers.</p>
                     {:else}
                         <h3 class="text-sm font-bold">Nothing in the vault yet</h3>
-                        <p class="mx-auto mt-1.5 max-w-md text-sm text-slate-500">Add a signing certificate, keystore, or service account to use it in builds.</p>
+                        <p class="mx-auto mt-1.5 max-w-md text-sm text-muted">Add a signing certificate, keystore, or service account to use it in builds.</p>
                         {#if canManage}<button class="mt-4" on:click={openCreate}>Add first credential</button>{/if}
                     {/if}
                 </div>
@@ -546,25 +533,25 @@
 {#if revealTarget}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeReveal()}>
         <form class="modal" on:submit|preventDefault={revealCredential}>
-            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+            <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
                 <div class="flex items-start gap-3">
-                    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><LockKeyhole class="h-5 w-5" /></span>
+                    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand-soft text-brand"><LockKeyhole class="h-5 w-5" /></span>
                     <div>
                         <h2 class="text-lg font-bold">Show credential password{revealTarget.password_fields_count === 1 ? '' : 's'}</h2>
-                        <p class="mt-1 text-sm text-slate-500">Confirm your account password to reveal {revealTarget.name}.</p>
+                        <p class="mt-1 text-sm text-muted">Confirm your account password to reveal {revealTarget.name}.</p>
                     </div>
                 </div>
                 <button type="button" class="ghost -mr-2 p-2" disabled={revealLoading} on:click={closeReveal} aria-label="Close"><X class="h-4 w-4" /></button>
             </div>
             <div class="space-y-4 p-6">
-                <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">Passwords are decrypted only for this request, are never added to page props, and will be hidden after 60 seconds.</div>
+                <div class="rounded-md border border-warn-fill/30 bg-warn-text/10 px-4 py-3 text-xs leading-5 text-warn-fill">Passwords are decrypted only for this request, are never added to page props, and will be hidden after 60 seconds.</div>
                 <label>
                     <span class="label">Your account password</span>
                     <input type="password" bind:value={revealPassword} autocomplete="current-password" required />
                     {#if revealError}<span class="error">{revealError}</span>{/if}
                 </label>
             </div>
-            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+            <div class="flex justify-end gap-3 border-t border-border bg-surface-sunken px-6 py-4">
                 <button type="button" class="secondary" disabled={revealLoading} on:click={closeReveal}>Cancel</button>
                 <button disabled={revealLoading || !revealPassword}>{revealLoading ? 'Verifying…' : 'Reveal password'}</button>
             </div>

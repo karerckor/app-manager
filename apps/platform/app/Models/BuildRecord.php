@@ -36,7 +36,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 ])]
 class BuildRecord extends Model implements Auditable
 {
-    use HasFactory, HasUuids, HasTags, AuditableTrait;
+    use AuditableTrait, HasFactory, HasTags, HasUuids;
 
     protected array $auditExclude = ['parameters'];
 

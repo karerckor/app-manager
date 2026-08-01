@@ -92,25 +92,25 @@
 
 @layer base {
     body { @apply min-h-screen bg-surface text-text antialiased; }
-    input, select, textarea { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10; }
+    input, select, textarea { @apply w-full rounded-md border border-border-control bg-surface-raised px-3.5 py-2.5 text-sm text-text shadow-sm outline-none transition placeholder:text-faint focus:border-brand focus:ring-4 focus:ring-brand/10; }
     textarea { @apply min-h-24 resize-y; }
-    button { @apply inline-flex cursor-pointer items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50; }
+    button { @apply inline-flex cursor-pointer items-center justify-center rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg shadow-sm transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50; }
 }
 
 @layer components {
-    .card { @apply rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_8px_24px_rgba(15,23,42,0.035)]; }
-    .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
-    .error { @apply mt-1.5 block text-xs font-medium text-rose-600; }
-    .muted { @apply text-sm text-slate-500; }
-    .secondary { @apply inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50; }
-    .ghost { @apply bg-transparent text-slate-600 shadow-none hover:bg-slate-100 hover:text-slate-900; }
-    .danger { @apply bg-rose-600 hover:bg-rose-700; }
-    .eyebrow { @apply text-xs font-semibold tracking-[0.14em] text-slate-400 uppercase; }
-    .modal-backdrop { @apply fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4 backdrop-blur-[2px]; }
-    .modal { @apply max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl shadow-slate-950/20; }
-    .vault-grid { @apply grid gap-3 lg:grid-cols-[minmax(0,1fr)_172px_118px_104px] lg:items-center lg:gap-4; }
-    .vault-head { @apply text-[10px] font-bold tracking-[0.1em] text-slate-400 uppercase; }
-    .icon-btn { @apply grid h-8 w-8 place-items-center rounded-lg bg-transparent p-0 text-slate-500 shadow-none transition hover:bg-indigo-50 hover:text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:outline-none; }
+    .card { @apply rounded-md border border-border bg-surface-raised p-5; }
+    .label { @apply mb-1.5 block text-sm font-medium text-text; }
+    .error { @apply mt-1.5 block text-xs font-medium text-danger; }
+    .muted { @apply text-sm text-muted; }
+    .secondary { @apply inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md border border-border bg-surface-raised px-4 py-2.5 text-sm font-semibold text-text shadow-sm transition hover:border-border-control hover:bg-surface-sunken; }
+    .ghost { @apply bg-transparent text-muted shadow-none hover:bg-surface-sunken hover:text-text; }
+    .danger { @apply bg-danger hover:bg-danger/90 text-white; }
+    .eyebrow { @apply text-xs font-semibold tracking-[0.14em] text-faint uppercase; }
+    .modal-backdrop { @apply fixed inset-0 z-50 grid place-items-center bg-text/50 p-4 backdrop-blur-[2px]; }
+    .modal { @apply max-h-[calc(100vh-2rem)] w-full max-w-lg overflow-y-auto rounded-md border border-border bg-surface-raised shadow-2xl; }
+    .vault-grid { @apply grid gap-3 lg:grid-cols-[minmax(0,1fr)_172px_118px_184px] lg:items-center lg:gap-4; }
+    .vault-head { @apply text-[10px] font-bold tracking-[0.1em] text-faint uppercase; }
+    .icon-btn { @apply grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-muted shadow-none transition hover:bg-brand-soft hover:text-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none; }
     .row-tools { @apply opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100; }
-    .chip { @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold shadow-none transition disabled:cursor-default; }
+    .chip { @apply inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold shadow-none transition disabled:cursor-default; }
 }

@@ -67,6 +67,38 @@ enum ApiKeyScope: string
         return array_values($groups);
     }
 
+    /**
+     * @return list<array{key: string, name: string, label: string, description: string, scopes: list<string>}>
+     */
+    public static function presets(): array
+    {
+        return [
+            [
+                'key' => 'build-runner',
+                'name' => 'Build runner',
+                'label' => 'Build runner',
+                'description' => 'Updates a build and streams its logs. A minimal key for a dedicated runner.',
+                'scopes' => [self::BuildsWrite->value, self::LogsWrite->value],
+            ],
+            [
+                'key' => 'ci-cd-pipeline',
+                'name' => 'CI/CD pipeline',
+                'label' => 'CI/CD pipeline',
+                'description' => 'Reads release inputs and credentials, then reports builds, logs, and artifacts.',
+                'scopes' => [
+                    self::AppsRead->value,
+                    self::IdentifiersRead->value,
+                    self::AssetsRead->value,
+                    self::FilesRead->value,
+                    self::CredentialsRead->value,
+                    self::BuildsWrite->value,
+                    self::LogsWrite->value,
+                    self::ArtifactsWrite->value,
+                ],
+            ],
+        ];
+    }
+
     public function requiredPermission(): ?TeamPermission
     {
         return match ($this) {

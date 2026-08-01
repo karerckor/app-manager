@@ -48,30 +48,30 @@
 {#if open}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeEdit()}>
         <form class="modal" on:submit|preventDefault={saveEdit}>
-            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-                <div><h2 class="text-lg font-bold">Edit application</h2><p class="mt-1 text-sm text-slate-500">Update the project details and metadata.</p></div>
+            <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
+                <div><h2 class="text-lg font-bold">Edit application</h2><p class="mt-1 text-sm text-muted">Update the project details and metadata.</p></div>
                 <button type="button" class="ghost -mr-2 p-2" on:click={closeEdit}>✕</button>
             </div>
             <div class="space-y-5 p-6">
                 <label><span class="label">Name</span><input bind:value={editForm.name} required />{#if editForm.errors.name}<span class="error">{editForm.errors.name}</span>{/if}</label>
-                <label><span class="label">Description <span class="font-normal text-slate-400">(optional)</span></span><textarea class="min-h-24" bind:value={editForm.description} placeholder="What is this project?"></textarea>{#if editForm.errors.description}<span class="error">{editForm.errors.description}</span>{/if}</label>
-                <label><span class="label">Metadata (JSON) <span class="font-normal text-slate-400">(optional)</span></span><textarea class="min-h-40 font-mono text-xs leading-5" bind:value={metadataText} spellcheck="false" placeholder={'{\n  "owner": "mobile-team",\n  "channel": "production"\n}'}></textarea><span class="mt-1 block text-[10px] text-slate-400">Add any JSON object with application-specific values.</span>{#if metadataError || editForm.errors.metadata}<span class="error">{metadataError || editForm.errors.metadata}</span>{/if}</label>
-                <div class="rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+                <label><span class="label">Description <span class="font-normal text-faint">(optional)</span></span><textarea class="min-h-24" bind:value={editForm.description} placeholder="What is this project?"></textarea>{#if editForm.errors.description}<span class="error">{editForm.errors.description}</span>{/if}</label>
+                <label><span class="label">Metadata (JSON) <span class="font-normal text-faint">(optional)</span></span><textarea class="min-h-40 font-mono text-xs leading-5" bind:value={metadataText} spellcheck="false" placeholder={'{\n  "owner": "mobile-team",\n  "channel": "production"\n}'}></textarea><span class="mt-1 block text-[10px] text-faint">Add any JSON object with application-specific values.</span>{#if metadataError || editForm.errors.metadata}<span class="error">{metadataError || editForm.errors.metadata}</span>{/if}</label>
+                <div class="rounded-md border border-danger/30 bg-danger/10 p-4">
                     {#if confirmingDelete}
-                        <p class="text-xs font-semibold text-rose-800">Delete this application? This can't be undone.</p>
+                        <p class="text-xs font-semibold text-danger">Delete this application? This can't be undone.</p>
                         <div class="mt-3 flex gap-2">
                             <button type="button" class="secondary px-3 py-2 text-xs" on:click={() => confirmingDelete = false}>Cancel</button>
-                            <button type="button" class="bg-rose-600 px-3 py-2 text-xs text-white hover:bg-rose-700" disabled={deleting} on:click={deleteApp}>Confirm delete</button>
+                            <button type="button" class="danger px-3 py-2 text-xs" disabled={deleting} on:click={deleteApp}>Confirm delete</button>
                         </div>
                     {:else}
                         <div class="flex items-center justify-between gap-3">
-                            <div><p class="text-xs font-bold text-rose-800">Danger zone</p><p class="mt-0.5 text-[11px] text-rose-700/80">Permanently delete this application and its data.</p></div>
-                            <button type="button" class="border border-rose-300 bg-white px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100" on:click={() => confirmingDelete = true}>Delete application</button>
+                            <div><p class="text-xs font-bold text-danger">Danger zone</p><p class="mt-0.5 text-[11px] text-danger">Permanently delete this application and its data.</p></div>
+                            <button type="button" class="secondary border-danger/40 text-danger hover:border-danger hover:bg-danger/10" on:click={() => confirmingDelete = true}>Delete application</button>
                         </div>
                     {/if}
                 </div>
             </div>
-            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeEdit}>Cancel</button><button disabled={editForm.processing}>{editForm.processing ? 'Saving…' : 'Save changes'}</button></div>
+            <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={closeEdit}>Cancel</button><button disabled={editForm.processing}>{editForm.processing ? 'Saving…' : 'Save changes'}</button></div>
         </form>
     </div>
 {/if}

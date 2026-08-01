@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\ProfileType;
 use App\Models\AppIdentifier;
 use App\Models\Profile;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -34,7 +35,7 @@ class ProfileTest extends TestCase
             'type' => ProfileType::AppStore,
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
         Profile::factory()->create([
             'app_identifier_id' => $identifier->id,
             'type' => ProfileType::AppStore,

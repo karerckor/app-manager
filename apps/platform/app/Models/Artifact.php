@@ -14,7 +14,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'build_record_id', 'name', 'metadata', 'tags'])]
 class Artifact extends Model implements HasMedia
 {
-    use HasFactory, HasUuids, HasTags, InteractsWithMedia;
+    use HasFactory, HasTags, HasUuids, InteractsWithMedia;
 
     public function team(): BelongsTo
     {

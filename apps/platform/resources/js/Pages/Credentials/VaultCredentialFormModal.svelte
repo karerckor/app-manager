@@ -1,6 +1,7 @@
 <script>
     import { useForm } from '@inertiajs/svelte';
     import { ShieldCheck, Upload } from '@lucide/svelte';
+    import Select from '../../Components/Select.svelte';
 
     export let apps = [];
     export let credentialTypes = [];
@@ -95,7 +96,7 @@
         credentialTypeChanged = Boolean(editing) && String(value) !== String(editing.type);
     };
     const changeApp = (event) => {
-        form.mobile_app_id = event.currentTarget.value;
+        form.mobile_app_id = event.detail;
         const app = apps.find((item) => String(item.id) === String(form.mobile_app_id));
         const identifier = app?.identifiers[0] ?? null;
         const schema = credentialTypes.find((type) => type.platforms.includes(identifier?.platform)) ?? credentialTypes[0];
@@ -103,7 +104,7 @@
         setType(schema?.value ?? '', identifier?.platform);
     };
     const changeIdentifier = (event) => {
-        form.app_identifier_id = event.currentTarget.value;
+        form.app_identifier_id = event.detail;
         const identifier = selectedApp?.identifiers.find((item) => String(item.id) === String(form.app_identifier_id));
         const currentType = credentialTypes.find((type) => type.value === form.type);
         const schema = currentType?.platforms.includes(identifier?.platform)
@@ -144,14 +145,14 @@
 {#if open}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && close()}>
         <form class="modal max-w-2xl" on:submit|preventDefault={save}>
-            <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+            <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
                 <div class="flex items-start gap-3">
-                    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
+                    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand-soft text-brand">
                         <ShieldCheck class="h-5 w-5" strokeWidth={1.8} />
                     </span>
                     <div>
                         <h2 class="text-lg font-bold">{editing ? 'Edit credential' : 'Add to Credentials Vault'}</h2>
-                        <p class="mt-1 text-sm text-slate-500">{editing ? 'Update the credential, expiration, or secure file.' : 'Store a signing asset and attach it to an application.'}</p>
+                        <p class="mt-1 text-sm text-muted">{editing ? 'Update the credential, expiration, or secure file.' : 'Store a signing asset and attach it to an application.'}</p>
                     </div>
                 </div>
                 <button type="button" class="ghost -mr-2 p-2" on:click={close} aria-label="Close">✕</button>
@@ -159,49 +160,43 @@
 
             <div class="space-y-5 p-6">
                 {#if editing}
-                    <div class="rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+                    <div class="rounded-md border border-brand-soft-line bg-brand-soft p-4">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                                <p class="text-xs font-bold text-violet-950">Used by</p>
-                                <p class="mt-0.5 text-[11px] text-violet-700">Attachments are preserved when this credential is edited.</p>
+                                <p class="text-xs font-bold text-text">Used by</p>
+                                <p class="mt-0.5 text-[11px] text-brand">Attachments are preserved when this credential is edited.</p>
                             </div>
-                            <span class="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-violet-700 ring-1 ring-violet-100">
+                            <span class="rounded-full bg-surface-raised px-2 py-1 text-[10px] font-semibold text-brand ring-1 ring-brand-soft-line">
                                 {editing.attachments.length} target{editing.attachments.length === 1 ? '' : 's'}
                             </span>
                         </div>
                         {#if editing.attachments.length}
                             <div class="mt-3 flex flex-wrap gap-2">
                                 {#each editing.attachments as attachment}
-                                    <a href={attachment.url} class="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-violet-100 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm transition hover:border-violet-200 hover:text-violet-700">
-                                        <span class="h-1.5 w-1.5 shrink-0 rounded-full {attachment.platform === 'ios' ? 'bg-slate-900' : 'bg-emerald-500'}"></span>
+                                    <a href={attachment.url} class="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-brand-soft-line bg-surface-raised px-2.5 py-1.5 text-[11px] font-medium text-muted shadow-sm transition hover:border-brand hover:text-brand">
+                                        <span class="h-1.5 w-1.5 shrink-0 rounded-full {attachment.platform === 'ios' ? 'bg-text' : 'bg-ok'}"></span>
                                         <span class="truncate">{attachment.app_name}</span>
-                                        <span class="text-slate-300">/</span>
+                                        <span class="text-border">/</span>
                                         <code class="truncate text-[10px]">{attachment.identifier}</code>
-                                        {#if attachment.profile}<span class="rounded bg-indigo-50 px-1 py-0.5 text-[9px] font-bold text-indigo-600">{attachment.profile.label}</span>{/if}
+                                        {#if attachment.profile}<span class="rounded-sm bg-brand-soft px-1 py-0.5 text-[9px] font-bold text-brand">{attachment.profile.label}</span>{/if}
                                     </a>
                                 {/each}
                             </div>
-                            <p class="mt-3 text-[10px] text-violet-700">Add or remove usage from each app identifier page.</p>
+                            <p class="mt-3 text-[10px] text-brand">Add or remove usage from each app identifier page.</p>
                         {:else}
-                            <p class="mt-3 text-[11px] font-medium text-amber-700">Not attached yet. Add it from an app identifier page.</p>
+                            <p class="mt-3 text-[11px] font-medium text-warn-fill">Not attached yet. Add it from an app identifier page.</p>
                         {/if}
                     </div>
                 {:else}
                     <div class="grid gap-4 sm:grid-cols-2">
                         <label>
                             <span class="label">Application</span>
-                            <select value={form.mobile_app_id} on:change={changeApp}>
-                                {#each apps as app}<option value={app.id} disabled={!app.identifiers.length}>{app.name}{app.identifiers.length ? '' : ' — no identifiers'}</option>{/each}
-                            </select>
+                            <Select bind:value={form.mobile_app_id} options={apps.map((app) => ({ value: app.id, label: `${app.name}${app.identifiers.length ? '' : ' — no identifiers'}`, disabled: !app.identifiers.length }))} ariaLabel="Application" on:change={changeApp} />
                             {#if form.errors.mobile_app_id}<span class="error">{form.errors.mobile_app_id}</span>{/if}
                         </label>
                         <label>
                             <span class="label">App identifier</span>
-                            <select value={form.app_identifier_id} on:change={changeIdentifier} required>
-                                {#each selectedApp?.identifiers ?? [] as identifier}
-                                    <option value={identifier.id}>{identifier.name || identifier.identifier} · {identifier.platform.toUpperCase()}</option>
-                                {/each}
-                            </select>
+                            <Select bind:value={form.app_identifier_id} options={(selectedApp?.identifiers ?? []).map((identifier) => ({ value: identifier.id, label: `${identifier.name || identifier.identifier} · ${identifier.platform.toUpperCase()}` }))} ariaLabel="App identifier" on:change={changeIdentifier} required />
                             {#if form.errors.app_identifier_id}<span class="error">{form.errors.app_identifier_id}</span>{/if}
                         </label>
                     </div>
@@ -210,14 +205,12 @@
                 <div class="grid gap-4 sm:grid-cols-2">
                     <label>
                         <span class="label">Credential type</span>
-                        <select value={form.type} on:change={(event) => setType(event.currentTarget.value)} disabled={typeLocked}>
-                            {#each availableCredentialTypes as type}<option value={type.value}>{type.label}</option>{/each}
-                        </select>
-                        {#if typeLocked}<span class="mt-1 block text-[10px] text-slate-400">Detach this credential from all targets before changing its type.</span>{/if}
+                        <Select bind:value={form.type} options={availableCredentialTypes.map((type) => ({ value: type.value, label: type.label }))} ariaLabel="Credential type" on:change={(event) => setType(event.detail)} disabled={typeLocked} />
+                        {#if typeLocked}<span class="mt-1 block text-[10px] text-faint">Detach this credential from all targets before changing its type.</span>{/if}
                         {#if form.errors.type}<span class="error">{form.errors.type}</span>{/if}
                     </label>
                     <label>
-                        <span class="label">Expiration <span class="font-normal text-slate-400">(optional)</span></span>
+                        <span class="label">Expiration <span class="font-normal text-faint">(optional)</span></span>
                         <input type="date" bind:value={form.expires_at} />
                         {#if form.errors.expires_at}<span class="error">{form.errors.expires_at}</span>{/if}
                     </label>
@@ -228,13 +221,13 @@
                         <legend class="label">Build target</legend>
                         <div class="grid gap-3 sm:grid-cols-2">
                             {#each availableProfiles as profile}
-                                <label class="cursor-pointer rounded-xl border p-3.5 transition {form.profile_type === profile.value ? 'border-indigo-500 bg-indigo-50/70 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-slate-300'}">
+                                <label class="cursor-pointer rounded-md border p-3.5 transition {form.profile_type === profile.value ? 'border-brand bg-brand-soft ring-2 ring-brand-soft-line' : 'border-border bg-surface-raised hover:border-border-control'}">
                                     <input class="sr-only" type="radio" name="profile_type" value={profile.value} bind:group={form.profile_type} required />
                                     <span class="flex items-center justify-between gap-3">
-                                        <strong class="text-xs text-slate-800">{profile.label}</strong>
-                                        <span class="rounded-md bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-indigo-600 shadow-sm ring-1 ring-slate-200">{profile.artifact}</span>
+                                        <strong class="text-xs text-text">{profile.label}</strong>
+                                        <span class="rounded-sm bg-surface-raised px-2 py-0.5 font-mono text-[10px] font-bold text-brand shadow-sm ring-1 ring-border">{profile.artifact}</span>
                                     </span>
-                                    <span class="mt-1.5 block text-[10px] leading-4 text-slate-500">{profile.description}</span>
+                                    <span class="mt-1.5 block text-[10px] leading-4 text-muted">{profile.description}</span>
                                 </label>
                             {/each}
                         </div>
@@ -260,8 +253,8 @@
                                     autocomplete="off"
                                     required={field.required && fieldRequired(field)}
                                 />
-                                {#if editing && field.input === 'password' && !fieldRequired(field)}<span class="mt-1 block text-[10px] text-slate-400">Already configured. Enter a new value only to replace it.</span>{/if}
-                                {#if field.hint}<span class="mt-1 block text-[10px] text-slate-400">{field.hint}</span>{/if}
+                                {#if editing && field.input === 'password' && !fieldRequired(field)}<span class="mt-1 block text-[10px] text-faint">Already configured. Enter a new value only to replace it.</span>{/if}
+                                {#if field.hint}<span class="mt-1 block text-[10px] text-faint">{field.hint}</span>{/if}
                                 {#if form.errors[`payload.${field.name}`]}<span class="error">{form.errors[`payload.${field.name}`]}</span>{/if}
                             </label>
                         {/each}
@@ -269,12 +262,12 @@
                 {/if}
 
                 <label class="block">
-                    <span class="label">Credential file <span class="font-normal text-slate-400">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
-                    <span class="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 transition hover:border-indigo-400 hover:bg-indigo-50/40">
-                        <span class="grid h-9 w-9 place-items-center rounded-lg bg-white text-indigo-600 shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
+                    <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
+                    <span class="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-control bg-surface-sunken px-4 py-4 transition hover:border-brand hover:bg-brand-soft">
+                        <span class="grid h-9 w-9 place-items-center rounded-sm bg-surface-raised text-brand shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
                         <span class="min-w-0">
-                            <strong class="block truncate text-xs text-slate-700">{form.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong>
-                            <small class="text-[10px] text-slate-400">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small>
+                            <strong class="block truncate text-xs text-text">{form.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong>
+                            <small class="text-[10px] text-faint">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small>
                         </span>
                         <input type="file" class="hidden" accept={selectedSchema?.file.accept} on:change={pickFile} />
                     </span>
@@ -282,22 +275,22 @@
                 </label>
 
                 {#if !editing}
-                    <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3.5">
+                    <label class="flex cursor-pointer items-start justify-between gap-4 rounded-md border border-border bg-surface-sunken px-4 py-3.5">
                         <span>
-                            <span class="block text-xs font-semibold text-slate-800">Check uniqueness</span>
-                            <span class="mt-1 block text-[11px] leading-4 text-slate-500">If an identical credential already exists in this team vault, reuse it and do not store another database record or file.</span>
+                            <span class="block text-xs font-semibold text-text">Check uniqueness</span>
+                            <span class="mt-1 block text-[11px] leading-4 text-muted">If an identical credential already exists in this team vault, reuse it and do not store another database record or file.</span>
                         </span>
                         <span class="relative mt-0.5 shrink-0">
                             <input class="sr-only" type="checkbox" role="switch" bind:checked={form.check_uniqueness} />
-                            <span class="block h-5 w-9 rounded-full transition {form.check_uniqueness ? 'bg-indigo-600' : 'bg-slate-300'}">
-                                <span class="block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow-sm transition {form.check_uniqueness ? 'translate-x-[18px]' : 'translate-x-0.5'}"></span>
+                            <span class="block h-5 w-9 rounded-full transition {form.check_uniqueness ? 'bg-brand' : 'bg-border-control'}">
+                                <span class="block h-4 w-4 translate-y-0.5 rounded-full bg-surface-raised shadow-sm transition {form.check_uniqueness ? 'translate-x-[18px]' : 'translate-x-0.5'}"></span>
                             </span>
                         </span>
                     </label>
                 {/if}
             </div>
 
-            <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+            <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4">
                 <button type="button" class="secondary" on:click={close}>Cancel</button>
                 <button disabled={form.processing || (!editing && !selectedIdentifier)}>{form.processing ? 'Saving…' : editing ? 'Save changes' : 'Add credential'}</button>
             </div>

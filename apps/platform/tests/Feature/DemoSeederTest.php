@@ -193,7 +193,7 @@ class DemoSeederTest extends TestCase
         $this->assertDatabaseCount('app_identifiers', 2);
         $this->assertDatabaseCount('profiles', 2);
         $this->assertDatabaseCount('credentialables', 8);
-        $this->assertDatabaseCount('media', 10);
+        $this->assertDatabaseCount('media', 12);
     }
 
     public function test_database_seeder_is_idempotent(): void
@@ -209,6 +209,6 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 10);
+        $this->assertDatabaseCount('media', 12);
     }
 }

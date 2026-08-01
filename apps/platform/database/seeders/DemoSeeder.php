@@ -6,10 +6,13 @@ use App\Enums\ApiKeyScope;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CredentialType;
+use App\Enums\IntegrationKind;
+use App\Enums\IntegrationProvider;
+use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
-use App\Models\BuildRecord;
 use App\Models\Credential;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\User;
 use App\Models\WebhookEndpoint;
@@ -298,15 +301,35 @@ class DemoSeeder extends Seeder
 
         // Webhook endpoint: demonstrates how Platform notifies external
         // systems about build lifecycle events.
-        WebhookEndpoint::firstOrCreate(
-            ['team_id' => $team->id, 'url' => 'https://example.com/app-manager-webhooks'],
+        $webhookIntegration = Integration::firstOrCreate(
             [
+                'team_id' => $team->id,
+                'kind' => IntegrationKind::Webhook,
+                'provider' => IntegrationProvider::Http,
+                'name' => 'Demo Webhook',
+            ],
+            [
+                'status' => IntegrationStatus::Active,
+                'created_by_user_id' => $user->id,
+                'updated_by_user_id' => $user->id,
+            ],
+        );
+
+        $webhookEndpoint = WebhookEndpoint::firstOrCreate(
+            ['integration_id' => $webhookIntegration->id],
+            [
+                'team_id' => $team->id,
+                'url' => 'https://example.com/app-manager-webhooks',
                 'secret' => 'whsec_demo123456789abcdef',
                 'secret_hint' => 'demo1…ef',
                 'subscribed_events' => ['build.completed', 'artifact.created'],
                 'filters' => ['build_statuses' => ['completed', 'failed']],
             ],
         );
+
+        if ($webhookIntegration->external_id !== $webhookEndpoint->id) {
+            $webhookIntegration->update(['external_id' => $webhookEndpoint->id]);
+        }
 
         // Project files: arbitrary files attached to the app, downloadable
         // via the files API. Demonstrates that Platform can store and serve

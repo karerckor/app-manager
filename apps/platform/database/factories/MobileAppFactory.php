@@ -2,12 +2,13 @@
 
 namespace Database\Factories;
 
+use App\Models\MobileApp;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * @extends Factory<\App\Models\MobileApp>
+ * @extends Factory<MobileApp>
  */
 class MobileAppFactory extends Factory
 {

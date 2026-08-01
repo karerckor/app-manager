@@ -3,11 +3,12 @@
 namespace Database\Factories;
 
 use App\Enums\CredentialType;
+use App\Models\Credential;
 use App\Models\Team;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<\App\Models\Credential>
+ * @extends Factory<Credential>
  */
 class CredentialFactory extends Factory
 {

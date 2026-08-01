@@ -6,6 +6,8 @@ use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Models\Credential;
+use App\Models\ExpoProject;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -123,6 +125,85 @@ class PlatformDashboardTest extends TestCase
                 ->where('apps.data.3.tags', [['Needle tag', '#6366f1']])
                 ->where('filters.search', 'needle')
                 ->where('stats.apps', 5));
+    }
+
+    public function test_dashboard_filters_apps_by_tags_and_platform_availability(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $matching = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Production iOS', 'tags' => [['production', '#10b981']]]);
+        $matching->appIdentifiers()->create(['platform' => Platform::Ios, 'identifier' => 'com.example.production']);
+        $android = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Production Android', 'tags' => [['production', '#10b981']]]);
+        $android->appIdentifiers()->create(['platform' => Platform::Android, 'identifier' => 'com.example.android']);
+        MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Development iOS', 'tags' => [['development', '#6366f1']]]);
+
+        $this->actingAs($user)->get(route('accounts.apps.index', [
+            'team' => $team,
+            'tags' => ['production'],
+            'available_platforms' => ['ios'],
+            'unavailable_platforms' => ['android'],
+        ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('apps.data', 1)
+                ->where('apps.data.0.id', $matching->id)
+                ->where('filters.tags', ['production'])
+                ->where('filters.available_platforms', ['ios'])
+                ->where('filters.unavailable_platforms', ['android'])
+                ->has('filterOptions.tags', 2)
+                ->has('filterOptions.platforms', 3));
+    }
+
+    public function test_dashboard_filters_apps_by_expo_and_credential_type_availability(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $linked = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Linked and signed']);
+        $linkedIdentifier = $linked->appIdentifiers()->create(['platform' => Platform::Ios, 'identifier' => 'com.example.linked']);
+        $credential = Credential::factory()->create(['team_id' => $team->id]);
+        $linkedIdentifier->credentials()->attach($credential);
+        $apnsKey = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::ApnsKey,
+        ]);
+        $linkedIdentifier->credentials()->attach($apnsKey);
+        $integration = Integration::factory()->create(['team_id' => $team->id]);
+        ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $linked->id,
+            'external_id' => 'project-linked',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'linked',
+            'name' => 'Linked',
+            'full_name' => '@acme/linked',
+        ]);
+        $unsigned = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Unlinked and unsigned']);
+        $unsigned->appIdentifiers()->create(['platform' => Platform::Ios, 'identifier' => 'com.example.unsigned']);
+
+        $this->actingAs($user)->get(route('accounts.apps.index', [
+            'team' => $team,
+            'expo' => 'linked',
+            'credentials' => [CredentialType::IosCertificate->value, CredentialType::ApnsKey->value],
+        ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('apps.data', 1)
+                ->where('apps.data.0.id', $linked->id)
+                ->where('filters.expo', 'linked')
+                ->where('filters.credentials', [CredentialType::IosCertificate->value, CredentialType::ApnsKey->value])
+                ->has('filterOptions.credentials', 9));
+
+        $this->actingAs($user)->get(route('accounts.apps.index', [
+            'team' => $team,
+            'expo' => 'unlinked',
+            'missing_credentials' => [CredentialType::IosCertificate->value],
+        ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('apps.data', 1)
+                ->where('apps.data.0.id', $unsigned->id)
+                ->where('filters.expo', 'unlinked')
+                ->where('filters.missing_credentials', [CredentialType::IosCertificate->value]));
     }
 
     public function test_user_can_create_an_application_in_the_current_team(): void

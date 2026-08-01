@@ -9,18 +9,17 @@ use App\Enums\IntegrationStatus;
 use App\Enums\TeamRole;
 use App\Integrations\CiCd\CiCdProviderRegistry;
 use App\Integrations\CiCd\Contracts\CiCdProvider;
+use App\Integrations\CiCd\Data\CancelResult;
+use App\Integrations\CiCd\Data\DispatchResult;
 use App\Integrations\CiCd\Data\PipelineData;
+use App\Integrations\CiCd\Data\ProviderRunStatus;
 use App\Integrations\CiCd\Data\RefData;
 use App\Integrations\CiCd\Data\RepositoryData;
-use App\Models\CiCdRun;
 use App\Models\CiCdPipeline;
+use App\Models\CiCdRun;
 use App\Models\Integration;
 use App\Models\Team;
 use App\Models\User;
-use App\Enums\ProfileType;
-use App\Integrations\CiCd\Data\CancelResult;
-use App\Integrations\CiCd\Data\DispatchResult;
-use App\Integrations\CiCd\Data\ProviderRunStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -74,15 +73,47 @@ class IntegrationDiscoveryApiTest extends TestCase
 
     private function bindProvider(): void
     {
-        $provider = new class implements CiCdProvider {
-            public function provider(): IntegrationProvider { return IntegrationProvider::GitHub; }
-            public function repositories(Integration $i): array { return [new RepositoryData('100', 'mobile', 'octo/mobile', 'main', true, 'https://github.test/octo/mobile')]; }
-            public function pipelines(Integration $i, RepositoryData $r): array { return [new PipelineData('200', 'Release', '.github/workflows/release.yml', 'active', 'https://github.test/w/200')]; }
-            public function refs(Integration $i, RepositoryData $r): array { return [new RefData('main', 'branch', str_repeat('a', 40))]; }
-            public function dispatch(CiCdPipeline $p, string $ref, array $in): DispatchResult { return new DispatchResult('9001', 'u', 'u'); }
-            public function cancel(CiCdRun $run): CancelResult { return new CancelResult(true); }
-            public function status(CiCdRun $run): ProviderRunStatus { return new ProviderRunStatus('9001', 'completed', 'success', 'u'); }
-            public function logs(CiCdRun $run): string { return ''; }
+        $provider = new class implements CiCdProvider
+        {
+            public function provider(): IntegrationProvider
+            {
+                return IntegrationProvider::GitHub;
+            }
+
+            public function repositories(Integration $i): array
+            {
+                return [new RepositoryData('100', 'mobile', 'octo/mobile', 'main', true, 'https://github.test/octo/mobile')];
+            }
+
+            public function pipelines(Integration $i, RepositoryData $r): array
+            {
+                return [new PipelineData('200', 'Release', '.github/workflows/release.yml', 'active', 'https://github.test/w/200')];
+            }
+
+            public function refs(Integration $i, RepositoryData $r): array
+            {
+                return [new RefData('main', 'branch', str_repeat('a', 40))];
+            }
+
+            public function dispatch(CiCdPipeline $p, string $ref, array $in): DispatchResult
+            {
+                return new DispatchResult('9001', 'u', 'u');
+            }
+
+            public function cancel(CiCdRun $run): CancelResult
+            {
+                return new CancelResult(true);
+            }
+
+            public function status(CiCdRun $run): ProviderRunStatus
+            {
+                return new ProviderRunStatus('9001', 'completed', 'success', 'u');
+            }
+
+            public function logs(CiCdRun $run): string
+            {
+                return '';
+            }
         };
         $this->app->instance(CiCdProviderRegistry::class, new CiCdProviderRegistry([$provider]));
     }

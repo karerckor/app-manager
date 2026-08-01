@@ -186,30 +186,30 @@
 
     const extensionLabel = (file) => (file.extension || 'file').toUpperCase().slice(0, 8);
     const badgeTheme = (kind) => ({
-        image: 'bg-violet-50 text-violet-700 ring-violet-200/70',
-        'image-file': 'bg-violet-50 text-violet-700 ring-violet-200/70',
+        image: 'bg-brand-soft text-brand ring-brand-soft-line/70',
+        'image-file': 'bg-brand-soft text-brand ring-brand-soft-line/70',
         video: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200/70',
         'video-file': 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-200/70',
-        pdf: 'bg-rose-50 text-rose-700 ring-rose-200/70',
+        pdf: 'bg-danger/10 text-danger ring-danger/70',
         audio: 'bg-pink-50 text-pink-700 ring-pink-200/70',
-        document: 'bg-blue-50 text-blue-700 ring-blue-200/70',
-        spreadsheet: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70',
-        text: 'bg-slate-100 text-slate-600 ring-slate-200',
-        archive: 'bg-amber-50 text-amber-700 ring-amber-200/70',
-        extension: 'bg-slate-100 text-slate-600 ring-slate-200',
-    }[kind] ?? 'bg-slate-100 text-slate-600 ring-slate-200');
+        document: 'bg-brand-soft text-brand ring-brand-soft-line/70',
+        spreadsheet: 'bg-ok/10 text-ok ring-ok/70',
+        text: 'bg-border-subtle text-muted ring-border',
+        archive: 'bg-warn-text/10 text-warn-fill ring-warn-fill/70',
+        extension: 'bg-border-subtle text-muted ring-border',
+    }[kind] ?? 'bg-border-subtle text-muted ring-border');
 
     const placeholderTheme = (kind) => ({
-        'image-file': 'from-violet-50 to-indigo-50 text-violet-500',
-        'video-file': 'from-fuchsia-50 to-violet-50 text-fuchsia-500',
-        pdf: 'from-rose-50 to-red-50 text-rose-500',
+        'image-file': 'from-brand-soft to-brand-soft text-brand',
+        'video-file': 'from-fuchsia-50 to-brand-soft text-fuchsia-500',
+        pdf: 'from-danger/10 to-red-50 text-danger',
         audio: 'from-pink-50 to-fuchsia-50 text-pink-500',
-        document: 'from-blue-50 to-indigo-50 text-blue-500',
-        spreadsheet: 'from-emerald-50 to-green-50 text-emerald-600',
-        text: 'from-slate-50 to-slate-100 text-slate-500',
-        archive: 'from-amber-50 to-orange-50 text-amber-600',
-        extension: 'from-slate-50 to-slate-100 text-slate-500',
-    }[kind] ?? 'from-slate-50 to-slate-100 text-slate-500');
+        document: 'from-brand-soft to-brand-soft text-brand',
+        spreadsheet: 'from-ok/10 to-green-50 text-ok',
+        text: 'from-surface-sunken to-border-subtle text-muted',
+        archive: 'from-warn-text/10 to-orange-50 text-warn-fill',
+        extension: 'from-surface-sunken to-border-subtle text-muted',
+    }[kind] ?? 'from-surface-sunken to-border-subtle text-muted');
 
     const readyCount = (asset) => asset.platforms
         .flatMap((platform) => platform.variants)
@@ -256,8 +256,8 @@
 <AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-            <h2 class="text-xl font-extrabold tracking-tight text-slate-950">Files and Media Library</h2>
-            <p class="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Store project files with structured metadata and generate every required app icon and splash-screen size.</p>
+            <h2 class="text-xl font-extrabold tracking-tight text-text">Files and Media Library</h2>
+            <p class="mt-1 max-w-2xl text-xs leading-5 text-muted">Store project files with structured metadata and generate every required app icon and splash-screen size.</p>
         </div>
     </div>
 
@@ -267,11 +267,11 @@
             role="tab"
             aria-selected={section === 'files'}
             aria-controls="files-panel"
-            class="chip {section === 'files' ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'}"
+            class="chip {section === 'files' ? 'border-brand-soft-line bg-brand-soft text-brand' : 'border-border bg-surface-raised text-muted hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand'}"
             onclick={() => section = 'files'}
         >
             Files
-            <span class="ml-1 rounded-full bg-white/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">{fileLibrary.files.length}</span>
+            <span class="ml-1 rounded-full bg-surface-raised/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">{fileLibrary.files.length}</span>
         </button>
 
         <button
@@ -279,11 +279,11 @@
             role="tab"
             aria-selected={section === 'assets'}
             aria-controls="assets-panel"
-            class="chip {section === 'assets' ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'}"
+            class="chip {section === 'assets' ? 'border-brand-soft-line bg-brand-soft text-brand' : 'border-border bg-surface-raised text-muted hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand'}"
             onclick={() => section = 'assets'}
         >
             App assets
-            <span class="ml-1 rounded-full bg-white/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">{mediaLibrary.length}</span>
+            <span class="ml-1 rounded-full bg-surface-raised/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">{mediaLibrary.length}</span>
         </button>
     </div>
 
@@ -291,8 +291,8 @@
         <section id="files-panel" role="tabpanel">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h3 class="text-sm font-bold text-slate-900">Attached files</h3>
-                    <p class="mt-1 text-[11px] text-slate-500">Any file type, up to {formatBytes(fileLibrary.max_file_size)} per file.</p>
+                    <h3 class="text-sm font-bold text-text">Attached files</h3>
+                    <p class="mt-1 text-[11px] text-muted">Any file type, up to {formatBytes(fileLibrary.max_file_size)} per file.</p>
                 </div>
                 <button type="button" class="px-3 py-2 text-xs" onclick={() => showUpload = true}>
                     <Upload class="mr-2 h-3.5 w-3.5" strokeWidth={2} />
@@ -305,40 +305,40 @@
                     {#each fileLibrary.files as file}
                         {@const kind = fileKind(file)}
                         <article class="card group overflow-hidden p-0">
-                            <div class="relative aspect-[16/10] overflow-hidden border-b border-slate-100 bg-slate-50">
+                            <div class="relative aspect-[16/10] overflow-hidden border-b border-border-subtle bg-surface-sunken">
                                 {#if editingFileId === file.id}
-                                    <form class="flex h-full flex-col bg-slate-950 p-4" onsubmit={(event) => { event.preventDefault(); saveMetadata(file); }}>
+                                    <form class="flex h-full flex-col bg-text p-4" onsubmit={(event) => { event.preventDefault(); saveMetadata(file); }}>
                                         <div class="mb-2 flex items-center justify-between gap-3">
-                                            <label for={`file-metadata-${file.id}`} class="text-[10px] font-bold tracking-wider text-slate-300 uppercase">Edit JSON metadata</label>
-                                            <button type="button" class="grid h-7 w-7 place-items-center bg-white/10 p-0 text-slate-300 shadow-none hover:bg-white/15 hover:text-white" aria-label="Close metadata editor" onclick={cancelEdit}>
+                                            <label for={`file-metadata-${file.id}`} class="text-[10px] font-bold tracking-wider text-faint uppercase">Edit JSON metadata</label>
+                                            <button type="button" class="grid h-7 w-7 place-items-center bg-surface-raised/10 p-0 text-faint shadow-none hover:bg-surface-raised/15 hover:text-white" aria-label="Close metadata editor" onclick={cancelEdit}>
                                                 <X class="h-3.5 w-3.5" strokeWidth={2} />
                                             </button>
                                         </div>
                                         <textarea
                                             id={`file-metadata-${file.id}`}
-                                            class="min-h-0 flex-1 resize-none border-slate-700 bg-slate-900 font-mono text-[11px] leading-5 text-slate-100 placeholder:text-slate-600 focus:border-indigo-400 focus:ring-indigo-400/20"
+                                            class="min-h-0 flex-1 resize-none border-control bg-text font-mono text-[11px] leading-5 text-faint placeholder:text-muted focus:border-brand focus:ring-brand/20"
                                             bind:value={editMetadataText}
                                             spellcheck="false"
                                             placeholder={'{\n  "purpose": "release-notes"\n}'}
                                         ></textarea>
-                                        {#if editMetadataError || metadataForm.errors.metadata}<span class="mt-1 text-[10px] text-rose-300">{editMetadataError || metadataForm.errors.metadata}</span>{/if}
+                                        {#if editMetadataError || metadataForm.errors.metadata}<span class="mt-1 text-[10px] text-danger">{editMetadataError || metadataForm.errors.metadata}</span>{/if}
                                         <div class="mt-3 flex justify-end gap-2">
-                                            <button type="button" class="border border-slate-700 bg-slate-800 px-3 py-1.5 text-[10px] text-slate-200 shadow-none hover:bg-slate-700" onclick={cancelEdit}>Cancel</button>
+                                            <button type="button" class="border border-control bg-text px-3 py-1.5 text-[10px] text-faint shadow-none hover:bg-text" onclick={cancelEdit}>Cancel</button>
                                             <button type="submit" class="px-3 py-1.5 text-[10px]" disabled={metadataForm.processing}>{metadataForm.processing ? 'Saving…' : 'Save metadata'}</button>
                                         </div>
                                     </form>
                                 {:else if metadataPreviewFileId === file.id}
-                                    <div class="flex h-full flex-col bg-slate-950 p-4">
+                                    <div class="flex h-full flex-col bg-text p-4">
                                         <div class="mb-2 flex items-center justify-between gap-3">
-                                            <span class="flex items-center gap-2 text-[9px] font-bold tracking-wider text-slate-400 uppercase">
+                                            <span class="flex items-center gap-2 text-[9px] font-bold tracking-wider text-faint uppercase">
                                                 <Braces class="h-3.5 w-3.5" strokeWidth={2} />
                                                 JSON metadata
                                             </span>
-                                            <button type="button" class="grid h-7 w-7 place-items-center bg-white/10 p-0 text-slate-300 shadow-none hover:bg-white/15 hover:text-white" title="Edit metadata" aria-label={`Edit metadata for ${file.name}`} onclick={() => editFile(file)}>
+                                            <button type="button" class="grid h-7 w-7 place-items-center bg-surface-raised/10 p-0 text-faint shadow-none hover:bg-surface-raised/15 hover:text-white" title="Edit metadata" aria-label={`Edit metadata for ${file.name}`} onclick={() => editFile(file)}>
                                                 <Pencil class="h-3.5 w-3.5" strokeWidth={2} />
                                             </button>
                                         </div>
-                                        <pre class="min-h-0 flex-1 overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-slate-100">{JSON.stringify(file.metadata ?? {}, null, 2)}</pre>
+                                        <pre class="min-h-0 flex-1 overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 font-mono text-[11px] leading-5 whitespace-pre-wrap text-faint">{JSON.stringify(file.metadata ?? {}, null, 2)}</pre>
                                     </div>
                                 {:else if file.preview_type === 'image'}
                                     <img src={file.urls.preview} alt={file.name} class="h-full w-full object-contain" loading="lazy" />
@@ -381,8 +381,8 @@
 
                             <div class="p-4">
                                 <div class="min-w-0">
-                                    <h4 class="truncate text-sm font-bold text-slate-900" title={file.name}>{file.name}</h4>
-                                    <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-slate-400">
+                                    <h4 class="truncate text-sm font-bold text-text" title={file.name}>{file.name}</h4>
+                                    <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-faint">
                                         <span>{formatBytes(file.size)}</span>
                                         <span aria-hidden="true">·</span>
                                         <span>{formatDateTime(file.created_at)}</span>
@@ -390,21 +390,21 @@
                                 </div>
 
                                 {#if confirmingDeleteId === file.id}
-                                    <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                                        <p class="text-[11px] font-semibold text-rose-800">Delete this file permanently?</p>
+                                    <div class="mt-4 rounded-md border border-danger bg-danger/10 p-3">
+                                        <p class="text-[11px] font-semibold text-danger">Delete this file permanently?</p>
                                         <div class="mt-2 flex justify-end gap-2">
                                             <button type="button" class="secondary px-3 py-1.5 text-[10px]" disabled={deletingFileId === file.id} onclick={() => confirmingDeleteId = null}>Cancel</button>
-                                            <button type="button" class="bg-rose-600 px-3 py-1.5 text-[10px] text-white hover:bg-rose-700" disabled={deletingFileId === file.id} onclick={() => deleteFile(file)}>
+                                            <button type="button" class="bg-danger px-3 py-1.5 text-[10px] text-white hover:bg-danger" disabled={deletingFileId === file.id} onclick={() => deleteFile(file)}>
                                                 {deletingFileId === file.id ? 'Deleting…' : 'Confirm delete'}
                                             </button>
                                         </div>
                                     </div>
                                 {:else}
-                                    <div class="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+                                    <div class="mt-4 flex items-center gap-2 border-t border-border-subtle pt-3">
                                         <button
                                             type="button"
                                             aria-pressed={metadataPreviewFileId === file.id}
-                                            class="secondary min-w-0 flex-1 px-3 py-2 text-[10px] {metadataPreviewFileId === file.id ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : ''}"
+                                            class="secondary min-w-0 flex-1 px-3 py-2 text-[10px] {metadataPreviewFileId === file.id ? 'border-brand-soft-line bg-brand-soft text-brand' : ''}"
                                             onclick={() => toggleMetadata(file)}
                                         >
                                             <Braces class="mr-1.5 h-3.5 w-3.5" strokeWidth={2} />
@@ -413,7 +413,7 @@
                                         <a href={file.urls.download} class="secondary grid h-8 w-8 shrink-0 place-items-center p-0" title={`Download ${file.name}`} aria-label={`Download ${file.name}`}>
                                             <Download class="h-3.5 w-3.5" strokeWidth={2} />
                                         </a>
-                                        <button type="button" class="grid h-8 w-8 shrink-0 place-items-center bg-rose-50 p-0 text-rose-600 shadow-none hover:bg-rose-100" title="Delete file" aria-label={`Delete ${file.name}`} onclick={() => confirmDelete(file)}>
+                                        <button type="button" class="grid h-8 w-8 shrink-0 place-items-center bg-danger/10 p-0 text-danger shadow-none hover:bg-danger/10" title="Delete file" aria-label={`Delete ${file.name}`} onclick={() => confirmDelete(file)}>
                                             <Trash2 class="h-3.5 w-3.5" strokeWidth={2} />
                                         </button>
                                     </div>
@@ -423,13 +423,13 @@
                     {/each}
                 </div>
             {:else}
-                <div class="card grid min-h-64 place-items-center border-dashed bg-slate-50/50 px-6 py-10 text-center">
+                <div class="card grid min-h-64 place-items-center border-dashed bg-surface-sunken/50 px-6 py-10 text-center">
                     <div>
-                        <span class="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white text-slate-300 shadow-sm ring-1 ring-slate-200">
+                        <span class="mx-auto grid h-14 w-14 place-items-center rounded-md bg-surface-raised text-faint shadow-sm ring-1 ring-border">
                             <Files class="h-6 w-6" strokeWidth={1.6} />
                         </span>
-                        <p class="mt-4 text-sm font-bold text-slate-700">No files attached yet</p>
-                        <p class="mt-1 text-xs text-slate-400">Upload any file and optionally pair it with a JSON metadata object.</p>
+                        <p class="mt-4 text-sm font-bold text-text">No files attached yet</p>
+                        <p class="mt-1 text-xs text-faint">Upload any file and optionally pair it with a JSON metadata object.</p>
                         <button type="button" class="mt-4 px-4 py-2 text-xs" onclick={() => showUpload = true}><Upload class="mr-2 h-3.5 w-3.5" />Upload first file</button>
                     </div>
                 </div>
@@ -439,8 +439,8 @@
         <section id="assets-panel" role="tabpanel">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h3 class="text-sm font-bold text-slate-900">Generated app assets</h3>
-                    <p class="mt-1 text-[11px] text-slate-500">Upload one source image and download platform-ready PNG variants.</p>
+                    <h3 class="text-sm font-bold text-text">Generated app assets</h3>
+                    <p class="mt-1 text-[11px] text-muted">Upload one source image and download platform-ready PNG variants.</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button type="button" class="secondary px-3 py-2 text-xs" onclick={refresh}>
@@ -462,11 +462,11 @@
                         type="button"
                         role="tab"
                         aria-selected={selectedAsset?.collection === asset.collection}
-                        class="chip {selectedAsset?.collection === asset.collection ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700'}"
+                        class="chip {selectedAsset?.collection === asset.collection ? 'border-brand-soft-line bg-brand-soft text-brand' : 'border-border bg-surface-raised text-muted hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand'}"
                         onclick={() => selectedAssetCollection = asset.collection}
                     >
                         {asset.label}
-                        <span class="ml-1 rounded-full bg-white/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">
+                        <span class="ml-1 rounded-full bg-surface-raised/80 px-1.5 py-0.5 font-mono text-[9px] font-bold text-current ring-1 ring-current/10">
                             {readyCount(asset)}/{variantCount(asset)}
                         </span>
                     </button>
@@ -475,14 +475,14 @@
 
             {#if selectedAsset}
                 <section class="card overflow-hidden p-0">
-                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 px-5 py-4">
+                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-border-subtle px-5 py-4">
                         <div class="flex items-center gap-3">
-                            <span class="grid h-9 w-9 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
+                            <span class="grid h-9 w-9 place-items-center rounded-md bg-brand-soft text-brand">
                                 <ImageIcon class="h-4.5 w-4.5" strokeWidth={1.8} />
                             </span>
                             <div>
                                 <h3 class="text-sm font-bold">{selectedAsset.label}</h3>
-                                <p class="mt-0.5 text-xs text-slate-500">{selectedAsset.description}</p>
+                                <p class="mt-0.5 text-xs text-muted">{selectedAsset.description}</p>
                             </div>
                         </div>
 
@@ -506,20 +506,20 @@
                     </div>
 
                     <div class="grid gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
-                        <aside class="border-b border-slate-100 bg-slate-50/60 p-5 lg:border-r lg:border-b-0">
+                        <aside class="border-b border-border-subtle bg-surface-sunken/60 p-5 lg:border-r lg:border-b-0">
                             {#if selectedAsset.source}
-                                <div class="grid min-h-56 place-items-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-5">
+                                <div class="grid min-h-56 place-items-center overflow-hidden rounded-md border border-border bg-surface-raised p-5">
                                     <img
                                         src={selectedAsset.source.preview_url}
                                         alt={`${selectedAsset.label} source`}
                                         class={selectedAsset.collection === 'app_icon'
                                             ? 'aspect-square max-h-44 w-full max-w-44 rounded-[22%] object-cover shadow-lg shadow-slate-300/60'
-                                            : 'max-h-64 w-auto max-w-full rounded-xl object-contain shadow-lg shadow-slate-300/60'}
+                                            : 'max-h-64 w-auto max-w-full rounded-md object-contain shadow-lg shadow-slate-300/60'}
                                     />
                                 </div>
                                 <div class="mt-4">
-                                    <p class="truncate text-xs font-semibold text-slate-800">{selectedAsset.source.name}</p>
-                                    <div class="mt-1 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                                    <p class="truncate text-xs font-semibold text-text">{selectedAsset.source.name}</p>
+                                    <div class="mt-1 flex items-center justify-between gap-3 text-[11px] text-muted">
                                         <span>{formatBytes(selectedAsset.source.size)}</span>
                                         <span>{readyCount(selectedAsset)} / {variantCount(selectedAsset)} ready</span>
                                     </div>
@@ -529,17 +529,17 @@
                                     </a>
                                 </div>
                             {:else}
-                                <div class="grid min-h-56 place-items-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
+                                <div class="grid min-h-56 place-items-center rounded-md border border-dashed border-control bg-surface-raised p-6 text-center">
                                     <div>
-                                        <span class="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+                                        <span class="mx-auto grid h-12 w-12 place-items-center rounded-md bg-border-subtle text-faint">
                                             <ImageIcon class="h-5 w-5" strokeWidth={1.8} />
                                         </span>
                                         <p class="mt-3 text-sm font-semibold">No source image</p>
-                                        <p class="mt-1 text-xs leading-5 text-slate-500">Upload an image to generate every listed size automatically.</p>
+                                        <p class="mt-1 text-xs leading-5 text-muted">Upload an image to generate every listed size automatically.</p>
                                     </div>
                                 </div>
                             {/if}
-                            <p class="mt-4 rounded-xl bg-indigo-50 px-3.5 py-3 text-[11px] leading-5 text-indigo-800">{selectedAsset.recommendation}</p>
+                            <p class="mt-4 rounded-md bg-brand-soft px-3.5 py-3 text-[11px] leading-5 text-brand">{selectedAsset.recommendation}</p>
                         </aside>
 
                         <div class="space-y-6 p-5">
@@ -548,22 +548,22 @@
                                     <div class="mb-3 flex items-center justify-between gap-3">
                                         <div class="flex items-center gap-2.5">
                                             <h4 class="text-sm font-bold">{platform.label}</h4>
-                                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{platform.variants.length} sizes</span>
+                                            <span class="rounded-full bg-border-subtle px-2 py-0.5 text-[10px] font-semibold text-muted">{platform.variants.length} sizes</span>
                                         </div>
-                                        <div class="hidden items-center gap-2 text-[10px] font-medium text-slate-400 sm:flex" aria-label="Previews use a relative size scale">
+                                        <div class="hidden items-center gap-2 text-[10px] font-medium text-faint sm:flex" aria-label="Previews use a relative size scale">
                                             <span>Smaller</span>
-                                            <span class="relative block h-px w-14 bg-slate-200">
-                                                <span class="absolute -top-0.5 left-0 h-1.5 w-1.5 rounded-full bg-slate-300"></span>
-                                                <span class="absolute -top-1 right-0 h-2.5 w-2.5 rounded-full bg-indigo-400"></span>
+                                            <span class="relative block h-px w-14 bg-border">
+                                                <span class="absolute -top-0.5 left-0 h-1.5 w-1.5 rounded-full bg-control"></span>
+                                                <span class="absolute -top-1 right-0 h-2.5 w-2.5 rounded-full bg-brand"></span>
                                             </span>
                                             <span>Larger</span>
                                         </div>
                                     </div>
-                                    <div class="grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-3">
+                                    <div class="grid gap-px overflow-hidden rounded-md border border-border bg-border sm:grid-cols-2 xl:grid-cols-3">
                                         {#each platform.variants as variant}
-                                            <article class="group flex min-h-52 min-w-0 flex-col bg-white p-3">
-                                                <div class="variant-stage relative flex h-36 items-end justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50/80 pb-3">
-                                                    <span class="absolute top-2 left-2 rounded-md bg-white/90 px-1.5 py-1 font-mono text-[9px] font-semibold text-slate-400 shadow-sm ring-1 ring-slate-200/70">
+                                            <article class="group flex min-h-52 min-w-0 flex-col bg-surface-raised p-3">
+                                                <div class="variant-stage relative flex h-36 items-end justify-center overflow-hidden rounded-md border border-border-subtle bg-surface-sunken pb-3">
+                                                    <span class="absolute top-2 left-2 rounded-md bg-surface-raised/90 px-1.5 py-1 font-mono text-[9px] font-semibold text-faint shadow-sm ring-1 ring-border/70">
                                                         {variant.width} × {variant.height}
                                                     </span>
                                                     {#if variant.ready || selectedAsset.source}
@@ -579,19 +579,19 @@
                                                         <span
                                                             style={previewStyle(selectedAsset, variant)}
                                                             class={selectedAsset.collection === 'app_icon'
-                                                                ? 'grid shrink-0 place-items-center rounded-[22%] border border-dashed border-slate-300 bg-white/70 text-slate-300'
-                                                                : 'grid shrink-0 place-items-center rounded-md border border-dashed border-slate-300 bg-white/70 text-slate-300'}
+                                                                ? 'grid shrink-0 place-items-center rounded-[22%] border border-dashed border-control bg-surface-raised/70 text-faint'
+                                                                : 'grid shrink-0 place-items-center rounded-md border border-dashed border-control bg-surface-raised/70 text-faint'}
                                                         >
                                                             <ImageIcon class="h-3.5 w-3.5" strokeWidth={1.8} />
                                                         </span>
                                                     {/if}
-                                                    <span class="absolute right-3 bottom-2 left-3 h-px bg-slate-200"></span>
+                                                    <span class="absolute right-3 bottom-2 left-3 h-px bg-border"></span>
                                                 </div>
                                                 <div class="mt-3 flex min-w-0 items-start gap-2">
                                                     <div class="min-w-0 flex-1">
-                                                        <p class="truncate text-xs font-semibold text-slate-800" title={variant.label}>{variant.label}</p>
-                                                        <p class="mt-1 flex items-center gap-1.5 text-[10px] font-medium {variant.ready ? 'text-emerald-600' : 'text-slate-400'}">
-                                                            <span class="h-1.5 w-1.5 rounded-full {variant.ready ? 'bg-emerald-500' : selectedAsset.source ? 'bg-amber-400' : 'bg-slate-300'}"></span>
+                                                        <p class="truncate text-xs font-semibold text-text" title={variant.label}>{variant.label}</p>
+                                                        <p class="mt-1 flex items-center gap-1.5 text-[10px] font-medium {variant.ready ? 'text-ok' : 'text-faint'}">
+                                                            <span class="h-1.5 w-1.5 rounded-full {variant.ready ? 'bg-ok/100' : selectedAsset.source ? 'bg-amber-400' : 'bg-control'}"></span>
                                                             {variant.ready ? 'Ready' : selectedAsset.source ? 'Generating' : 'Needs source'}
                                                         </p>
                                                     </div>
@@ -600,16 +600,16 @@
                                                             href={variant.download_url}
                                                             title={`Download ${variant.label}`}
                                                             aria-label={`Download ${variant.label}`}
-                                                            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+                                                            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ok/10 text-ok transition hover:bg-ok/10"
                                                         >
                                                             <Download class="h-3.5 w-3.5" strokeWidth={2.2} />
                                                         </a>
                                                     {:else}
                                                         <span
-                                                            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-400"
+                                                            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-border-subtle text-faint"
                                                             title={selectedAsset.source ? 'Conversion is queued' : 'Upload a source image'}
                                                         >
-                                                            {#if selectedAsset.source}<LoaderCircle class="h-3.5 w-3.5 animate-spin" strokeWidth={2} />{:else}<span class="h-1.5 w-1.5 rounded-full bg-slate-300"></span>{/if}
+                                                            {#if selectedAsset.source}<LoaderCircle class="h-3.5 w-3.5 animate-spin" strokeWidth={2} />{:else}<span class="h-1.5 w-1.5 rounded-full bg-control"></span>{/if}
                                                         </span>
                                                     {/if}
                                                 </div>
@@ -628,10 +628,10 @@
     {#if showUpload}
         <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeUpload()}>
             <form class="modal max-w-xl" onsubmit={(event) => { event.preventDefault(); uploadFile(); }}>
-                <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+                <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
                     <div>
-                        <h2 class="text-lg font-bold text-slate-950">Upload file</h2>
-                        <p class="mt-1 text-sm text-slate-500">Attach a file to {app.name}. Its filename becomes the download key.</p>
+                        <h2 class="text-lg font-bold text-text">Upload file</h2>
+                        <p class="mt-1 text-sm text-muted">Attach a file to {app.name}. Its filename becomes the download key.</p>
                     </div>
                     <button type="button" class="ghost -mr-2 p-2" aria-label="Close upload" disabled={fileForm.processing} onclick={closeUpload}>
                         <X class="h-4 w-4" strokeWidth={2} />
@@ -641,12 +641,12 @@
                 <div class="space-y-5 p-6">
                     <div>
                         <span class="label">File</span>
-                        <label for="app-file-upload" class="group block cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-5 py-6 text-center transition hover:border-indigo-300 hover:bg-indigo-50/40">
-                            <span class="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition group-hover:text-indigo-600 group-hover:ring-indigo-200">
+                        <label for="app-file-upload" class="group block cursor-pointer rounded-md border border-dashed border-control bg-surface-sunken px-5 py-6 text-center transition hover:border-brand hover:bg-brand-soft/40">
+                            <span class="mx-auto grid h-10 w-10 place-items-center rounded-md bg-surface-raised text-muted shadow-sm ring-1 ring-border transition group-hover:text-brand group-hover:ring-brand-soft-line">
                                 <Upload class="h-4.5 w-4.5" strokeWidth={1.8} />
                             </span>
-                            <span class="mt-3 block truncate text-sm font-semibold text-slate-800">{fileForm.file?.name ?? 'Choose a file'}</span>
-                            <span class="mt-1 block text-xs text-slate-500">
+                            <span class="mt-3 block truncate text-sm font-semibold text-text">{fileForm.file?.name ?? 'Choose a file'}</span>
+                            <span class="mt-1 block text-xs text-muted">
                                 {fileForm.file ? formatBytes(fileForm.file.size) : `Any type, up to ${formatBytes(fileLibrary.max_file_size)}`}
                             </span>
                         </label>
@@ -655,7 +655,7 @@
                     </div>
 
                     <label>
-                        <span class="label">Metadata <span class="font-normal text-slate-400">(optional JSON object)</span></span>
+                        <span class="label">Metadata <span class="font-normal text-faint">(optional JSON object)</span></span>
                         <textarea
                             class="min-h-36 font-mono text-xs leading-5"
                             bind:value={fileMetadataText}
@@ -666,7 +666,7 @@
                     </label>
                 </div>
 
-                <div class="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
+                <div class="flex items-center justify-end gap-3 border-t border-border-subtle bg-surface-sunken/60 px-6 py-4">
                     <button type="button" class="secondary px-4 py-2 text-xs" disabled={fileForm.processing} onclick={closeUpload}>Cancel</button>
                     <button type="submit" class="px-4 py-2 text-xs" disabled={!fileForm.file || fileForm.processing}>
                         {#if fileForm.processing}<LoaderCircle class="mr-2 h-3.5 w-3.5 animate-spin" strokeWidth={2} />{:else}<Upload class="mr-2 h-3.5 w-3.5" strokeWidth={2} />{/if}
