@@ -103,6 +103,22 @@ case "$rel_path" in
   apps/*/credentials)
     printf '{"data":[{"id":"cred-001","credential_type":{"slug":"android_keystore"},"build_profile":"production","created_at":"2025-01-15"}]}' >"$output"
     ;;
+  # --- files (app media library) ---
+  apps/*/files/*/content)
+    printf 'fake-file-content' >"$output"
+    ;;
+  apps/*/files/*)
+    case "$method" in
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+      *) printf '{"data":{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"}}' >"$output" ;;
+    esac
+    ;;
+  apps/*/files)
+    case "$method" in
+      POST) printf '{"data":{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"}}' >"$output" ;;
+      *) printf '{"data":[{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"},{"id":"file-002","name":"mapping.txt","mime_type":"text/plain","size":512,"created_at":"2026-07-30"}]}' >"$output" ;;
+    esac
+    ;;
   # --- assets (icon/splashscreen) ---
   apps/*/assets/*)
     printf '{"data":{"ok":true}}' >"$output"

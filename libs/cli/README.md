@@ -7,6 +7,7 @@ It provides domain-aware subcommands for all major API resources, plus generic a
 - **`builds`** — create, list, get, cancel, and patch builds
 - **`logs`** — fetch and append build logs
 - **`artifacts`** — list, download, upload, and delete build artifacts
+- **`files`** — list, download, upload, update, and delete files attached to an app
 - **`apps`** — list, get, create, update, and delete applications
 - **`credentials`** — manage app credentials and credential types
 - **`integrations`** — list integrations, repositories, workflows, and refs

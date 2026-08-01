@@ -39,6 +39,7 @@ dispatch_command() {\
     builds) command_builds "${REMAINING_ARGS[@]}" ;;\
     logs) command_logs "${REMAINING_ARGS[@]}" ;;\
     artifacts) command_artifacts "${REMAINING_ARGS[@]}" ;;\
+    files) command_files "${REMAINING_ARGS[@]}" ;;\
     credentials) command_credentials "${REMAINING_ARGS[@]}" ;;\
     integrations) command_integrations "${REMAINING_ARGS[@]}" ;;\
     pipelines) command_pipelines "${REMAINING_ARGS[@]}" ;;\
@@ -48,7 +49,7 @@ dispatch_command() {\
 }'
 
 # Command modules (strip shebang lines)
-for cmd in request stream builds logs artifacts apps credentials integrations pipelines webhooks; do
+for cmd in request stream builds logs artifacts files apps credentials integrations pipelines webhooks; do
   printf '\n'
   grep -v '^#!/usr/bin/env bash' "$LIB_DIR/commands/$cmd.sh"
 done
