@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AppAssetController;
+use App\Http\Controllers\Api\V1\AppFileController;
 use App\Http\Controllers\Api\V1\AppIdentifierController;
 use App\Http\Controllers\Api\V1\ArtifactController;
 use App\Http\Controllers\Api\V1\BuildController;
@@ -165,6 +166,25 @@ Route::prefix('v1/{team:slug}')
             ->middleware(['abilities:assets:write', 'team.permission:manage_applications'])
             ->whereIn('asset', ['icon', 'splashscreen'])
             ->name('apps.assets.destroy');
+
+        Route::get('/apps/{mobileApp:slug}/files', [AppFileController::class, 'index'])
+            ->middleware(['abilities:files:read', 'team.permission:view'])
+            ->name('apps.files.index');
+        Route::post('/apps/{mobileApp:slug}/files', [AppFileController::class, 'store'])
+            ->middleware(['abilities:files:write', 'team.permission:manage_applications'])
+            ->name('apps.files.store');
+        Route::get('/apps/{mobileApp:slug}/files/{file}/content', [AppFileController::class, 'content'])
+            ->middleware(['abilities:files:read', 'team.permission:view'])
+            ->name('apps.files.content.show');
+        Route::get('/apps/{mobileApp:slug}/files/{file}', [AppFileController::class, 'show'])
+            ->middleware(['abilities:files:read', 'team.permission:view'])
+            ->name('apps.files.show');
+        Route::patch('/apps/{mobileApp:slug}/files/{file}', [AppFileController::class, 'update'])
+            ->middleware(['abilities:files:write', 'team.permission:manage_applications'])
+            ->name('apps.files.update');
+        Route::delete('/apps/{mobileApp:slug}/files/{file}', [AppFileController::class, 'destroy'])
+            ->middleware(['abilities:files:write', 'team.permission:manage_applications'])
+            ->name('apps.files.destroy');
 
         Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'index'])->middleware(['abilities:identifiers:read', 'team.permission:view'])->name('apps.identifiers.index');
         Route::post('/apps/{mobileApp:slug}/identifiers', [AppIdentifierController::class, 'store'])->middleware(['abilities:identifiers:write', 'team.permission:manage_applications'])->name('apps.identifiers.store');
