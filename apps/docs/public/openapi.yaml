@@ -45,6 +45,8 @@ tags:
     description: CRUD operations on mobile applications
   - name: Assets
     description: Icon and splashscreen management
+  - name: Files
+    description: Arbitrary files attached to an application
   - name: Identifiers
     description: Platform identifiers (iOS bundle ID, Android package name, Web domain)
   - name: Credentials
@@ -296,6 +298,165 @@ paths:
           $ref: '#/components/responses/NotFound'
       security:
         - bearerAuth: [assets:read]
+
+  /apps/{app_slug}/files:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    get:
+      operationId: listAppFiles
+      summary: List app files
+      description: Returns a paginated list of files attached to the application, newest first.
+      tags: [Files]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of files
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AppFile'
+      security:
+        - bearerAuth: [files:read]
+
+    post:
+      operationId: uploadAppFile
+      summary: Upload app file
+      description: |
+        Attach a file to the application. File names are unique per application:
+        uploading a name that already exists returns `422`. Delete the existing file first to replace it.
+        The maximum size is the instance's `MEDIA_MAX_FILE_SIZE_KB` (100 MB by default).
+      tags: [Files]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to attach
+                metadata:
+                  type: string
+                  description: JSON object (or form-encoded object) with arbitrary metadata
+      responses:
+        '201':
+          description: File attached
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppFile'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [files:write]
+
+  /apps/{app_slug}/files/{file}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/AppFileName'
+
+    get:
+      operationId: getAppFile
+      summary: Get app file metadata
+      tags: [Files]
+      responses:
+        '200':
+          description: File metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppFile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [files:read]
+
+    patch:
+      operationId: updateAppFile
+      summary: Update app file metadata
+      description: Replaces the file's metadata object. Send `null` to clear it.
+      tags: [Files]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  type: object
+                  nullable: true
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Metadata updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AppFile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [files:write]
+
+    delete:
+      operationId: deleteAppFile
+      summary: Delete app file
+      tags: [Files]
+      responses:
+        '204':
+          description: File deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [files:write]
+
+  /apps/{app_slug}/files/{file}/content:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/AppFileName'
+
+    get:
+      operationId: downloadAppFile
+      summary: Download app file
+      description: Streams the file as an attachment.
+      tags: [Files]
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [files:read]
 
   /apps/{app_slug}/identifiers:
     parameters:
@@ -2247,6 +2408,8 @@ paths:
                       - identifiers:write
                       - assets:read
                       - assets:write
+                      - files:read
+                      - files:write
                       - credentials:read
                       - credentials:write
                       - builds:read
@@ -2353,6 +2516,13 @@ components:
       schema:
         type: string
       description: Application slug
+    AppFileName:
+      name: file
+      in: path
+      required: true
+      schema:
+        type: string
+      description: File name as stored by the media library (e.g. `release-notes.pdf`)
     AssetType:
       name: asset
       in: path
@@ -2915,6 +3085,44 @@ components:
           type: string
           format: date-time
 
+    AppFile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Media UUID; `null` for files attached before UUIDs were recorded
+        name:
+          type: string
+          example: release-notes.pdf
+        extension:
+          type: string
+          example: pdf
+        mime_type:
+          type: string
+          example: application/pdf
+        size:
+          type: integer
+          description: Size in bytes
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        urls:
+          type: object
+          properties:
+            self:
+              type: string
+            content:
+              type: string
+
     Integration:
       type: object
       properties:
@@ -3282,6 +3490,8 @@ components:
               - build.completed
               - artifact.created
               - artifact.deleted
+              - app_file.created
+              - app_file.deleted
               - team.invitation.created
               - team.invitation.accepted
               - team.invitation.revoked
@@ -3503,6 +3713,8 @@ components:
         - identifiers:write
         - assets:read
         - assets:write
+        - files:read
+        - files:write
         - credentials:read
         - credentials:write
         - builds:read
@@ -3541,6 +3753,8 @@ components:
         - build.completed
         - artifact.created
         - artifact.deleted
+        - app_file.created
+        - app_file.deleted
         - team.invitation.created
         - team.invitation.accepted
         - team.invitation.revoked
