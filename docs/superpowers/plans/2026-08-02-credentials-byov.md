@@ -37,6 +37,7 @@
 | `app/Enums/CredentialApiProfile.php` | `full` \| `dashboard_only` + `exposesSecretMaterial()` |
 | `config/credentials.php` | `storage_modes`, `api_profile` |
 | `app/Support/Credentials/StorageModePolicy.php` | the only resolver of "which modes may this team use" |
+| `app/Support/Credentials/CredentialRequestRules.php` | the storage-mode half of request validation, shared by the web and API controllers |
 | `app/Models/CredentialVaultReference.php` | the 1:1 side table |
 | `app/Actions/Credentials/SyncVaultReference.php` | write/refresh a reference from request input |
 | `app/Actions/Credentials/RecordVaultVerification.php` | apply a pipeline report + emit the transition webhook |
@@ -1144,14 +1145,21 @@ git commit -m "feat(credentials): detect duplicate vault references"
 
 **Files:**
 - Create: `apps/platform/app/Actions/Credentials/SyncVaultReference.php`
+- Create: `apps/platform/app/Support/Credentials/CredentialRequestRules.php`
 - Modify: `apps/platform/app/Http/Controllers/CredentialController.php` (`store`, `update`)
 - Test: `apps/platform/tests/Feature/CredentialExternalStorageTest.php`
+
+**`CredentialRequestRules` exists so Task 6 does not repeat this task's branching.** The web and API controllers each assemble their own base rules — their `app_identifier_id` existence rule differs and only the web one accepts `check_uniqueness` — but the storage-mode gate and the file-versus-vault choice are identical in both, and drifting them apart is how a rule gets tightened on one surface and not the other.
 
 **Interfaces:**
 - Consumes: `StorageModePolicy` (Task 1), `CredentialVaultReference` (Task 2), `CredentialSchema::externalRules()` (Task 3), `CredentialUniqueness::findMatchingVaultReference()` (Task 4).
 - Produces, where `$vault` is `array{provider: string, resource: string, metadata?: array<string, string|null>|null}`:
   - `SyncVaultReference::create(Credential $credential, array $vault, VaultMetadataSource $source): CredentialVaultReference`
   - `SyncVaultReference::update(CredentialVaultReference $reference, array $vault, VaultMetadataSource $source): CredentialVaultReference`
+  - `CredentialRequestRules::resolveMode(Team $team, Request $request): CredentialStorageMode`
+  - `CredentialRequestRules::forCreate(Team $team, Request $request, CredentialStorageMode $mode, ?CredentialType $type): array<string, mixed>`
+  - `CredentialRequestRules::forUpdate(Credential $credential, Request $request, ?CredentialType $type): array<string, mixed>`
+  - `CredentialRequestRules::assertModeIsUnchanged(Credential $credential, Request $request): void`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1423,16 +1431,107 @@ class SyncVaultReference
 
 Note the `metadata_version` guard: a rename that leaves metadata untouched must not inflate the counter, otherwise the number stops meaning anything.
 
-- [ ] **Step 4: Branch `CredentialController::store`**
+- [ ] **Step 4: Create the shared rules builder, then branch `CredentialController::store`**
 
-In `app/Http/Controllers/CredentialController.php` add the imports:
+`app/Support/Credentials/CredentialRequestRules.php`:
+
+```php
+<?php
+
+namespace App\Support\Credentials;
+
+use App\Enums\CredentialStorageMode;
+use App\Enums\CredentialType;
+use App\Models\Credential;
+use App\Models\Team;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * The storage-mode half of credential request validation, shared by the web
+ * and API controllers. Each controller still assembles its own base rules —
+ * their identifier and uniqueness rules genuinely differ — but the gate on
+ * the mode and the choice between file rules and vault rules lives here, so
+ * the two surfaces cannot be tightened independently.
+ */
+class CredentialRequestRules
+{
+    public function __construct(
+        private readonly StorageModePolicy $storageModes,
+    ) {}
+
+    public function resolveMode(Team $team, Request $request): CredentialStorageMode
+    {
+        return CredentialStorageMode::tryFrom((string) $request->input('storage_mode'))
+            ?? $this->storageModes->defaultFor($team);
+    }
+
+    /** @return array<string, mixed> */
+    public function forCreate(
+        Team $team,
+        Request $request,
+        CredentialStorageMode $mode,
+        ?CredentialType $type,
+    ): array {
+        $rules = [
+            'storage_mode' => ['sometimes', Rule::in($this->storageModes->allowedValuesFor($team))],
+        ];
+
+        if ($type) {
+            $rules = [
+                ...$rules,
+                ...($mode === CredentialStorageMode::External
+                    ? CredentialSchema::externalRules($type)
+                    : CredentialSchema::rules($type, true, (array) $request->input('payload', []))),
+            ];
+        }
+
+        if ($mode === CredentialStorageMode::Local) {
+            $rules['vault'] = ['prohibited'];
+        }
+
+        return $rules;
+    }
+
+    /** @return array<string, mixed> */
+    public function forUpdate(Credential $credential, Request $request, ?CredentialType $type): array
+    {
+        if (! $type) {
+            return [];
+        }
+
+        return $credential->isExternal()
+            ? CredentialSchema::externalRules($type)
+            : CredentialSchema::rules(
+                $type,
+                $type !== $credential->type || ! $credential->getFirstMedia('file'),
+                (array) $request->input('payload', []),
+            );
+    }
+
+    /** @throws ValidationException */
+    public function assertModeIsUnchanged(Credential $credential, Request $request): void
+    {
+        $requested = CredentialStorageMode::tryFrom((string) $request->input('storage_mode'));
+
+        if ($requested !== null && $requested !== $credential->storage_mode) {
+            throw ValidationException::withMessages([
+                'storage_mode' => 'Storage mode is fixed when a credential is created. Create a new credential instead.',
+            ]);
+        }
+    }
+}
+```
+
+Now in `app/Http/Controllers/CredentialController.php` add the imports:
 
 ```php
 use App\Actions\Credentials\SyncVaultReference;
 use App\Enums\CredentialStorageMode;
 use App\Enums\VaultMetadataSource;
 use App\Enums\VaultProvider;
-use App\Support\Credentials\StorageModePolicy;
+use App\Support\Credentials\CredentialRequestRules;
 ```
 
 Add both collaborators to the constructor:
@@ -1443,7 +1542,7 @@ Add both collaborators to the constructor:
         private readonly CredentialUniqueness $credentialUniqueness,
         private readonly ExpoAutoSyncDispatcher $expoAutoSync,
         private readonly CredentialAccessAuditRecorder $credentialAccessAudits,
-        private readonly StorageModePolicy $storageModes,
+        private readonly CredentialRequestRules $credentialRules,
         private readonly SyncVaultReference $vaultReferences,
     ) {}
 ```
@@ -1452,9 +1551,7 @@ In `store()`, replace the rule assembly (currently the block that begins `$type 
 
 ```php
         $type = CredentialType::tryFrom((string) $request->input('type'));
-        $allowedModes = $this->storageModes->allowedValuesFor($team);
-        $mode = CredentialStorageMode::tryFrom((string) $request->input('storage_mode'))
-            ?? $this->storageModes->defaultFor($team);
+        $mode = $this->credentialRules->resolveMode($team, $request);
 
         $rules = [
             'app_identifier_id' => [
@@ -1463,30 +1560,20 @@ In `store()`, replace the rule assembly (currently the block that begins `$type 
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
-            'storage_mode' => ['sometimes', Rule::in($allowedModes)],
             'expires_at' => ['nullable', 'date'],
             'check_uniqueness' => ['sometimes', 'boolean'],
+            ...$this->credentialRules->forCreate($team, $request, $mode, $type),
         ];
 
         if ($type) {
-            $rules = [
-                ...$rules,
-                ...($mode === CredentialStorageMode::External
-                    ? CredentialSchema::externalRules($type)
-                    : CredentialSchema::rules($type, true, (array) $request->input('payload', []))),
-                ...CredentialSchema::attachmentRules($type),
-            ];
-        }
-
-        if ($mode === CredentialStorageMode::Local) {
-            $rules['vault'] = ['prohibited'];
+            $rules = [...$rules, ...CredentialSchema::attachmentRules($type)];
         }
 
         $data = $request->validate($rules);
         $data['storage_mode'] = $mode->value;
 ```
 
-Because `storage_mode` is validated with `Rule::in($allowedModes)`, a mode the team may not use produces a `storage_mode` error, which is what the third test asserts. When the request omits `storage_mode` entirely the `sometimes` rule skips it and the team default applies.
+Because `forCreate()` validates `storage_mode` with `Rule::in(allowedValuesFor($team))`, a mode the team may not use produces a `storage_mode` error, which is what the third test asserts. When the request omits `storage_mode` entirely the `sometimes` rule skips it and the team default applies.
 
 Replace the fingerprint line with a mode-aware version:
 
@@ -1545,13 +1632,7 @@ Finally, guard the file write so an external credential never touches MediaLibra
 At the top of `update()`, before anything else:
 
 ```php
-        $requestedMode = CredentialStorageMode::tryFrom((string) $request->input('storage_mode'));
-
-        if ($requestedMode !== null && $requestedMode !== $credential->storage_mode) {
-            throw ValidationException::withMessages([
-                'storage_mode' => 'Storage mode is fixed when a credential is created. Create a new credential instead.',
-            ]);
-        }
+        $this->credentialRules->assertModeIsUnchanged($credential, $request);
 ```
 
 Guard the password-carry-over block so it only runs for local credentials — an external credential has no stored passwords to carry over:
@@ -1569,20 +1650,8 @@ Replace the rule assembly with:
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
             'expires_at' => ['nullable', 'date'],
+            ...$this->credentialRules->forUpdate($credential, $request, $type),
         ];
-
-        if ($type) {
-            $rules = $credential->isExternal()
-                ? [...$rules, ...CredentialSchema::externalRules($type)]
-                : [
-                    ...$rules,
-                    ...CredentialSchema::rules(
-                        $type,
-                        $type !== $credential->type || ! $credential->getFirstMedia('file'),
-                        (array) $request->input('payload', []),
-                    ),
-                ];
-        }
 ```
 
 Inside the transaction, rewrite the reference and skip both the file write and the fingerprint refresh for external credentials:
@@ -1619,6 +1688,7 @@ Expected: PASS. If `CredentialUpdateTest` or `CredentialReuseTest` fails, the lo
 
 ```bash
 git add apps/platform/app/Actions/Credentials/SyncVaultReference.php \
+  apps/platform/app/Support/Credentials/CredentialRequestRules.php \
   apps/platform/app/Http/Controllers/CredentialController.php \
   apps/platform/tests/Feature/CredentialExternalStorageTest.php
 git commit -m "feat(credentials): create and update external credentials from the dashboard"
@@ -1832,15 +1902,13 @@ To keep `index` off an N+1, add `'vaultReference'` to the array returned by `Cre
 
 - [ ] **Step 4: Branch `Api\V1\CredentialController::store`**
 
-Add the same imports and constructor collaborators as in Task 5 (`StorageModePolicy`, `SyncVaultReference`, `CredentialStorageMode`, `VaultMetadataSource`).
+Add the same imports and constructor collaborators as in Task 5 — `CredentialRequestRules`, `SyncVaultReference`, `CredentialStorageMode`, `VaultMetadataSource`, `VaultProvider`. **Do not re-derive the mode or re-assemble the storage rules here**; Task 5 created `CredentialRequestRules` precisely so this controller consumes it.
 
 Replace the rule assembly in `store()`:
 
 ```php
         $type = CredentialType::tryFrom((string) $request->input('type'));
-        $allowedModes = $this->storageModes->allowedValuesFor($team);
-        $mode = CredentialStorageMode::tryFrom((string) $request->input('storage_mode'))
-            ?? $this->storageModes->defaultFor($team);
+        $mode = $this->credentialRules->resolveMode($team, $request);
 
         $rules = [
             'app_identifier_id' => [
@@ -1849,27 +1917,19 @@ Replace the rule assembly in `store()`:
             ],
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
-            'storage_mode' => ['sometimes', Rule::in($allowedModes)],
             'expires_at' => ['nullable', 'date'],
+            ...$this->credentialRules->forCreate($team, $request, $mode, $type),
         ];
 
         if ($type) {
-            $rules = [
-                ...$rules,
-                ...($mode === CredentialStorageMode::External
-                    ? CredentialSchema::externalRules($type)
-                    : CredentialSchema::rules($type, true, (array) $request->input('payload', []))),
-                ...CredentialSchema::attachmentRules($type),
-            ];
-        }
-
-        if ($mode === CredentialStorageMode::Local) {
-            $rules['vault'] = ['prohibited'];
+            $rules = [...$rules, ...CredentialSchema::attachmentRules($type)];
         }
 
         $data = $request->validate($rules);
         $data['storage_mode'] = $mode->value;
 ```
+
+The one difference from the web controller is the absence of `check_uniqueness`: the API has never accepted it.
 
 Inside the transaction closure add `$mode` to `use (...)` and replace the create + file lines:
 
@@ -1891,7 +1951,24 @@ Inside the transaction closure add `$mode` to `use (...)` and replace the create
 
 - [ ] **Step 5: Branch `Api\V1\CredentialController::update`**
 
-Apply the same three changes as the web controller in Task 5, Step 5: reject a differing `storage_mode` with a `ValidationException`, pick `externalRules()` when `$credential->isExternal()`, and inside the transaction call `$this->vaultReferences->update(...)` instead of writing a file and refreshing the fingerprint.
+Apply the same three changes as the web controller in Task 5, Step 5, using the same shared builder:
+
+```php
+        $this->credentialRules->assertModeIsUnchanged($credential, $request);
+```
+
+```php
+        $rules = [
+            'name' => ['required', 'string', 'max:255'],
+            'type' => ['required', Rule::enum(CredentialType::class)],
+            'expires_at' => ['nullable', 'date'],
+            ...$this->credentialRules->forUpdate($credential, $request, $type),
+        ];
+```
+
+and inside the transaction call `$this->vaultReferences->update($credential->vaultReference, $data['vault'], VaultMetadataSource::User)` for an external credential instead of writing a file and refreshing the fingerprint.
+
+If this controller has a password carry-over block like the web one, guard it with `! $credential->isExternal()` too.
 
 - [ ] **Step 6: Run the test to verify it passes**
 
@@ -3073,14 +3150,24 @@ In `app/Enums/ApiKeyScope.php` add:
 
 Use `assignableValues()` wherever the key-creation validation and the key-creation UI currently use `values()` — grep for `ApiKeyScope::values()` and replace only the call sites that offer scopes for selection, **not** the ones that validate an already-issued token. The enum case itself must stay: issued keys hold that string in the database.
 
-Also filter `presets()` through the same rule, so the CI preset does not offer a scope that cannot be used:
+Also filter the `ci-cd-pipeline` preset through the same rule, so it does not offer a scope that cannot be used. Replace its `scopes` value with:
 
 ```php
-                'scopes' => array_values(array_intersect(
-                    [ /* …existing list… */ ],
-                    self::assignableValues(),
-                )),
+                'scopes' => array_values(array_intersect([
+                    self::AppsRead->value,
+                    self::IdentifiersRead->value,
+                    self::AssetsRead->value,
+                    self::FilesRead->value,
+                    self::CredentialsRead->value,
+                    self::CredentialsReveal->value,
+                    self::CredentialsVerify->value,
+                    self::BuildsWrite->value,
+                    self::LogsWrite->value,
+                    self::ArtifactsWrite->value,
+                ], self::assignableValues())),
 ```
+
+Leave the `build-runner` preset alone — it holds no credential scopes, so the filter would be a no-op there and the extra call would only obscure the list.
 
 In `app/Enums/WebhookEventType.php`, extend `subscribableValues()`:
 
