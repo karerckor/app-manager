@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Models\Concerns\HasTags;
 use App\Support\Encryption\Casts\EncryptedArrayWithDEK;
@@ -17,7 +18,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 
-#[Fillable(['team_id', 'type', 'name', 'payload', 'expires_at', 'tags', 'fingerprint'])]
+#[Fillable(['team_id', 'type', 'storage_mode', 'name', 'payload', 'expires_at', 'tags', 'fingerprint'])]
 class Credential extends Model implements Auditable, HasMedia
 {
     use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia;
@@ -53,6 +54,7 @@ class Credential extends Model implements Auditable, HasMedia
     {
         return [
             'type' => CredentialType::class,
+            'storage_mode' => CredentialStorageMode::class,
             'payload' => EncryptedArrayWithDEK::class,
             'expires_at' => 'datetime',
         ];

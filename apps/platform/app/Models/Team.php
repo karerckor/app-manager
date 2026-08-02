@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'slug', 'owner_id', 'check_credential_uniqueness_by_default'])]
+#[Fillable(['name', 'slug', 'owner_id', 'check_credential_uniqueness_by_default', 'allowed_credential_storage_modes'])]
 class Team extends Model
 {
     use HasFactory, HasUuids;
@@ -173,6 +173,7 @@ class Team extends Model
     {
         return [
             'check_credential_uniqueness_by_default' => 'boolean',
+            'allowed_credential_storage_modes' => 'array',
         ];
     }
 }
