@@ -6,6 +6,7 @@ use App\Enums\CredentialType;
 use App\Enums\TeamPermission;
 use App\Models\Team;
 use App\Support\PushNotifications\PushNotificationSender;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -20,26 +21,34 @@ class PushNotificationToolController extends Controller
     {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
 
+        $search = trim($request->string('search')->toString());
+
+        $credentials = $team->credentials()
+            ->where('type', CredentialType::FirebaseConfig->value)
+            ->with('media')
+            ->when($search !== '', fn (Builder $query) => $query->where('name', 'like', "%{$search}%"))
+            ->orderBy('name')
+            ->paginate(10)
+            ->withQueryString()
+            ->through(function ($credential) {
+                $media = $credential->getFirstMedia('file');
+
+                return [
+                    'id' => $credential->id,
+                    'name' => $credential->name,
+                    'ready' => $media !== null,
+                    'file_name' => $media?->file_name,
+                ];
+            });
+
         return Inertia::render('Tools/PushNotifications', [
             'canSend' => $team->allows($request->user(), TeamPermission::ManageCredentials),
-            'firebaseCredentials' => $team->credentials()
-                ->where('type', CredentialType::FirebaseConfig->value)
-                ->with('media')
-                ->orderBy('name')
-                ->get()
-                ->map(function ($credential) {
-                    $media = $credential->getFirstMedia('file');
-
-                    return [
-                        'id' => $credential->id,
-                        'name' => $credential->name,
-                        'ready' => $media !== null,
-                        'file_name' => $media?->file_name,
-                    ];
-                })
-                ->values(),
+            'firebaseCredentials' => $credentials,
             'sendUrl' => route('accounts.tools.push-notifications.send', $team),
             'credentialsUrl' => route('accounts.credentials.index', $team),
+            'filters' => [
+                'search' => $search,
+            ],
         ]);
     }
 

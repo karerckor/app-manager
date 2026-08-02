@@ -14,8 +14,6 @@ class TeamApiKeyController extends Controller
 {
     public function index(Request $request, Team $team): Response
     {
-        $this->authorizeManagement($request, $team);
-
         $apiKeys = $team->apiKeys()
             ->with('tokenable:id,name,email')
             ->latest()
@@ -43,8 +41,6 @@ class TeamApiKeyController extends Controller
 
     public function store(Request $request, Team $team): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'scopes' => ['required', 'array', 'min:1'],
@@ -65,15 +61,8 @@ class TeamApiKeyController extends Controller
 
     public function destroy(Request $request, Team $team, int $apiKey): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-
         $team->apiKeys()->whereKey($apiKey)->firstOrFail()->delete();
 
         return back()->with('status', 'API key revoked.');
-    }
-
-    private function authorizeManagement(Request $request, Team $team): void
-    {
-        abort_unless($request->user()?->id === $team->owner_id, 403);
     }
 }

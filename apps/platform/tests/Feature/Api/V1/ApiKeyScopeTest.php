@@ -3,7 +3,9 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Enums\ApiKeyScope;
+use App\Enums\CredentialType;
 use App\Enums\Platform;
+use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -28,6 +30,7 @@ class ApiKeyScopeTest extends TestCase
             'files:read',
             'files:write',
             'credentials:read',
+            'credentials:reveal',
             'credentials:write',
             'builds:read',
             'builds:write',
@@ -108,14 +111,38 @@ class ApiKeyScopeTest extends TestCase
     {
         [$user, $team, $app] = $this->application();
         $url = $this->api($team, "/apps/{$app->slug}/credentials");
+        $identifier = $app->appIdentifiers()->create([
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.secrets',
+        ]);
+        $credential = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::IosCertificate,
+            'payload' => ['password' => 'certificate-secret'],
+        ]);
+        $identifier->credentials()->attach($credential);
 
         $this->authenticate($user, $team, ApiKeyScope::CredentialsRead);
-        $this->getJson($url)->assertOk();
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonMissingPath('data.0.payload');
+        $this->postJson("{$url}/{$credential->id}/reveal")->assertForbidden();
         $this->postJson($url, [])->assertForbidden();
+
+        $this->authenticate($user, $team, ApiKeyScope::CredentialsReveal);
+        $this->postJson("{$url}/{$credential->id}/reveal")
+            ->assertOk()
+            ->assertJsonPath('data.payload.password', 'certificate-secret');
+        $this->getJson($url)->assertForbidden();
 
         $this->authenticate($user, $team, ApiKeyScope::CredentialsWrite);
         $this->postJson($url, [])->assertUnprocessable();
         $this->getJson($url)->assertForbidden();
+
+        $viewer = User::factory()->create();
+        $team->addUser($viewer, 'viewer');
+        $this->authenticate($viewer, $team, ApiKeyScope::CredentialsReveal);
+        $this->postJson("{$url}/{$credential->id}/reveal")->assertForbidden();
     }
 
     private string $token;

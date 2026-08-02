@@ -22,7 +22,6 @@ class SelfHostedInstallerTest extends TestCase
 
         config([
             'installer.enabled' => true,
-            'billing.distribution' => 'self-hosted',
             'app.key' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
             'integrations.enabled' => false,
             'integrations.github.enabled' => false,

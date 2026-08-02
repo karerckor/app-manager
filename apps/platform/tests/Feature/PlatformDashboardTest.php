@@ -182,27 +182,27 @@ class PlatformDashboardTest extends TestCase
 
         $this->actingAs($user)->get(route('accounts.apps.index', [
             'team' => $team,
-            'expo' => 'linked',
+            'expo' => ['any_connection'],
             'credentials' => [CredentialType::IosCertificate->value, CredentialType::ApnsKey->value],
         ]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('apps.data', 1)
                 ->where('apps.data.0.id', $linked->id)
-                ->where('filters.expo', 'linked')
+                ->where('filters.expo', ['any_connection'])
                 ->where('filters.credentials', [CredentialType::IosCertificate->value, CredentialType::ApnsKey->value])
                 ->has('filterOptions.credentials', 9));
 
         $this->actingAs($user)->get(route('accounts.apps.index', [
             'team' => $team,
-            'expo' => 'unlinked',
+            'expo' => ['not_connected'],
             'missing_credentials' => [CredentialType::IosCertificate->value],
         ]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('apps.data', 1)
                 ->where('apps.data.0.id', $unsigned->id)
-                ->where('filters.expo', 'unlinked')
+                ->where('filters.expo', ['not_connected'])
                 ->where('filters.missing_credentials', [CredentialType::IosCertificate->value]));
     }
 
@@ -546,6 +546,22 @@ class PlatformDashboardTest extends TestCase
             ->assertSessionHas('status', 'Application deleted.');
 
         $this->assertDatabaseMissing('mobile_apps', ['id' => $app->id]);
+    }
+
+    public function test_viewer_cannot_modify_or_delete_an_application(): void
+    {
+        [$owner, $team] = $this->userWithTeam();
+        $viewer = User::factory()->create();
+        $team->addUser($viewer, 'viewer');
+        $app = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Protected']);
+
+        $this->actingAs($viewer)
+            ->patch(route('accounts.apps.update', [$team, $app]), ['name' => 'Hijacked'])
+            ->assertForbidden();
+        $this->delete(route('accounts.apps.destroy', [$team, $app]))->assertForbidden();
+
+        $this->assertSame('Protected', $app->fresh()->name);
+        $this->assertDatabaseHas('mobile_apps', ['id' => $app->id]);
     }
 
     public function test_user_cannot_delete_an_app_from_another_team(): void

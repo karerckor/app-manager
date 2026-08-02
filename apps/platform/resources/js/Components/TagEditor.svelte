@@ -1,5 +1,5 @@
 <script>
-    import { onDestroy } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import { router } from '@inertiajs/svelte';
     import { Plus, X } from '@lucide/svelte';
 
@@ -29,7 +29,7 @@
     let open = false;
     let anchorEl;
     let popEl;
-    let pos = { top: 0, left: 0 };
+    let pos = { top: 0, left: 0, ready: false };
 
     $: working = (tags || []).map((t) => [t[0], t[1] ?? null]);
     $: canEdit = !disabled && !!url;
@@ -57,11 +57,24 @@
 
     function place() {
         if (!anchorEl) return;
-        const r = anchorEl.getBoundingClientRect();
-        const w = 272;
-        let left = align === 'right' ? r.right - w : r.left;
-        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-        pos = { top: Math.round(r.bottom + 6), left: Math.round(left) };
+        const anchor = anchorEl.getBoundingClientRect();
+        const margin = 8;
+        const gap = 6;
+        const width = popEl?.offsetWidth || 272;
+        const height = popEl?.offsetHeight || 0;
+        const spaceBelow = window.innerHeight - anchor.bottom - gap - margin;
+        const spaceAbove = anchor.top - gap - margin;
+
+        let left = align === 'right' ? anchor.right - width : anchor.left;
+        left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+
+        let top = anchor.bottom + gap;
+        if (height > spaceBelow && spaceAbove > spaceBelow) {
+            top = anchor.top - height - gap;
+        }
+        top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
+
+        pos = { top: Math.round(top), left: Math.round(left), ready: true };
     }
 
     function bindReposition() {
@@ -78,10 +91,12 @@
         if (!canEdit) return;
         text = '';
         color = null;
+        pos = { ...pos, ready: false };
         open = true;
         bindReposition();
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
             place();
+            await tick();
             popEl?.querySelector('input')?.focus();
         });
     }
@@ -160,7 +175,11 @@
 </span>
 
 {#if open}
-    <div bind:this={popEl} class="fixed z-[60] w-[272px] rounded-md border border-border bg-surface-raised p-4 shadow-2xl" style="top:{pos.top}px;left:{pos.left}px">
+    <div
+        bind:this={popEl}
+        class="fixed z-[60] max-h-[calc(100vh-1rem)] w-[272px] overflow-y-auto rounded-md border border-border bg-surface-raised p-4 shadow-2xl"
+        style="top:{pos.top}px;left:{pos.left}px;visibility:{pos.ready ? 'visible' : 'hidden'}"
+    >
         <div class="mb-3 flex items-start justify-between gap-3">
             <div><p class="eyebrow">New tag</p><p class="mt-1 text-xs text-muted">Label and color make filters easier to scan.</p></div>
         </div>

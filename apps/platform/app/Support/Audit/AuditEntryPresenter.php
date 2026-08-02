@@ -11,6 +11,7 @@ use App\Models\BuildRecord;
 use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
+use App\Models\NotificationDestination;
 use App\Models\Team;
 use App\Models\WebhookEndpoint;
 use App\Support\Tags\TagRules;
@@ -54,6 +55,8 @@ final class AuditEntryPresenter
         'started_at' => 'Started',
         'cancel_requested_at' => 'Cancellation requested',
         'finished_at' => 'Finished',
+        'file_name' => 'File',
+        'file_metadata' => 'Metadata',
     ];
 
     /** @return array<string, mixed> */
@@ -134,7 +137,14 @@ final class AuditEntryPresenter
         $label = self::snapshotLabel($values) ?? "{$type} #{$shortId}";
         $meta = null;
 
-        if ($resource instanceof MobileApp) {
+        if ($resource instanceof MobileApp && str_starts_with($audit->event, 'file_')) {
+            $type = 'File';
+            $label = is_string($values['file_name'] ?? null)
+                ? $values['file_name']
+                : "File #{$shortId}";
+            $meta = $resource->name;
+            $href = route('accounts.apps.media.index', ['team' => $team, 'mobileApp' => $resource]);
+        } elseif ($resource instanceof MobileApp) {
             $type = 'App';
             $label = $resource->name;
             $href = route('accounts.apps.show', ['team' => $team, 'mobileApp' => $resource]);
@@ -192,6 +202,14 @@ final class AuditEntryPresenter
                 $resource->external_account_name,
             ]);
             $href = self::integrationUrl($resource, $team);
+        } elseif ($resource instanceof NotificationDestination) {
+            $type = 'Notification destination';
+            $label = $resource->integration?->name ?: "Notification destination #{$shortId}";
+            $meta = self::join([
+                $resource->integration?->provider?->label(),
+                $resource->destination,
+            ]);
+            $href = self::notificationDestinationUrl($resource->id, $team);
         } elseif ($resource instanceof WebhookEndpoint) {
             $type = 'Webhook endpoint';
             $label = $resource->integration?->name ?: (self::snapshotLabel($values) ?? "Endpoint #{$shortId}");
@@ -219,6 +237,17 @@ final class AuditEntryPresenter
 
     private static function integrationUrl(Integration $integration, Team $team): string
     {
+        if ($integration->kind === IntegrationKind::Notification) {
+            $destinationId = $integration->external_id
+                ?: ($integration->relationLoaded('notificationDestination')
+                    ? $integration->notificationDestination?->id
+                    : null);
+
+            return $destinationId
+                ? self::notificationDestinationUrl($destinationId, $team)
+                : route('accounts.integrations.notifications.index', ['team' => $team]);
+        }
+
         if ($integration->kind === IntegrationKind::Webhook) {
             return route('accounts.integrations.webhooks.index', ['team' => $team]);
         }
@@ -228,6 +257,14 @@ final class AuditEntryPresenter
         }
 
         return route('accounts.integrations.index', ['team' => $team]);
+    }
+
+    private static function notificationDestinationUrl(string $destinationId, Team $team): string
+    {
+        return route('accounts.integrations.notifications.index', [
+            'team' => $team,
+            'selected' => $destinationId,
+        ]);
     }
 
     private static function teamResource(mixed $resource, Team $team): ?Model
@@ -305,6 +342,9 @@ final class AuditEntryPresenter
                 'member_added' => 'Member added',
                 'member_removed' => 'Member removed',
                 'member_role_updated' => 'Role changed',
+                'file_created' => 'File added',
+                'file_metadata_updated' => 'File metadata updated',
+                'file_deleted' => 'File deleted',
                 default => Str::headline($event),
             };
         }
@@ -360,6 +400,16 @@ final class AuditEntryPresenter
                 1 => '1 tag',
                 default => "{$count} tags",
             };
+        }
+
+        if ($key === 'file_metadata' && is_array($value)) {
+            if ($value === []) {
+                return 'None';
+            }
+
+            $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+            return $json === false ? 'Changed' : Str::limit($json, 120);
         }
 
         if (is_bool($value)) {

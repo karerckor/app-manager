@@ -1,7 +1,7 @@
 <script>
     import { tick } from 'svelte';
     import { Link, router } from '@inertiajs/svelte';
-    import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, CreditCard, ShieldCheck, BellRing, Menu, X } from '@lucide/svelte';
+    import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, ShieldCheck, BellRing, Menu, X } from '@lucide/svelte';
     import ThemeToggle from './ui/ThemeToggle.svelte';
     import Select from './Select.svelte';
 
@@ -19,7 +19,6 @@
         { key: 'audit', label: 'Audit log', href: url('/audit'), icon: ScrollText, show: ['owner', 'admin'].includes(auth?.team?.role) },
         { key: 'integrations', label: 'Integrations', href: url('/integrations'), icon: Blocks, show: Boolean(auth?.team?.permissions?.manage_integrations) },
         { key: 'team', label: 'Team access', href: url('/team'), icon: Users, show: true },
-        { key: 'billing', label: 'Billing', href: url('/billing'), icon: CreditCard, show: Boolean(auth?.billing?.enabled) && currentTeam?.owner_id === auth?.user?.id },
     ].filter((item) => item.show));
 
     const tools = $derived([

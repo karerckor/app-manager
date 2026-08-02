@@ -21,11 +21,18 @@ class BuildPresenter
             'external_url' => $run?->external_run_url,
             'provider_status' => $run?->provider_status,
             'reporting_mode' => $build->reporting_mode->value,
+            'expo_build_url' => self::expoBuildUrl($app, $build),
             'parameters' => $build->parameters ?? [],
             'logs' => $build->log_output,
+            'logs_archived_at' => $build->logs_archived_at,
+            'log_archive_size' => $build->log_archive_size,
+            'log_archive_url' => $build->log_archive_path
+                ? route('accounts.apps.builds.logs.archive', [$team, $app, $build])
+                : null,
             'logs_pending' => $build->reporting_mode->value === 'automatic'
                 && $run?->external_run_id !== null
-                && $build->logs_updated_at === null,
+                && $build->logs_updated_at === null
+                && $build->logs_archived_at === null,
             'created_at' => $build->created_at,
             'tags' => $build->tags ?? [],
             'tags_url' => route('accounts.apps.builds.tags.update', [$team, $app, $build]),
@@ -57,5 +64,23 @@ class BuildPresenter
                 ];
             })->values(),
         ];
+    }
+
+    private static function expoBuildUrl(MobileApp $app, BuildRecord $build): ?string
+    {
+        if (! $build->expo_build_id) {
+            return null;
+        }
+
+        $project = $app->expoProject;
+
+        if (! $project || blank($project->account_name) || blank($project->slug)) {
+            return null;
+        }
+
+        return rtrim((string) config('integrations.expo.web_url'), '/')
+            .'/accounts/'.rawurlencode($project->account_name)
+            .'/projects/'.rawurlencode($project->slug)
+            .'/builds/'.rawurlencode($build->expo_build_id);
     }
 }

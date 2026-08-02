@@ -116,6 +116,9 @@ perform_request() {
   local item
   local field
   local path
+  local value
+  local value_file
+  local form_index=0
   local curl_args
 
   response_file=$(new_temp_file response) || die "could not create a response file"
@@ -130,6 +133,10 @@ perform_request() {
     --write-out '%{http_code}'
     --header "@$auth_headers_file"
   )
+  case "$url" in
+    https://*) curl_args+=(--proto '=https') ;;
+    http://*) curl_args+=(--proto '=http') ;;
+  esac
 
   for item in "${REQUEST_HEADERS[@]}"; do
     curl_args+=(--header "$item")
@@ -159,7 +166,13 @@ perform_request() {
       ;;
     multipart)
       for item in "${REQUEST_FORMS[@]}"; do
-        curl_args+=(--form-string "$item")
+        field=${item%%=*}
+        value=${item#*=}
+        form_index=$((form_index + 1))
+        value_file=$(new_temp_file "form-$form_index") || die "could not create a multipart field file"
+        chmod 600 "$value_file" 2>/dev/null || true
+        printf '%s' "$value" >"$value_file"
+        curl_args+=(--form "$field=<$value_file")
       done
       for item in "${REQUEST_FILES[@]}"; do
         field=${item%%=*}
@@ -330,10 +343,20 @@ api_delete() {
 fetch_build_status() {
   local build_url="$1"
   local response_file
+  local auth_headers_file
   local status
   local curl_status
+  local allowed_protocol
 
   response_file=$(new_temp_file status-response) || return 1
+  auth_headers_file=$(new_temp_file status-headers) || return 1
+  chmod 600 "$auth_headers_file" 2>/dev/null || true
+  printf 'Authorization: Bearer %s\nAccept: application/json\n' "$API_KEY" >"$auth_headers_file"
+  case "$build_url" in
+    https://*) allowed_protocol='=https' ;;
+    http://*) allowed_protocol='=http' ;;
+    *) return 1 ;;
+  esac
   curl_status=$(
     "$CURL_BIN" \
       --silent \
@@ -341,8 +364,8 @@ fetch_build_status() {
       --request GET \
       --output "$response_file" \
       --write-out '%{http_code}' \
-      --header "Authorization: Bearer $API_KEY" \
-      --header "Accept: application/json" \
+      --proto "$allowed_protocol" \
+      --header "@$auth_headers_file" \
       "$build_url" 2>/dev/null
   ) || { rm -f "$response_file"; return 1; }
 

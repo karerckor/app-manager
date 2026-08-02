@@ -2,7 +2,7 @@
     import { Link, router, useForm } from '@inertiajs/svelte';
     import {
         CheckCircle2,
-        GitBranch,
+        ChevronRight,
         Plus,
         Search,
         Send,
@@ -11,10 +11,7 @@
     } from '@lucide/svelte';
     import WorkspacePage from '../../Components/WorkspacePage.svelte';
     import TabSelector from '../../Components/TabSelector.svelte';
-    import PipelineBuildModal from '../Apps/Modals/PipelineBuildModal.svelte';
-    import PipelineBatchRenameModal from './Modals/PipelineBatchRenameModal.svelte';
-    import PipelineBatchRunModal from './Modals/PipelineBatchRunModal.svelte';
-    import PipelineFormModal from './Modals/PipelineFormModal.svelte';
+    import NotificationsPanel from './NotificationsPanel.svelte';
 
     export let auth;
     export let flash = {};
@@ -29,22 +26,18 @@
     export let apps = [];
     export let profileTypes = [];
     export let buildStatuses = [];
-    export let reportingModes = ['automatic', 'manual'];
     export let storeWebhookUrl;
     export let webhooksEnabled = false;
     export let webhookEventTypes = [];
     export let webhookEndpoints = [];
     export let newWebhookSecret = null;
+    export let notificationsEnabled = false;
+    export let storeNotificationUrl = '';
+    export let notificationProviders = [];
+    export let notificationEvents = [];
+    export let notificationDestinations = [];
+    export let selectedNotificationDestinationId = null;
 
-    let showPipeline = false;
-    let showRename = false;
-    let renamingPipeline = null;
-    let activeIntegration = null;
-    let editingPipeline = null;
-    let launchingPipeline = null;
-    let selectedPipelineIds = {};
-    let batchRunSelection = null;
-    let batchRenameSelection = null;
     let showWebhook = false;
     let editingEndpoint = null;
     let webhookTagInput = '';
@@ -77,7 +70,6 @@
         },
         enabled: true,
     });
-    const renameForm = useForm({ name: '' });
     const selfHostedGitLabForm = useForm({
         instance_url: '',
         access_token: '',
@@ -87,96 +79,6 @@
         account_name: '',
     });
 
-    const openPipeline = (integration, pipeline = null) => {
-        activeIntegration = integration;
-        editingPipeline = pipeline;
-        showPipeline = true;
-    };
-    const closePipeline = () => {
-        showPipeline = false;
-        activeIntegration = null;
-        editingPipeline = null;
-    };
-    const openPipelineBuild = (pipeline) => launchingPipeline = pipeline;
-    const closePipelineBuild = () => launchingPipeline = null;
-    const syncIntegration = (integration) => router.post(integration.sync_url, {}, { preserveScroll: true });
-    const disconnectIntegration = (integration) => {
-        if (confirm(`Disconnect ${integration.name}? Existing build history will be preserved.`)) {
-            router.delete(integration.disconnect_url, { preserveScroll: true });
-        }
-    };
-    const openRename = (pipeline) => {
-        renamingPipeline = pipeline;
-        renameForm.name = pipeline.name;
-        renameForm.clearErrors();
-        showRename = true;
-    };
-    const saveRename = () => renameForm.patch(renamingPipeline.rename_url, {
-        preserveScroll: true,
-        onSuccess: () => showRename = false,
-    });
-    const deletePipeline = (pipeline) => {
-        if (confirm(`Remove pipeline “${pipeline.name}”?`)) router.delete(pipeline.destroy_url, { preserveScroll: true });
-    };
-    const selectedIdsForGroup = (group, selections = selectedPipelineIds) => selections[group.key] ?? [];
-    const selectedPipelinesForGroup = (group) => {
-        const ids = selectedIdsForGroup(group);
-
-        return group.pipelines.filter((pipeline) => ids.includes(pipeline.id));
-    };
-    const togglePipelineSelection = (group, pipelineId) => {
-        const ids = selectedIdsForGroup(group);
-
-        selectedPipelineIds = {
-            ...selectedPipelineIds,
-            [group.key]: ids.includes(pipelineId)
-                ? ids.filter((id) => id !== pipelineId)
-                : [...ids, pipelineId],
-        };
-    };
-    const toggleGroupSelection = (group) => {
-        const ids = selectedIdsForGroup(group);
-
-        selectedPipelineIds = {
-            ...selectedPipelineIds,
-            [group.key]: ids.length === group.pipelines.length
-                ? []
-                : group.pipelines.map((pipeline) => pipeline.id),
-        };
-    };
-    const clearGroupSelection = (groupKey) => {
-        selectedPipelineIds = { ...selectedPipelineIds, [groupKey]: [] };
-    };
-    const openBatchRun = (integration, group) => {
-        const pipelines = selectedPipelinesForGroup(group);
-
-        if (pipelines.length) batchRunSelection = { integration, groupKey: group.key, pipelines };
-    };
-    const closeBatchRun = () => batchRunSelection = null;
-    const completeBatchRun = () => {
-        if (batchRunSelection) clearGroupSelection(batchRunSelection.groupKey);
-    };
-    const openBatchRename = (integration, group) => {
-        const pipelines = selectedPipelinesForGroup(group);
-
-        if (pipelines.length) batchRenameSelection = { integration, groupKey: group.key, pipelines };
-    };
-    const closeBatchRename = () => batchRenameSelection = null;
-    const completeBatchRename = () => {
-        if (batchRenameSelection) clearGroupSelection(batchRenameSelection.groupKey);
-    };
-    const deleteSelectedPipelines = (integration, group) => {
-        const pipelines = selectedPipelinesForGroup(group);
-        const count = pipelines.length;
-
-        if (!count || !confirm(`Remove ${count} selected pipeline binding${count === 1 ? '' : 's'}? Build history will be preserved.`)) return;
-
-        router.delete(integration.pipelines_batch_destroy_url, {
-            data: { pipeline_ids: pipelines.map((pipeline) => pipeline.id) },
-            preserveScroll: true,
-            onSuccess: () => clearGroupSelection(group.key),
-        });
-    };
     const openSelfHostedGitLab = () => {
         selfHostedGitLabForm.reset();
         selfHostedGitLabForm.instance_url = 'https://';
@@ -460,33 +362,6 @@
     const formatDate = (value) => value
         ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
         : 'Never';
-    const groupPipelines = (pipelines) => {
-        const groups = new Map();
-
-        for (const pipeline of pipelines) {
-            const key = JSON.stringify({
-                enabled: pipeline.enabled,
-                profile_type: pipeline.profile_type,
-                reporting_mode: pipeline.reporting_mode,
-                build_id_input: pipeline.build_id_input,
-                repository_full_name: pipeline.repository_full_name,
-                workflow_id: pipeline.workflow_id,
-                default_ref: pipeline.default_ref,
-                input_schema: pipeline.input_schema,
-                input_defaults: pipeline.input_defaults,
-            });
-            const group = groups.get(key);
-
-            if (group) group.pipelines.push(pipeline);
-            else groups.set(key, { key, pipeline, pipelines: [pipeline] });
-        }
-
-        return [...groups.values()].map((group) => ({
-            ...group,
-            key: group.pipelines.map((pipeline) => pipeline.id).sort().join(':'),
-            names: [...new Set(group.pipelines.map((pipeline) => pipeline.name))],
-        }));
-    };
     const statusClass = (status) => ({
         active: 'bg-ok/10 text-ok',
         delivered: 'bg-ok/10 text-ok',
@@ -501,6 +376,7 @@
         { value: 'ci_cd', label: 'CI/CD', href: integrationUrls.ci_cd, active: activeTab === 'ci_cd', count: integrations.length },
         { value: 'expo', label: 'Expo EAS', href: integrationUrls.expo, active: activeTab === 'expo', count: expoIntegration.accounts?.length ?? 0, tone: 'violet' },
         { value: 'webhooks', label: 'Webhooks', href: integrationUrls.webhooks, active: activeTab === 'webhooks', count: webhookEndpoints.length, tone: 'emerald' },
+        { value: 'notifications', label: 'Notifications', href: integrationUrls.notifications, active: activeTab === 'notifications', count: notificationDestinations.length, tone: 'amber' },
     ];
 </script>
 
@@ -525,153 +401,113 @@
         </div>
 
         {#if activeTab === 'ci_cd'}
-            <section class="space-y-4">
+            <section class="space-y-6">
                 <section class="card overflow-clip p-0">
-                    <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                        <h2 class="text-xs font-bold text-text">
-                            Connect a provider
-                            <span class="ml-1 font-mono text-[11px] font-medium text-faint">{integrations.length} connected</span>
-                        </h2>
-                        <span class="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-1 text-[10px] font-semibold text-ok"><ShieldCheck class="h-3.5 w-3.5" strokeWidth={1.8} />Credentials encrypted</span>
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3.5">
+                        <div>
+                            <h2 class="text-xs font-bold text-text">Connected providers</h2>
+                            <p class="mt-0.5 text-xs text-muted">Open a connection to manage linked applications and pipelines.</p>
+                        </div>
+                        <span class="font-mono text-2xs font-semibold text-faint">{integrations.length} connected</span>
                     </div>
-                    <div class="grid border-t border-border-subtle md:grid-cols-3 md:divide-x md:divide-border-subtle">
+
+                    {#if integrations.length}
+                        <div class="divide-y divide-border-subtle">
+                            {#each integrations as integration}
+                                <Link
+                                    href={integration.detail_url}
+                                    class="group grid gap-3 px-5 py-4 transition hover:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                                    data-testid={`cicd-integration-${integration.id}`}
+                                >
+                                    <div class="flex min-w-0 items-center gap-3.5">
+                                        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md font-mono text-2xs font-black text-white {integration.provider === 'gitlab' ? 'bg-warn-fill' : integration.provider === 'expo' ? 'bg-brand' : 'bg-text'}">
+                                            {integration.provider === 'github' ? 'GH' : integration.provider === 'gitlab' ? 'GL' : 'EAS'}
+                                        </span>
+                                        <div class="min-w-0">
+                                            <div class="flex min-w-0 flex-wrap items-center gap-2">
+                                                <h3 class="truncate text-sm font-bold text-text">{integration.name}</h3>
+                                                <span class="rounded-full px-2 py-0.5 text-2xs font-bold uppercase {statusClass(integration.status)}">{integration.status}</span>
+                                                {#if integration.connection_type === 'self_hosted'}<span class="rounded-full bg-warn-text/10 px-2 py-0.5 text-2xs font-bold uppercase text-warn-fill">self-hosted</span>{/if}
+                                            </div>
+                                            <p class="mt-1 truncate font-mono text-2xs text-faint">
+                                                {integration.provider_name}{#if integration.account_name} · {integration.account_name}{/if}{#if integration.instance_url} · {integration.instance_url}{/if}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-4 justify-self-start sm:justify-self-end">
+                                        <dl class="flex items-center divide-x divide-border-subtle">
+                                            <div class="min-w-14 pr-3 text-right">
+                                                <dt class="font-condensed text-2xs font-semibold tracking-[0.08em] text-faint uppercase">Apps</dt>
+                                                <dd class="mt-0.5 font-mono text-sm font-semibold text-text">{integration.linked_apps_count}</dd>
+                                            </div>
+                                            <div class="min-w-18 pl-3 text-right">
+                                                <dt class="font-condensed text-2xs font-semibold tracking-[0.08em] text-faint uppercase">Pipelines</dt>
+                                                <dd class="mt-0.5 font-mono text-sm font-semibold text-text">{integration.pipelines_count}</dd>
+                                            </div>
+                                        </dl>
+                                        <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-muted transition group-hover:text-brand">
+                                            Manage
+                                            <ChevronRight class="h-4 w-4 transition group-hover:translate-x-0.5" strokeWidth={2} />
+                                        </span>
+                                    </div>
+                                </Link>
+                            {/each}
+                        </div>
+                    {:else}
+                        <div class="px-5 py-10 text-center">
+                            <p class="text-sm font-semibold text-text">No CI/CD providers connected</p>
+                            <p class="mt-1 text-xs text-muted">Choose a provider below to connect your first account.</p>
+                        </div>
+                    {/if}
+                </section>
+
+                <section>
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-xs font-bold text-text">Add a connection</h2>
+                            <p class="mt-0.5 text-xs text-muted">Connect another account or CI/CD provider.</p>
+                        </div>
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2.5 py-1 text-2xs font-semibold text-ok"><ShieldCheck class="h-3.5 w-3.5" strokeWidth={1.8} />Credentials encrypted</span>
+                    </div>
+
+                    <div class="grid gap-3 md:grid-cols-3">
                         {#each ciCdProviders as provider}
-                            <article class="flex flex-col gap-3 border-b border-border-subtle px-5 py-4 last:border-b-0 md:border-b-0">
+                            <article class="card flex min-h-44 flex-col p-5">
                                 <div class="flex items-start gap-3">
-                                    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-text text-[10px] font-black text-white">{provider.provider === 'github' ? 'GH' : 'GL'}</span>
+                                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-text font-mono text-2xs font-black text-white">{provider.provider === 'github' ? 'GH' : 'GL'}</span>
                                     <div class="min-w-0">
-                                        <h3 class="text-xs font-bold text-text">{provider.name}</h3>
-                                        <p class="mt-0.5 text-[11px] leading-4 text-muted">{provider.description}</p>
+                                        <h3 class="text-sm font-bold text-text">{provider.name}</h3>
+                                        <p class="mt-1 text-xs leading-5 text-muted">{provider.description}</p>
                                     </div>
                                 </div>
-                                <div class="mt-auto">
+                                <div class="mt-auto pt-5">
                                     {#if provider.enabled}
                                         <a href={provider.connect_url} class="secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs"><Plus class="h-3.5 w-3.5" />{provider.connected_accounts_count ? 'Add account' : 'Connect'}</a>
                                     {:else}
-                                        <span class="rounded-full bg-border-subtle px-2.5 py-1 text-[10px] font-semibold text-muted">Not configured</span>
+                                        <span class="rounded-full bg-border-subtle px-2.5 py-1 text-2xs font-semibold text-muted">Not configured</span>
                                     {/if}
                                 </div>
                             </article>
                         {/each}
-                        <article class="flex flex-col gap-3 px-5 py-4">
+
+                        <article class="card flex min-h-44 flex-col p-5">
                             <div class="flex items-start gap-3">
-                                <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-orange-600 text-[10px] font-black text-white">GL</span>
+                                <span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-warn-fill font-mono text-2xs font-black text-white">GL</span>
                                 <div class="min-w-0">
-                                    <h3 class="text-xs font-bold text-text">Self-hosted GitLab</h3>
-                                    <p class="mt-0.5 text-[11px] leading-4 text-muted">Connect your own GitLab URL with a personal access token.</p>
+                                    <h3 class="text-sm font-bold text-text">Self-hosted GitLab</h3>
+                                    <p class="mt-1 text-xs leading-5 text-muted">Connect your own GitLab URL with a personal access token.</p>
                                 </div>
                             </div>
-                            <div class="mt-auto">
+                            <div class="mt-auto pt-5">
                                 {#if selfHostedGitLab.enabled}
                                     <button class="secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs" on:click={openSelfHostedGitLab}><Plus class="h-3.5 w-3.5" />{selfHostedGitLab.connected_accounts_count ? 'Add instance' : 'Connect'}</button>
                                 {:else}
-                                    <span class="rounded-full bg-border-subtle px-2.5 py-1 text-[10px] font-semibold text-muted">Not enabled</span>
+                                    <span class="rounded-full bg-border-subtle px-2.5 py-1 text-2xs font-semibold text-muted">Not enabled</span>
                                 {/if}
                             </div>
                         </article>
                     </div>
                 </section>
-
-                {#each integrations as integration}
-                    <article class="card overflow-clip p-0">
-                        <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                            <div class="min-w-0">
-                                <div class="flex min-w-0 flex-wrap items-center gap-2">
-                                    <h2 class="truncate text-xs font-bold text-text">{integration.name}</h2>
-                                    <span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase {statusClass(integration.status)}">{integration.status}</span>
-                                    {#if integration.provider === 'expo'}<span class="rounded-full bg-brand-soft px-2 py-0.5 text-[9px] font-bold uppercase text-brand">EAS Workflows</span>{/if}
-                                    {#if integration.connection_type === 'self_hosted'}<span class="rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-bold uppercase text-orange-700">self-hosted</span>{/if}
-                                </div>
-                                <p class="mt-1 truncate font-mono text-[10px] text-faint">{integration.account_name}{#if integration.instance_url} · <span title={integration.instance_url}>{integration.instance_url}</span>{/if} · {groupPipelines(integration.pipelines).length} configurations · {integration.pipelines_count} bindings</p>
-                            </div>
-                            <div class="flex flex-wrap gap-1.5">
-                                <button class="secondary px-3 py-2 text-xs" on:click={() => syncIntegration(integration)}>Sync</button>
-                                <button class="px-3 py-2 text-xs" disabled={integration.status !== 'active' || !integration.eligible_app_ids?.length} on:click={() => openPipeline(integration)}>Configure pipeline</button>
-                                <button class="ghost px-2.5 py-2 text-xs text-danger" on:click={() => disconnectIntegration(integration)}>Disconnect</button>
-                            </div>
-                        </div>
-                        {#if integration.pipelines.length}
-                            <div class="divide-y divide-border-subtle border-t border-border-subtle">
-                                {#each groupPipelines(integration.pipelines) as group}
-                                    {#if group.pipelines.length === 1}
-                                        <div class="grid gap-3 px-5 py-3 transition hover:bg-surface-sunken md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-center">
-                                            <div class="flex min-w-0 items-start gap-3">
-                                                <span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand ring-1 ring-inset ring-brand-soft-line"><GitBranch class="h-3.5 w-3.5" strokeWidth={1.9} /></span>
-                                                <div class="min-w-0">
-                                                    <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                                                        <p class="truncate text-[12px] font-semibold text-text">{group.pipeline.name}</p>
-                                                        <span class="rounded bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold text-brand uppercase">{group.pipeline.reporting_mode}</span>
-                                                        {#if !group.pipeline.enabled}<span class="rounded bg-border-subtle px-1.5 py-0.5 text-[9px] font-bold text-muted">Disabled</span>{/if}
-                                                    </div>
-                                                    <p class="mt-0.5 truncate font-mono text-[10px] text-faint">{group.pipeline.repository_full_name} · {group.pipeline.workflow_name} · {group.pipeline.default_ref}</p>
-                                                </div>
-                                            </div>
-                                            <div class="min-w-0">
-                                                <p class="truncate text-[11px] font-semibold text-text">{group.pipeline.app_name}</p>
-                                                <p class="mt-0.5 truncate text-[10px] text-faint">{group.pipeline.target_name || 'All targets'} · {group.pipeline.profile_type}</p>
-                                            </div>
-                                            <div class="flex flex-wrap justify-end gap-1.5">
-                                                <button class="px-3 py-2 text-xs" disabled={!group.pipeline.enabled} on:click={() => openPipelineBuild(group.pipeline)}>Run build</button>
-                                                <button class="secondary px-2.5 py-2 text-xs" on:click={() => openRename(group.pipeline)}>Rename</button>
-                                                <button class="secondary px-2.5 py-2 text-xs" on:click={() => openPipeline(integration, group.pipeline)}>Edit</button>
-                                                <button class="ghost px-2 py-2 text-xs text-danger" on:click={() => deletePipeline(group.pipeline)}>Remove</button>
-                                            </div>
-                                        </div>
-                                    {:else}
-                                        <div class="px-5 py-3.5">
-                                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                                <div class="min-w-0 flex-1">
-                                                    <div class="flex min-w-0 items-center gap-2"><p class="min-w-0 truncate text-[12px] font-semibold text-text" title={group.names.join(', ')}>{group.names.join(', ')}</p><span class="shrink-0 rounded bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold text-brand uppercase">{group.pipeline.reporting_mode}</span>{#if !group.pipeline.enabled}<span class="shrink-0 rounded bg-border-subtle px-1.5 py-0.5 text-[9px] font-bold text-muted">Disabled</span>{/if}</div>
-                                                    <p class="mt-0.5 truncate font-mono text-[10px] text-faint">{group.pipeline.repository_full_name} · {group.pipeline.workflow_name} · {group.pipeline.default_ref}</p>
-                                                </div>
-                                                <span class="rounded-full bg-border-subtle px-2.5 py-1 text-[10px] font-bold text-muted">{group.pipelines.length} applications</span>
-                                            </div>
-                                            <div class="mt-3 divide-y divide-border-subtle overflow-hidden rounded-md border border-border bg-surface-raised">
-                                                <div class="flex flex-wrap items-center justify-between gap-3 bg-surface-sunken px-4 py-2.5">
-                                                    <label class="flex cursor-pointer items-center gap-2 text-xs font-semibold text-text">
-                                                        <input
-                                                            class="h-4 w-4 shrink-0 accent-brand shadow-none"
-                                                            type="checkbox"
-                                                            checked={selectedIdsForGroup(group, selectedPipelineIds).length === group.pipelines.length}
-                                                            aria-label={`Select all ${group.pipelines.length} applications`}
-                                                            on:change={() => toggleGroupSelection(group)}
-                                                        />
-                                                        <span>{selectedIdsForGroup(group, selectedPipelineIds).length ? `${selectedIdsForGroup(group, selectedPipelineIds).length} selected` : 'Select all'}</span>
-                                                    </label>
-                                                    <div class="flex flex-wrap items-center justify-end gap-2">
-                                                        <button class="px-3 py-2 text-xs" disabled={!selectedIdsForGroup(group, selectedPipelineIds).length || !group.pipeline.enabled} on:click={() => openBatchRun(integration, group)}>Run selected</button>
-                                                        <button class="secondary px-3 py-2 text-xs" disabled={!selectedIdsForGroup(group, selectedPipelineIds).length} on:click={() => openBatchRename(integration, group)}>Rename selected</button>
-                                                        <button class="ghost px-3 py-2 text-xs text-danger" disabled={!selectedIdsForGroup(group, selectedPipelineIds).length} on:click={() => deleteSelectedPipelines(integration, group)}>Remove selected</button>
-                                                    </div>
-                                                </div>
-                                                {#each group.pipelines as pipeline}
-                                                    <div class="grid gap-3 px-4 py-2.5 transition hover:bg-surface-sunken md:grid-cols-[minmax(180px,1fr)_auto] md:items-center">
-                                                        <label class="flex min-w-0 cursor-pointer items-center gap-3 text-xs">
-                                                            <input
-                                                                class="h-4 w-4 shrink-0 accent-brand shadow-none"
-                                                                type="checkbox"
-                                                                checked={selectedIdsForGroup(group, selectedPipelineIds).includes(pipeline.id)}
-                                                                aria-label={`Select ${pipeline.app_name}`}
-                                                                on:change={() => togglePipelineSelection(group, pipeline.id)}
-                                                            />
-                                                            <span class="min-w-0"><span class="block truncate font-semibold text-text">{pipeline.app_name}</span><span class="mt-1 block truncate text-muted">{pipeline.target_name || 'All targets'} · {pipeline.profile_type}</span></span>
-                                                        </label>
-                                                        <div class="flex flex-wrap justify-end gap-2"><button class="px-3 py-2 text-xs" disabled={!pipeline.enabled} on:click={() => openPipelineBuild(pipeline)}>Run build</button><button class="secondary px-2 py-2 text-xs" on:click={() => openRename(pipeline)}>Rename</button><button class="secondary px-2 py-2 text-xs" on:click={() => openPipeline(integration, pipeline)}>Edit</button><button class="ghost px-2 py-2 text-xs text-danger" on:click={() => deletePipeline(pipeline)}>Remove</button></div>
-                                                    </div>
-                                                {/each}
-                                            </div>
-                                        </div>
-                                    {/if}
-                                {/each}
-                            </div>
-                        {:else}
-                            <div class="flex items-center gap-2.5 border-t border-border-subtle px-5 py-3 text-faint">
-                                <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-border-subtle"><GitBranch class="h-3.5 w-3.5" strokeWidth={1.8} /></span>
-                                <p class="text-[11px] font-medium">No pipelines configured yet</p>
-                            </div>
-                        {/if}
-                    </article>
-                {/each}
             </section>
         {:else if activeTab === 'expo'}
             <section class="space-y-4">
@@ -795,7 +631,7 @@
                     </article>
                 {/each}
             </section>
-        {:else}
+        {:else if activeTab === 'webhooks'}
             <section class="space-y-4">
                 <div class="flex flex-wrap items-end justify-between gap-3">
                     <div>
@@ -891,22 +727,17 @@
                     </div>
                 {/if}
             </section>
+        {:else if activeTab === 'notifications'}
+            <NotificationsPanel
+                enabled={notificationsEnabled}
+                storeUrl={storeNotificationUrl}
+                providers={notificationProviders}
+                destinations={notificationDestinations}
+                events={notificationEvents}
+                initialDestinationId={selectedNotificationDestinationId}
+            />
         {/if}
 </WorkspacePage>
-
-<PipelineBuildModal pipeline={launchingPipeline} onClose={closePipelineBuild} />
-<PipelineBatchRunModal
-    selection={batchRunSelection}
-    url={batchRunSelection?.integration.pipelines_batch_run_url ?? ''}
-    onClose={closeBatchRun}
-    onComplete={completeBatchRun}
-/>
-<PipelineBatchRenameModal
-    selection={batchRenameSelection}
-    url={batchRenameSelection?.integration.pipelines_batch_rename_url ?? ''}
-    onClose={closeBatchRename}
-    onComplete={completeBatchRename}
-/>
 
 {#if showSelfHostedGitLab}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && (showSelfHostedGitLab = false)}>
@@ -933,26 +764,6 @@
                 {#if expoClientError}<span class="error">{expoClientError}</span>{/if}
             </div>
             <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={() => showExpo = false}>Cancel</button><button type="button" data-testid="expo-connect-submit" disabled={expoSubmitting || expoForm.processing} on:click={connectExpo}>{expoSubmitting || expoForm.processing ? 'Connecting…' : 'Connect Expo'}</button></div>
-        </form>
-    </div>
-{/if}
-
-<PipelineFormModal
-    open={showPipeline}
-    integration={activeIntegration}
-    pipeline={editingPipeline}
-    {apps}
-    {profileTypes}
-    {reportingModes}
-    onClose={closePipeline}
-/>
-
-{#if showRename}
-    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && (showRename = false)}>
-        <form class="modal max-w-md" on:submit|preventDefault={saveRename}>
-            <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5"><div><h2 class="text-lg font-bold">Rename pipeline</h2><p class="mt-1 text-sm text-muted">Change the display name only. Repository, workflow, and other settings stay the same.</p></div><button type="button" class="ghost p-2" on:click={() => showRename = false}>✕</button></div>
-            <div class="p-6"><label><span class="label">Pipeline name</span><input bind:value={renameForm.name} required />{#if renameForm.errors.name}<span class="error">{renameForm.errors.name}</span>{/if}</label></div>
-            <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={() => showRename = false}>Cancel</button><button disabled={renameForm.processing}>{renameForm.processing ? 'Saving…' : 'Save name'}</button></div>
         </form>
     </div>
 {/if}
@@ -1047,14 +858,14 @@
                     </div>
                     <div>
                         <span class="label">Endpoint</span>
-                        <code class="block overflow-x-auto rounded-md bg-text px-4 py-3 text-xs text-faint">{inspectedDelivery.endpoint_url}</code>
+                        <code class="block overflow-x-auto rounded-md border border-border bg-surface-sunken px-4 py-3 text-xs text-text">{inspectedDelivery.endpoint_url}</code>
                     </div>
                     {#if inspectedDelivery.last_error}
                         <div><span class="label">Last error</span><div class="rounded-md border border-danger bg-danger/10 px-4 py-3 text-xs leading-5 text-danger">{inspectedDelivery.last_error}</div></div>
                     {/if}
                     <div class="grid gap-5 lg:grid-cols-2">
-                        <div><span class="label">Request payload</span><pre class="max-h-96 overflow-auto rounded-md bg-text p-4 text-[11px] leading-5 text-faint">{prettyJson(inspectedDelivery.payload)}</pre></div>
-                        <div><span class="label">Response body</span><pre class="max-h-96 min-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-text p-4 text-[11px] leading-5 text-faint">{inspectedDelivery.response_body || 'No response body captured.'}</pre></div>
+                        <div><span class="label">Request payload</span><pre class="max-h-96 overflow-auto rounded-md border border-border bg-surface-sunken p-4 text-[11px] leading-5 text-text">{prettyJson(inspectedDelivery.payload)}</pre></div>
+                        <div><span class="label">Response body</span><pre class="max-h-96 min-h-32 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-surface-sunken p-4 text-[11px] leading-5 text-text">{inspectedDelivery.response_body || 'No response body captured.'}</pre></div>
                     </div>
                     <dl class="grid gap-3 text-xs sm:grid-cols-2">
                         <div><dt class="text-faint">Event ID</dt><dd class="mt-1 break-all font-mono text-text">{inspectedDelivery.event_id}</dd></div>

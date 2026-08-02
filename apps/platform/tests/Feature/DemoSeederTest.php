@@ -9,6 +9,7 @@ use App\Enums\ProfileType;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\User;
+use App\Support\Credentials\CredentialFileStorage;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -73,7 +74,8 @@ class DemoSeederTest extends TestCase
         $media = $keystore->getFirstMedia('file');
         $this->assertSame('production.keystore', $media->file_name);
         $certificates = [];
-        $this->assertTrue(openssl_pkcs12_read(file_get_contents($media->getPath()), $certificates, 'DemoKeystore123!'));
+        $this->assertTrue(openssl_pkcs12_read(CredentialFileStorage::contents($media), $certificates, 'DemoKeystore123!'));
+        $this->assertNotSame(CredentialFileStorage::contents($media), Storage::disk($media->disk)->get($media->getPathRelativeToRoot()));
         $this->assertArrayHasKey('pkey', $certificates);
         $this->assertArrayHasKey('cert', $certificates);
 
@@ -86,7 +88,7 @@ class DemoSeederTest extends TestCase
         $this->assertSame('distribution.p12', $certificateMedia->file_name);
         $iosCertificates = [];
         $this->assertTrue(openssl_pkcs12_read(
-            file_get_contents($certificateMedia->getPath()),
+            CredentialFileStorage::contents($certificateMedia),
             $iosCertificates,
             'DemoCertificate123!',
         ));
@@ -102,16 +104,19 @@ class DemoSeederTest extends TestCase
         $this->assertNotFalse($decodedProfile);
 
         try {
-            $this->assertTrue(openssl_cms_verify(
-                $profileMedia->getPath(),
-                OPENSSL_CMS_NOVERIFY,
-                null,
-                [],
-                null,
-                $decodedProfile,
-                null,
-                null,
-                OPENSSL_ENCODING_DER,
+            $this->assertTrue(CredentialFileStorage::withTemporaryPlaintext(
+                $profileMedia,
+                fn (string $path): bool => openssl_cms_verify(
+                    $path,
+                    OPENSSL_CMS_NOVERIFY,
+                    null,
+                    [],
+                    null,
+                    $decodedProfile,
+                    null,
+                    null,
+                    OPENSSL_ENCODING_DER,
+                ),
             ));
             $profileContents = file_get_contents($decodedProfile);
             $this->assertStringContainsString(
@@ -133,7 +138,7 @@ class DemoSeederTest extends TestCase
         $googlePlay = Credential::where('name', 'Google Play Service Account')->firstOrFail();
         $this->assertSame(CredentialType::GooglePlayServiceAccount, $googlePlay->type);
         $this->assertTrue($androidIdentifier->credentials()->whereKey($googlePlay->id)->exists());
-        $googlePlayJson = json_decode(file_get_contents($googlePlay->getFirstMedia('file')->getPath()), true);
+        $googlePlayJson = json_decode(CredentialFileStorage::contents($googlePlay->getFirstMedia('file')), true);
         $this->assertSame('service_account', $googlePlayJson['type']);
         $this->assertArrayHasKey('private_key', $googlePlayJson);
 
@@ -142,7 +147,7 @@ class DemoSeederTest extends TestCase
         $this->assertSame(CredentialType::FirebaseConfig, $firebaseHttpV1->type);
         $this->assertTrue($androidIdentifier->credentials()->whereKey($firebaseHttpV1->id)->exists());
         $firebaseHttpV1Json = json_decode(
-            file_get_contents($firebaseHttpV1->getFirstMedia('file')->getPath()),
+            CredentialFileStorage::contents($firebaseHttpV1->getFirstMedia('file')),
             true,
         );
         $this->assertSame('service_account', $firebaseHttpV1Json['type']);
@@ -154,20 +159,20 @@ class DemoSeederTest extends TestCase
         $this->assertTrue($iosIdentifier->credentials()->whereKey($appleKey->id)->exists());
         $this->assertSame('DEMOKEY123', $appleKey->payload['key_id']);
         $this->assertMatchesRegularExpression('/^[0-9a-f-]{36}$/', $appleKey->payload['issuer_id']);
-        $this->assertStringContainsString('BEGIN PRIVATE KEY', file_get_contents($appleKey->getFirstMedia('file')->getPath()));
+        $this->assertStringContainsString('BEGIN PRIVATE KEY', CredentialFileStorage::contents($appleKey->getFirstMedia('file')));
 
         // Client Firebase files, one per platform identifier.
         $androidFirebase = Credential::where('name', 'Firebase google-services.json')->firstOrFail();
         $this->assertSame(CredentialType::GoogleServicesJson, $androidFirebase->type);
         $this->assertTrue($androidIdentifier->credentials()->whereKey($androidFirebase->id)->exists());
-        $androidFirebaseJson = json_decode(file_get_contents($androidFirebase->getFirstMedia('file')->getPath()), true);
+        $androidFirebaseJson = json_decode(CredentialFileStorage::contents($androidFirebase->getFirstMedia('file')), true);
         $this->assertNotEmpty($androidFirebaseJson['project_info']);
         $this->assertNotEmpty($androidFirebaseJson['client']);
 
         $iosFirebase = Credential::where('name', 'Firebase GoogleService-Info.plist')->firstOrFail();
         $this->assertSame(CredentialType::GoogleServiceInfoPlist, $iosFirebase->type);
         $this->assertTrue($iosIdentifier->credentials()->whereKey($iosFirebase->id)->exists());
-        $plistContents = file_get_contents($iosFirebase->getFirstMedia('file')->getPath());
+        $plistContents = CredentialFileStorage::contents($iosFirebase->getFirstMedia('file'));
         $this->assertStringContainsString('<key>BUNDLE_ID</key>', $plistContents);
         $this->assertStringContainsString('<key>GOOGLE_APP_ID</key>', $plistContents);
     }

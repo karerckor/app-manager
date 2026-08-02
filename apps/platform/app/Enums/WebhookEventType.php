@@ -13,6 +13,10 @@ enum WebhookEventType: string
     case CredentialCreated = 'credential.created';
     case CredentialUpdated = 'credential.updated';
     case CredentialDeleted = 'credential.deleted';
+    case CredentialExpiringIn30Days = 'credential.expiring_30_days';
+    case CredentialExpiringIn7Days = 'credential.expiring_7_days';
+    case CredentialExpiringIn1Day = 'credential.expiring_1_day';
+    case CredentialExpired = 'credential.expired';
     case BuildCreated = 'build.created';
     case BuildStarted = 'build.started';
     case BuildCancelRequested = 'build.cancel_requested';

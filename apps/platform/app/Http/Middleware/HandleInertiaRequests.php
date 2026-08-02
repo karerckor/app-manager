@@ -24,9 +24,6 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $user?->only('id', 'name', 'email', 'current_team_id'),
-                'billing' => [
-                    'enabled' => (bool) config('billing.enabled'),
-                ],
                 'registration_enabled' => ! $selfHostedConfiguration->enabled()
                     || ! $selfHostedConfiguration->installed(),
                 'team' => $navigationTeam && $teamRole ? [

@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use App\Casts\Tags;
 use App\Support\Tags\TagRules;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -9,7 +10,7 @@ trait HasTags
 {
     public function initializeHasTags(): void
     {
-        $this->mergeCasts(['tags' => 'array']);
+        $this->mergeCasts(['tags' => Tags::class]);
     }
 
     /**

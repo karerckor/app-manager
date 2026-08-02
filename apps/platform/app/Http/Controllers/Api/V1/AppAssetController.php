@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\MobileAppResource;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppMediaLibrary;
@@ -19,6 +20,8 @@ class AppAssetController extends Controller
         'icon' => 'app_icon',
         'splashscreen' => 'splash_icon',
     ];
+
+    public function __construct(private readonly ExpoAutoSyncDispatcher $expoAutoSync) {}
 
     public function files(Team $team, MobileApp $mobileApp): JsonResponse
     {
@@ -92,6 +95,9 @@ class AppAssetController extends Controller
         ]);
 
         $mobileApp->addMediaFromRequest('file')->toMediaCollection(self::COLLECTIONS[$asset]);
+        if ($asset === 'icon') {
+            $this->expoAutoSync->dispatchForAppIds([$mobileApp->id]);
+        }
 
         return new MobileAppResource($mobileApp->refresh());
     }
@@ -100,6 +106,9 @@ class AppAssetController extends Controller
     {
         abort_unless($mobileApp->getFirstMedia(self::COLLECTIONS[$asset]), 404);
         $mobileApp->clearMediaCollection(self::COLLECTIONS[$asset]);
+        if ($asset === 'icon') {
+            $this->expoAutoSync->dispatchForAppIds([$mobileApp->id]);
+        }
 
         return response()->noContent();
     }

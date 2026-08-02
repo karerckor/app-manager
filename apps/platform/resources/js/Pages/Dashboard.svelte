@@ -6,7 +6,6 @@
     import TabSelector from '../Components/TabSelector.svelte';
     import TagEditor from '../Components/TagEditor.svelte';
     import MultiSelectFilter from '../Components/MultiSelectFilter.svelte';
-    import Select from '../Components/Select.svelte';
     import { parseMetadata } from './Apps/lib.js';
 
     export let auth;
@@ -23,7 +22,8 @@
     let selectedTags = filters.tags ?? [];
     let availablePlatforms = filters.available_platforms ?? [];
     let unavailablePlatforms = filters.unavailable_platforms ?? [];
-    let expo = filters.expo ?? '';
+    let expo = filters.expo ?? [];
+    let autoSync = filters.auto_sync ?? false;
     let selectedCredentials = filters.credentials ?? [];
     let missingCredentials = filters.missing_credentials ?? [];
     let showFilters = false;
@@ -35,7 +35,13 @@
 
     $: appItems = apps?.data ?? [];
     $: pageLinks = (apps?.links ?? []).slice(1, -1);
-    $: hasAdvancedFilters = [selectedTags, availablePlatforms, unavailablePlatforms, selectedCredentials, missingCredentials].some((values) => values.length > 0) || Boolean(expo);
+    $: hasAdvancedFilters = [selectedTags, availablePlatforms, unavailablePlatforms, selectedCredentials, missingCredentials].some((values) => values.length > 0) || expo.length > 0 || autoSync;
+    $: expoFilterOptions = [
+        { value: 'any_connection', label: 'Any connection' },
+        { value: 'not_connected', label: 'Not connected' },
+        { value: 'detached', label: 'Detached' },
+        ...(filterOptions.expoAccounts ?? []),
+    ];
 
     const createApp = () => {
         const metadata = parseMetadata(metadataText, (message) => metadataError = message);
@@ -69,7 +75,8 @@
             tags: selectedTags.length ? selectedTags : undefined,
             available_platforms: availablePlatforms.length ? availablePlatforms : undefined,
             unavailable_platforms: unavailablePlatforms.length ? unavailablePlatforms : undefined,
-            expo: expo || undefined,
+            expo: expo.length ? expo : undefined,
+            auto_sync: autoSync || undefined,
             credentials: selectedCredentials.length ? selectedCredentials : undefined,
             missing_credentials: missingCredentials.length ? missingCredentials : undefined,
         }, {
@@ -83,7 +90,8 @@
         selectedTags = [];
         availablePlatforms = [];
         unavailablePlatforms = [];
-        expo = '';
+        expo = [];
+        autoSync = false;
         selectedCredentials = [];
         missingCredentials = [];
         visitFilters();
@@ -142,7 +150,11 @@
                         <MultiSelectFilter label="Tags" options={filterOptions.tags ?? []} values={selectedTags} searchable searchPlaceholder="Search tags…" onChange={(values) => { selectedTags = values; visitFilters(); }} />
                         <MultiSelectFilter label="Platforms available" options={filterOptions.platforms ?? []} values={availablePlatforms} onChange={(values) => { availablePlatforms = values; visitFilters(); }} />
                         <MultiSelectFilter label="Platforms unavailable" options={filterOptions.platforms ?? []} values={unavailablePlatforms} onChange={(values) => { unavailablePlatforms = values; visitFilters(); }} />
-                        <label><span class="label">Expo</span><Select bind:value={expo} options={[{ value: '', label: 'Any connection' }, { value: 'linked', label: 'Linked to Expo' }, { value: 'unlinked', label: 'Not linked to Expo' }]} ariaLabel="Expo connection" on:change={visitFilters} /></label>
+                        <MultiSelectFilter label="Expo" options={expoFilterOptions} values={expo} onChange={(values) => { expo = values; visitFilters(); }} />
+                        <label class="flex items-center gap-2 self-end pb-2">
+                            <input type="checkbox" class="h-4 w-4 rounded border-border-control text-brand accent-brand focus:ring-brand/30" bind:checked={autoSync} on:change={visitFilters} />
+                            <span class="label mb-0">Auto-sync enabled</span>
+                        </label>
                         <MultiSelectFilter label="Credentials present" options={filterOptions.credentials ?? []} values={selectedCredentials} searchable searchPlaceholder="Search credential types…" onChange={(values) => { selectedCredentials = values; visitFilters(); }} />
                         <MultiSelectFilter label="Credentials missing" options={filterOptions.credentials ?? []} values={missingCredentials} searchable searchPlaceholder="Search credential types…" onChange={(values) => { missingCredentials = values; visitFilters(); }} />
                     </div>

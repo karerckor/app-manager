@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
+use App\Enums\WebhookEventType;
+use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Notifications\TeamInvitationNotification;
@@ -17,6 +19,8 @@ use Inertia\Response;
 
 class TeamInvitationController extends Controller
 {
+    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+
     public function show(Request $request, TeamInvitation $invitation): Response
     {
         return Inertia::render('Team/AcceptInvitation', [
@@ -27,7 +31,9 @@ class TeamInvitationController extends Controller
                 'expires_at' => $invitation->expires_at,
                 'is_pending' => $invitation->isPending(),
                 'email_matches' => hash_equals(mb_strtolower($invitation->email), mb_strtolower($request->user()->email)),
-                'accept_url' => route('team-invitations.accept', ['invitation' => $invitation]),
+                'accept_url' => route('team-invitations.accept', [
+                    'invitation' => $invitation->plainTextToken,
+                ]),
             ],
         ]);
     }
@@ -58,7 +64,16 @@ class TeamInvitationController extends Controller
         ]);
         $invitation->load(['team', 'inviter']);
 
-        Notification::route('mail', $email)->notify(new TeamInvitationNotification($invitation));
+        Notification::route('mail', $email)->notify(new TeamInvitationNotification(
+            $invitation,
+            $invitation->plainTextToken,
+        ));
+        $this->webhookEvents->record($team, WebhookEventType::TeamInvitationCreated, $invitation, [
+            'id' => $invitation->id,
+            'email' => $invitation->email,
+            'role' => (string) $invitation->role,
+            'expires_at' => $invitation->expires_at->toISOString(),
+        ]);
 
         return back()->with('status', "Invitation sent to {$email}.");
     }

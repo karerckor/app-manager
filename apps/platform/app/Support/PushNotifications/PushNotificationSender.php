@@ -3,10 +3,10 @@
 namespace App\Support\PushNotifications;
 
 use App\Models\Credential;
+use App\Support\Credentials\CredentialFileStorage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 class PushNotificationSender
@@ -136,7 +136,7 @@ class PushNotificationSender
             throw new RuntimeException('The selected Firebase credential does not have a service-account file.');
         }
 
-        $contents = Storage::disk($media->disk)->get($media->getPathRelativeToRoot());
+        $contents = CredentialFileStorage::contents($media);
 
         try {
             $serviceAccount = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);

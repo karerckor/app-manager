@@ -57,7 +57,7 @@ class WebhookPayload
     /** @return array<string, mixed> */
     public static function build(BuildRecord $build): array
     {
-        return [
+        $payload = [
             'id' => $build->id,
             'request_uuid' => $build->request_uuid,
             'mobile_app_id' => $build->mobile_app_id,
@@ -65,13 +65,18 @@ class WebhookPayload
             'profile_type' => $build->profile_type->value,
             'status' => $build->status->value,
             'reporting_mode' => $build->reporting_mode->value,
-            'parameters' => $build->parameters ?? [],
             'started_at' => $build->started_at?->toISOString(),
             'cancel_requested_at' => $build->cancel_requested_at?->toISOString(),
             'finished_at' => $build->finished_at?->toISOString(),
             'created_at' => $build->created_at?->toISOString(),
             'updated_at' => $build->updated_at?->toISOString(),
         ];
+
+        if ($build->reporting_mode->value === 'eas') {
+            $payload['expo_build_id'] = $build->expo_build_id;
+        }
+
+        return $payload;
     }
 
     /** @return array<string, mixed> */

@@ -239,13 +239,20 @@ class PlatformApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.type', 'android_keystore')
             ->assertJsonPath('data.profiles.0.type', 'production')
-            ->assertJsonPath('data.payload.key_alias', 'release')
+            ->assertJsonMissingPath('data.payload')
             ->assertJsonPath('data.file.name', 'release.jks');
 
         $id = $created->json('data.id');
         $this->getJson($url)
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonMissingPath('data.0.payload');
+
+        $this->postJson("{$url}/{$id}/reveal")
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonPath('data.payload.key_alias', 'release')
+            ->assertJsonPath('data.payload.store_password', 'store-secret');
 
         $this->patchJson("{$url}/{$id}", [
             'name' => 'Release keystore 2026',
@@ -256,6 +263,17 @@ class PlatformApiTest extends TestCase
         $this->get("{$url}/{$id}/file", ['Authorization' => 'Bearer '.$this->token])
             ->assertOk()
             ->assertDownload('release.jks');
+
+        $this->assertDatabaseHas('audits', [
+            'auditable_id' => $id,
+            'event' => 'credential_revealed',
+            'source' => 'api',
+        ]);
+        $this->assertDatabaseHas('audits', [
+            'auditable_id' => $id,
+            'event' => 'credential_file_downloaded',
+            'source' => 'api',
+        ]);
 
         $foreignApp = MobileApp::factory()->create(['team_id' => $team->id]);
         $this->getJson("/api/v1/{$team->slug}/apps/{$foreignApp->slug}/credentials/{$id}")

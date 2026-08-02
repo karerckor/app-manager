@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'filter_context',
     'occurred_at',
     'published_at',
+    'notifications_published_at',
 ])]
 class WebhookEvent extends Model
 {
@@ -41,6 +42,11 @@ class WebhookEvent extends Model
         return $this->hasMany(WebhookDelivery::class);
     }
 
+    public function notificationDeliveries(): HasMany
+    {
+        return $this->hasMany(NotificationDelivery::class);
+    }
+
     protected function casts(): array
     {
         return [
@@ -49,6 +55,7 @@ class WebhookEvent extends Model
             'filter_context' => 'array',
             'occurred_at' => 'datetime',
             'published_at' => 'datetime',
+            'notifications_published_at' => 'datetime',
         ];
     }
 }

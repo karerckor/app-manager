@@ -9,6 +9,7 @@ use App\Enums\IntegrationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\ExpoProjectResource;
 use App\Http\Resources\Api\V1\MobileAppResource;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Integrations\Expo\ExpoClient;
 use App\Integrations\Expo\ExpoCredentialExporter;
 use App\Integrations\Expo\ExpoGraphqlException;
@@ -21,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class ExpoProjectController extends Controller
@@ -229,6 +231,42 @@ class ExpoProjectController extends Controller
         ]);
     }
 
+    public function updateAutomaticSync(
+        Request $request,
+        Team $team,
+        MobileApp $mobileApp,
+        ExpoAutoSyncDispatcher $autoSync,
+    ): ExpoProjectResource {
+        $this->ensureEnabled();
+        $project = $mobileApp->expoProject()->with('integration')->firstOrFail();
+        abort_unless($project->team_id === $team->id, 404);
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+        $enabled = (bool) $data['enabled'];
+
+        if ($enabled && (
+            ! $project->exists_on_expo
+            || ! $project->integration->status->canDispatch()
+            || ! $project->integration->oauthCredential()->exists()
+        )) {
+            throw ValidationException::withMessages([
+                'enabled' => 'Reconnect the Expo account before enabling automatic sync.',
+            ]);
+        }
+
+        $project->update([
+            'auto_sync_enabled' => $enabled,
+            'auto_sync_status' => $enabled ? 'queued' : 'idle',
+            'auto_sync_error' => null,
+            'auto_sync_pending_at' => $enabled ? now() : null,
+        ]);
+
+        if ($enabled) {
+            $autoSync->dispatchForAppIds([$mobileApp->id]);
+        }
+
+        return new ExpoProjectResource($project->refresh()->load('mobileApp'));
+    }
+
     public function destroy(
         Team $team,
         MobileApp $mobileApp,
@@ -241,7 +279,12 @@ class ExpoProjectController extends Controller
                 ->where('integration_id', $project->integration_id)
                 ->where('repository_id', $project->external_id)
                 ->update(['enabled' => false]);
-            $project->update(['mobile_app_id' => null]);
+            $project->update([
+                'mobile_app_id' => null,
+                'auto_sync_enabled' => false,
+                'auto_sync_status' => 'idle',
+                'auto_sync_pending_at' => null,
+            ]);
         });
 
         return response()->noContent();

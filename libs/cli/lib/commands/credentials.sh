@@ -22,7 +22,8 @@ Options:
   --credential-id ID  Credential ID (required for get, update, delete, download, upload)
   --type TYPE         Credential type slug (create)
   --profile PROFILE   Build profile (create)
-  --data JSON         Credential data as JSON (create, update)
+  --data-file FILE    Credential data as JSON from FILE or stdin (-) (create, update)
+  --data JSON         Credential data as inline JSON (deprecated; may leak via process arguments)
   --file FILE         Credential file to upload (create, upload)
 
 Run "appmctl credentials <action> --help" for action-specific help.
@@ -134,6 +135,7 @@ _credentials_create() {
   local cred_type=""
   local profile=""
   local data=""
+  local data_file=""
   local file_path=""
   local body_file
 
@@ -147,6 +149,8 @@ _credentials_create() {
       --profile=*) profile=${1#*=}; shift ;;
       --data) require_value "$1" "$2"; data="$2"; shift 2 ;;
       --data=*) data=${1#*=}; shift ;;
+      --data-file) require_value "$1" "$2"; data_file="$2"; shift 2 ;;
+      --data-file=*) data_file=${1#*=}; shift ;;
       --file) require_value "$1" "$2"; file_path="$2"; shift 2 ;;
       --file=*) file_path=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
@@ -154,7 +158,7 @@ _credentials_create() {
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data JSON] [--file FILE]\n'
+        printf 'Usage: appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data-file FILE|-] [--file FILE]\n'
         return 0
         ;;
       *) die "unknown credentials create option: $1" ;;
@@ -165,13 +169,29 @@ _credentials_create() {
   require_app
   [ -n "$cred_type" ] || die "--type is required"
   [ -n "$profile" ] || die "--profile is required"
+  [ -z "$data" ] || [ -z "$data_file" ] || die "use only one of --data or --data-file"
 
-  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  ensure_tmpdir
+  body_file=$(new_temp_file credential-body) || die "could not create temp file"
+  chmod 600 "$body_file" 2>/dev/null || true
   local jq_args=(-n --arg t "$cred_type" --arg p "$profile")
   local jq_expr='{credential_type: {slug: $t}, build_profile: $p'
-  if [ -n "$data" ]; then
-    jq_args+=(--argjson d "$data")
-    jq_expr="$jq_expr, data: \$d"
+  if [ -n "$data" ] || [ -n "$data_file" ]; then
+    local secret_file
+    if [ -n "$data_file" ] && [ "$data_file" != "-" ]; then
+      [ -f "$data_file" ] || die "credential data file does not exist: $data_file"
+      secret_file="$data_file"
+    else
+      secret_file=$(new_temp_file credential-data) || die "could not create credential data file"
+      chmod 600 "$secret_file" 2>/dev/null || true
+      if [ "$data_file" = "-" ]; then
+        cat >"$secret_file"
+      else
+        printf '%s' "$data" >"$secret_file"
+      fi
+    fi
+    jq_args+=(--slurpfile d "$secret_file")
+    jq_expr="$jq_expr, data: \$d[0]"
   fi
   jq_expr="$jq_expr}"
   "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
@@ -185,7 +205,7 @@ _credentials_create() {
     printf 'dry-run: no request sent\n'
     printf 'method: POST\n'
     printf 'url: %s\n' "$url"
-    printf 'body: %s\n' "$(cat "$body_file")"
+    printf 'body: credential JSON (%s bytes; redacted)\n' "$(wc -c <"$body_file" | tr -d '[:space:]')"
     rm -f -- "$body_file"
     return 0
   fi
@@ -200,6 +220,7 @@ _credentials_update() {
   local app="${APP:-}"
   local cred_id=""
   local data=""
+  local data_file=""
   local body_file
   local has_fields=0
 
@@ -209,12 +230,14 @@ _credentials_update() {
       --app=*) app=${1#*=}; shift ;;
       --data) require_value "$1" "$2"; data="$2"; has_fields=1; shift 2 ;;
       --data=*) data=${1#*=}; has_fields=1; shift ;;
+      --data-file) require_value "$1" "$2"; data_file="$2"; has_fields=1; shift 2 ;;
+      --data-file=*) data_file=${1#*=}; has_fields=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl credentials update [--app APP] <credential-id> --data JSON\n'
+        printf 'Usage: appmctl credentials update [--app APP] <credential-id> --data-file FILE|-\n'
         return 0
         ;;
       -*) die "unknown credentials update option: $1" ;;
@@ -228,11 +251,25 @@ _credentials_update() {
   require_app
   [ -n "$cred_id" ] || die "credential ID is required"
   [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+  [ -z "$data" ] || [ -z "$data_file" ] || die "use only one of --data or --data-file"
 
-  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  if [ -n "$data" ]; then
-    "$JQ_BIN" -n --argjson d "$data" '{data: $d}' >"$body_file"
+  ensure_tmpdir
+  body_file=$(new_temp_file credential-body) || die "could not create temp file"
+  chmod 600 "$body_file" 2>/dev/null || true
+  local secret_file
+  if [ -n "$data_file" ] && [ "$data_file" != "-" ]; then
+    [ -f "$data_file" ] || die "credential data file does not exist: $data_file"
+    secret_file="$data_file"
+  else
+    secret_file=$(new_temp_file credential-data) || die "could not create credential data file"
+    chmod 600 "$secret_file" 2>/dev/null || true
+    if [ "$data_file" = "-" ]; then
+      cat >"$secret_file"
+    else
+      printf '%s' "$data" >"$secret_file"
+    fi
   fi
+  "$JQ_BIN" -n --slurpfile d "$secret_file" '{data: $d[0]}' >"$body_file"
 
   local path="apps/$APP/credentials/$cred_id"
 
@@ -243,7 +280,7 @@ _credentials_update() {
     printf 'dry-run: no request sent\n'
     printf 'method: PATCH\n'
     printf 'url: %s\n' "$url"
-    printf 'body: %s\n' "$(cat "$body_file")"
+    printf 'body: credential JSON (%s bytes; redacted)\n' "$(wc -c <"$body_file" | tr -d '[:space:]')"
     rm -f -- "$body_file"
     return 0
   fi

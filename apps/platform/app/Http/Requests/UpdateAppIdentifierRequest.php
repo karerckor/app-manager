@@ -1,0 +1,59 @@
+<?php
+
+namespace App\Http\Requests;
+
+use App\Enums\Platform;
+use App\Http\Requests\Concerns\ValidatesAppIdentifier;
+use App\Models\AppIdentifier;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+
+class UpdateAppIdentifierRequest extends FormRequest
+{
+    use ValidatesAppIdentifier;
+
+    public function authorize(): bool
+    {
+        return $this->user()->teams()
+            ->whereKey($this->route('team')->id)
+            ->exists();
+    }
+
+    public function rules(): array
+    {
+        return $this->identifierRules(
+            $this->route('mobileApp'),
+            $this->route('appIdentifier'),
+        );
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->normalizeWebIdentifier();
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $appIdentifier = $this->route('appIdentifier');
+            $platform = $this->input('platform', $appIdentifier->platform->value);
+
+            if ($platform === Platform::Web->value
+                && $appIdentifier->platform !== Platform::Web
+                && ($appIdentifier->credentials()->exists() || $appIdentifier->profiles()->exists())) {
+                $validator->errors()->add(
+                    'platform',
+                    'Detach all credentials before changing this identifier to Web.',
+                );
+            }
+        });
+    }
+
+    private function normalizeWebIdentifier(): void
+    {
+        if ($this->input('platform') === 'web' && is_string($this->input('identifier'))) {
+            $this->merge(['identifier' => strtolower(trim($this->input('identifier')))]);
+        }
+    }
+}

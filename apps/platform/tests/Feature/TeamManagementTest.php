@@ -76,6 +76,31 @@ class TeamManagementTest extends TestCase
         Notification::assertSentOnDemand(TeamInvitationNotification::class);
     }
 
+    public function test_invitation_route_tokens_are_hashed_at_rest(): void
+    {
+        [$owner, $team] = $this->team();
+        $invitee = User::factory()->create(['email' => 'invitee@example.com']);
+        $plainTextToken = 'known-high-entropy-invitation-token';
+        $invitation = TeamInvitation::create([
+            'team_id' => $team->id,
+            'invited_by' => $owner->id,
+            'email' => $invitee->email,
+            'role' => 'viewer',
+            'token' => $plainTextToken,
+            'expires_at' => now()->addWeek(),
+        ]);
+        $storedHash = hash('sha256', $plainTextToken);
+
+        $this->assertSame($storedHash, $invitation->token);
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id, 'token' => $storedHash]);
+
+        $this->actingAs($invitee)
+            ->get(route('team-invitations.show', ['invitation' => $plainTextToken]))
+            ->assertOk();
+        $this->get(route('team-invitations.show', ['invitation' => $storedHash]))
+            ->assertNotFound();
+    }
+
     public function test_viewer_cannot_manage_team(): void
     {
         [, $team] = $this->team();
@@ -149,13 +174,14 @@ class TeamManagementTest extends TestCase
             'role' => 'viewer',
             'expires_at' => now()->addWeek(),
         ]);
+        $plainTextToken = $invitation->plainTextToken;
 
         $this->actingAs($other)
-            ->post(route('team-invitations.accept', $invitation))
+            ->post(route('team-invitations.accept', ['invitation' => $plainTextToken]))
             ->assertForbidden();
 
         $this->actingAs($invitee)
-            ->post(route('team-invitations.accept', $invitation))
+            ->post(route('team-invitations.accept', ['invitation' => $plainTextToken]))
             ->assertRedirect(route('accounts.apps.index', $team));
 
         $this->assertDatabaseHas('team_user', ['team_id' => $team->id, 'user_id' => $invitee->id, 'role' => 'viewer']);

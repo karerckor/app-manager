@@ -13,6 +13,7 @@ APP="${APP_MANAGER_APP:-}"
 CURL_BIN="${APP_MANAGER_CURL_BIN:-curl}"
 JQ_BIN="${APP_MANAGER_JQ_BIN:-jq}"
 POLLING_INTERVAL="${APP_MANAGER_POLLING_INTERVAL:-10}"
+ALLOW_INSECURE_HTTP="${APP_MANAGER_ALLOW_INSECURE_HTTP:-0}"
 
 validate_slug() {
   local label="$1"
@@ -51,6 +52,12 @@ normalize_api_root() {
   case "$value" in
     http://?*|https://?*) ;;
     *) die "APP_MANAGER_INSTANCE_URL must include a host" ;;
+  esac
+  case "$value" in
+    http://localhost|http://localhost:*|http://127.0.0.1|http://127.0.0.1:*|http://\[::1\]|http://\[::1\]:*) ;;
+    http://*)
+      [ "$ALLOW_INSECURE_HTTP" = "1" ] || die "APP_MANAGER_INSTANCE_URL must use HTTPS for non-loopback hosts (set APP_MANAGER_ALLOW_INSECURE_HTTP=1 to override)"
+      ;;
   esac
 
   printf '%s/api/v1' "$value"

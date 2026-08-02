@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Enums\ApiKeyScope;
 use App\Enums\TeamRole;
 use App\Enums\WebhookEventType;
+use App\Models\Audit;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -104,6 +105,17 @@ class AppFileApiTest extends TestCase
             'event_type' => WebhookEventType::AppFileCreated->value,
             'aggregate_id' => $media->getKey(),
         ]);
+
+        $audit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_created')
+            ->sole();
+
+        $this->assertSame($user->id, $audit->user_id);
+        $this->assertSame('api', $audit->source);
+        $this->assertNotNull($audit->api_key_id);
+        $this->assertSame(['channel' => 'beta'], $audit->new_values['file_metadata']);
     }
 
     public function test_store_rejects_a_duplicate_name_and_invalid_metadata(): void
@@ -161,11 +173,27 @@ class AppFileApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.metadata.channel', 'stable');
 
+        $updatedAudit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_metadata_updated')
+            ->sole();
+
+        $this->assertSame($user->id, $updatedAudit->user_id);
+        $this->assertSame('api', $updatedAudit->source);
+        $this->assertSame(['channel' => 'beta'], $updatedAudit->old_values['file_metadata']);
+        $this->assertSame(['channel' => 'stable'], $updatedAudit->new_values['file_metadata']);
+
         $this->patchJson($this->url($team, $app).'/notes.pdf', ['metadata' => null])
             ->assertOk()
             ->assertJsonPath('data.metadata', null);
 
         $this->assertNull($media->fresh()->getCustomProperty('metadata'));
+        $this->assertSame(2, Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_metadata_updated')
+            ->count());
     }
 
     public function test_destroy_deletes_the_file_and_records_an_event(): void
@@ -182,6 +210,17 @@ class AppFileApiTest extends TestCase
             'event_type' => WebhookEventType::AppFileDeleted->value,
             'aggregate_id' => $media->getKey(),
         ]);
+
+        $audit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_deleted')
+            ->sole();
+
+        $this->assertSame($user->id, $audit->user_id);
+        $this->assertSame('api', $audit->source);
+        $this->assertSame('notes.pdf', $audit->old_values['file_name']);
+        $this->assertSame([], $audit->new_values);
     }
 
     public function test_files_are_tenant_isolated(): void

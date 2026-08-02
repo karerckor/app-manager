@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\IntegrationStatus;
 use App\Integrations\Expo\ExpoClient;
 use App\Integrations\Expo\ExpoGraphqlException;
+use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppContext;
@@ -28,7 +29,7 @@ class ExpoAppController extends Controller
             404,
         );
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
-        abort_unless(ExpoAppContext::available($team), 404);
+        abort_unless(ExpoAppContext::available($team, $mobileApp), 404);
 
         $project = $mobileApp->expoProject()
             ->whereHas('integration', fn ($query) => $query->connectedExpo())
@@ -81,6 +82,9 @@ class ExpoAppController extends Controller
                 'unlink_url' => $project
                     ? route('accounts.apps.expo.unlink', [$team, $mobileApp])
                     : null,
+                'import_builds_url' => $project
+                    ? route('accounts.apps.expo.builds.import', [$team, $mobileApp])
+                    : null,
                 'accounts' => $integrations->map(fn ($integration) => [
                     'id' => $integration->id,
                     'name' => $integration->external_account_name,
@@ -122,6 +126,15 @@ class ExpoAppController extends Controller
         );
         $builds = array_values((array) ($remote['builds'] ?? []));
         $submissions = array_values((array) ($remote['submissions'] ?? []));
+        $importedBuildIds = BuildRecord::query()
+            ->where('team_id', $team->id)
+            ->where('mobile_app_id', $app->id)
+            ->whereIn('expo_build_id', array_map(
+                fn ($build) => (string) ($build['id'] ?? ''),
+                array_slice($builds, 0, self::ACTIVITY_PAGE_SIZE),
+            ))
+            ->pluck('expo_build_id')
+            ->all();
         $buildHasNext = count($builds) > self::ACTIVITY_PAGE_SIZE;
         $submissionHasNext = count($submissions) > self::ACTIVITY_PAGE_SIZE;
         $activityUrl = fn (string $tab, int $nextBuildPage, int $nextSubmissionPage) => route(
@@ -171,6 +184,7 @@ class ExpoAppController extends Controller
             ],
             'builds' => collect(array_slice($builds, 0, self::ACTIVITY_PAGE_SIZE))->map(fn ($build) => [
                 ...$build,
+                'already_imported' => in_array((string) $build['id'], $importedBuildIds, true),
                 'cancel_url' => $buildAction((string) $build['id'], 'cancel'),
                 'retry_url' => $buildAction((string) $build['id'], 'retry'),
                 'submit_url' => route('accounts.apps.expo.submissions.store', [$team, $app]),

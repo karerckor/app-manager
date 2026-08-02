@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CredentialType;
 use App\Models\Concerns\HasTags;
+use App\Support\Encryption\Casts\EncryptedArrayWithDEK;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -52,7 +53,7 @@ class Credential extends Model implements Auditable, HasMedia
     {
         return [
             'type' => CredentialType::class,
-            'payload' => 'encrypted:array',
+            'payload' => EncryptedArrayWithDEK::class,
             'expires_at' => 'datetime',
         ];
     }

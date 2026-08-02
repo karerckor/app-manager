@@ -171,12 +171,12 @@
                                 <div class="min-w-0 flex-1">
                                     <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                                         {#if entry.target?.href}
-                                            <Link href={entry.target.href} class="inline-flex min-w-0 items-center gap-1 font-semibold text-text hover:text-brand">
+                                            <Link href={entry.target.href} class="inline-flex min-w-0 items-center gap-1 text-[13px] font-semibold text-text hover:text-brand">
                                                 <span class="truncate">{entry.target.label}</span>
                                                 <ArrowUpRight class="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
                                             </Link>
                                         {:else}
-                                            <p class="truncate font-semibold text-text">{entry.target?.label ?? `${entry.auditable_type} #${entry.auditable_id}`}</p>
+                                            <p class="truncate text-[13px] font-semibold text-text">{entry.target?.label ?? `${entry.auditable_type} #${entry.auditable_id}`}</p>
                                         {/if}
                                         <span class="inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset {eventBadgeClass(entry.event)}">{entry.action_label ?? eventLabel(entry.event)}</span>
                                     </div>

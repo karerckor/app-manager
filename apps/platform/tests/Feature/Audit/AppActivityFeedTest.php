@@ -68,6 +68,27 @@ class AppActivityFeedTest extends TestCase
         $this->assertNull($build['source']);
     }
 
+    public function test_file_audits_have_human_readable_activity_titles(): void
+    {
+        [$team, $app] = $this->appWithoutAutomaticAudit();
+
+        Audit::create([
+            'event' => 'file_deleted',
+            'auditable_type' => MobileApp::class,
+            'auditable_id' => $app->id,
+            'old_values' => ['file_name' => 'release.json'],
+            'new_values' => [],
+            'team_id' => $team->id,
+            'source' => 'web',
+        ]);
+
+        $event = collect(AppActivityFeed::for($team, $app))
+            ->firstWhere('type', 'mobileapp_file_deleted');
+
+        $this->assertNotNull($event);
+        $this->assertSame('File release.json deleted', $event['title']);
+    }
+
     public function test_merges_and_orders_build_and_audit_events_by_time_desc(): void
     {
         $user = User::factory()->create(['name' => 'Ada']);
@@ -102,5 +123,20 @@ class AppActivityFeedTest extends TestCase
         $this->assertNotFalse($auditIndex, 'Expected an audit-derived entry in the feed.');
         $this->assertNotFalse($buildIndex, 'Expected a build_created entry in the feed.');
         $this->assertLessThan($buildIndex, $auditIndex, 'Newer audit entry should be ordered before the older build entry.');
+    }
+
+    /** @return array{Team, MobileApp} */
+    private function appWithoutAutomaticAudit(): array
+    {
+        $team = Team::factory()->create();
+        MobileApp::disableAuditing();
+
+        try {
+            $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        } finally {
+            MobileApp::enableAuditing();
+        }
+
+        return [$team, $app];
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Models\Audit;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
@@ -160,6 +161,12 @@ class CredentialVaultTest extends TestCase
             now()->subMinute()->timestamp,
             session('auth.password_confirmed_at'),
         );
+        $this->assertSame(2, Audit::query()->where('event', 'credential_revealed')->count());
+        $this->assertTrue(Audit::query()
+            ->where('event', 'credential_revealed')
+            ->where('user_id', $owner->id)
+            ->where('source', 'web')
+            ->exists());
     }
 
     public function test_vault_filters_credentials_by_search_type_status_and_application(): void

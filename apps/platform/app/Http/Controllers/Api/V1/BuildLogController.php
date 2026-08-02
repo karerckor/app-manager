@@ -23,6 +23,8 @@ class BuildLogController extends Controller
                 'build_id' => $buildRecord->id,
                 'content' => $output,
                 'updated_at' => $buildRecord->logs_updated_at,
+                'archived_at' => $buildRecord->logs_archived_at,
+                'archive_url' => $this->archiveUrl($team, $mobileApp, $buildRecord),
             ]]);
         }
 
@@ -37,6 +39,8 @@ class BuildLogController extends Controller
             'build_id' => $buildRecord->id,
             'content' => $slice,
             'updated_at' => $buildRecord->logs_updated_at,
+            'archived_at' => $buildRecord->logs_archived_at,
+            'archive_url' => $this->archiveUrl($team, $mobileApp, $buildRecord),
             'meta' => [
                 'offset' => $offset,
                 'next_offset' => $nextOffset < $total ? $nextOffset : null,
@@ -75,5 +79,12 @@ class BuildLogController extends Controller
             && $build->mobile_app_id === $mobileApp->id,
             404,
         );
+    }
+
+    private function archiveUrl(Team $team, MobileApp $mobileApp, BuildRecord $build): ?string
+    {
+        return $build->log_archive_path
+            ? route('api.v1.apps.builds.logs.archive', [$team, $mobileApp, $build])
+            : null;
     }
 }

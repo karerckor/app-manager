@@ -157,6 +157,12 @@
                         <ExternalLink class="h-3.5 w-3.5" strokeWidth={2} />
                     </a>
                 {/if}
+                {#if build.expo_build_url}
+                    <a href={build.expo_build_url} target="_blank" rel="noreferrer" class="secondary inline-flex items-center gap-2 px-3 py-2 text-xs">
+                        Open build in EAS
+                        <ExternalLink class="h-3.5 w-3.5" strokeWidth={2} />
+                    </a>
+                {/if}
                 {#if build.can_cancel}<button class="ghost px-3 py-2 text-xs text-danger" on:click={cancelBuild}>Cancel build</button>{/if}
                 {#if build.can_force_status}<button class="ghost px-3 py-2 text-xs text-warn-fill" on:click={openForceStatus}>Force status</button>{/if}
             </div>
@@ -173,7 +179,7 @@
             </div>
             <div class="flex items-center gap-3 border-r border-border px-5 py-3.5">
                 <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-raised text-muted shadow-sm ring-1 ring-border"><Terminal class="h-4 w-4" strokeWidth={1.9} /></span>
-                <div><p class="text-[9px] font-bold tracking-[0.1em] text-faint uppercase">Log output</p><p class="mt-0.5 text-xs font-semibold text-text">{logLines.length} {logLines.length === 1 ? 'line' : 'lines'}</p></div>
+                <div><p class="text-[9px] font-bold tracking-[0.1em] text-faint uppercase">Log output</p><p class="mt-0.5 text-xs font-semibold text-text">{build.log_archive_url ? `${formatSize(build.log_archive_size)} archive` : `${logLines.length} ${logLines.length === 1 ? 'line' : 'lines'}`}</p></div>
             </div>
             <div class="flex items-center gap-3 px-5 py-3.5">
                 <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-raised text-muted shadow-sm ring-1 ring-border"><Package class="h-4 w-4" strokeWidth={1.9} /></span>
@@ -190,7 +196,7 @@
                     <span class="h-4 w-px bg-white/10"></span>
                     <div>
                         <h2 class="text-[11px] font-bold tracking-wide text-slate-200">Build logs</h2>
-                        <p class="text-[9px] text-slate-500">{build.logs_pending ? 'Waiting for the latest output…' : 'Latest output'}</p>
+                        <p class="text-[9px] text-slate-500">{build.logs_pending ? 'Waiting for the latest output…' : build.log_archive_url ? `Archived ${formatDateTime(build.logs_archived_at)}` : 'Latest output'}</p>
                     </div>
                 </div>
 
@@ -229,9 +235,15 @@
             {:else}
                 <div class="grid min-h-[32rem] place-items-center px-6 text-center">
                     <div class="max-w-xs">
-                        <span class="mx-auto grid h-11 w-11 place-items-center rounded-md bg-white/5 text-slate-500 ring-1 ring-white/10"><Terminal class="h-5 w-5" strokeWidth={1.7} /></span>
-                        <p class="mt-4 text-sm font-semibold text-slate-200">{build.logs_pending ? 'Logs are syncing' : 'No log output'}</p>
-                        <p class="mt-1.5 text-[11px] leading-5 text-slate-500">{build.logs_pending ? 'This view refreshes automatically when new output arrives.' : 'This build did not report any log output.'}</p>
+                        <span class="mx-auto grid h-11 w-11 place-items-center rounded-md bg-white/5 text-slate-500 ring-1 ring-white/10">{#if build.log_archive_url}<FileArchive class="h-5 w-5" strokeWidth={1.7} />{:else}<Terminal class="h-5 w-5" strokeWidth={1.7} />{/if}</span>
+                        <p class="mt-4 text-sm font-semibold text-slate-200">{build.logs_pending ? 'Logs are syncing' : build.log_archive_url ? 'Logs moved to archive' : 'No log output'}</p>
+                        <p class="mt-1.5 text-[11px] leading-5 text-slate-500">{build.logs_pending ? 'This view refreshes automatically when new output arrives.' : build.log_archive_url ? 'This log is older than the retention window. Download the original text file when you need it.' : 'This build did not report any log output.'}</p>
+                        {#if build.log_archive_url}
+                            <a class="mt-4 inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" href={build.log_archive_url}>
+                                <Download class="h-3.5 w-3.5" strokeWidth={2} />
+                                Download log archive
+                            </a>
+                        {/if}
                     </div>
                 </div>
             {/if}

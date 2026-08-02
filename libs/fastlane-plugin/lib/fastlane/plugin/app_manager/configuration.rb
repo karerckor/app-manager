@@ -84,6 +84,12 @@ module Fastlane
           raise Error, "App Manager base_url must be an absolute HTTP(S) URL"
         end
 
+        loopback = ["localhost", "127.0.0.1", "::1"].include?(uri.host)
+        insecure_http_allowed = ENV["APP_MANAGER_ALLOW_INSECURE_HTTP"] == "1"
+        if uri.scheme == "http" && !loopback && !insecure_http_allowed
+          raise Error, "App Manager base_url must use HTTPS for non-loopback hosts (set APP_MANAGER_ALLOW_INSECURE_HTTP=1 to override)"
+        end
+
         normalized
       rescue URI::InvalidURIError
         raise Error, "App Manager base_url must be an absolute HTTP(S) URL"

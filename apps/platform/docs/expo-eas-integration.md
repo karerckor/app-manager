@@ -51,7 +51,20 @@ After connecting an account, App Manager synchronizes the account's project inve
 
 Unlinked Expo projects can also be imported from the integration page. App Manager generates a collision-free local slug during import.
 
-Metadata sync is opt-in per project link and runs only during an explicit Expo sync. Expo's display name and description update the local application; the local slug is not changed. App Manager does not silently push local edits to Expo.
+Pulling metadata is opt-in per project link and runs only during an explicit **Pull from Expo** action. Expo's display name and description update the local application; the local slug is not changed.
+
+### Automatic App Manager → Expo sync
+
+Automatic sync is disabled by default and can be enabled independently for each linked application. Enabling it queues an initial push of the application's current state. Later local changes queue another push on the `integrations` queue for:
+
+- the application display name;
+- the application icon;
+- Android package names and iOS bundle identifiers;
+- supported EAS credential files and their attachment metadata.
+
+The direction is always **App Manager → Expo**. Remote Expo changes are never pulled in the background; **Pull from Expo** is the only full Expo → App Manager operation. Explicit identifier sync remains a user-initiated button action.
+
+Pushes use a per-project snapshot, so an unchanged retry does not create duplicate requests. The UI and API expose `queued`, `syncing`, `synced`, and `failed` states together with the latest error and successful push time. Turning the switch off stops future local changes from being queued and does not modify either side.
 
 The application identifiers page compares local bundle IDs/package names with the app credential
 identifiers currently returned by Expo. Each row is marked as `DB + Expo`, `DB only`, or
@@ -118,7 +131,7 @@ App Manager distinguishes the setup layers instead of treating every linked proj
 
 Dispatch uses Expo's `POST /v2/workflows/dispatch` endpoint. App Manager creates its normal
 `BuildRecord` and `CiCdRun`, then polls `GET /v2/workflows/runs/{id}` and maps the EAS run to the
-same lifecycle, cancellation, audit, billing, webhook, and build-history behavior used by GitHub
+same lifecycle, cancellation, audit, webhook, and build-history behavior used by GitHub
 and GitLab. The synchronized log is a safe workflow/job summary because the public Workflows API
 does not expose the full VM log stream.
 

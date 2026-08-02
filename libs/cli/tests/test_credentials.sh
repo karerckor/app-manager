@@ -42,6 +42,21 @@ output=$("$CLI" --json credentials create --type android_keystore --profile prod
 assert_contains "$output" 'cred-001' 'credentials create returns data'
 pass 'credentials create'
 
+# --- credential secrets from file stay out of plans and curl argv ---
+credential_data="$TEST_DIR/credential-data.json"
+printf '{"store_password":"never-print-me","key_alias":"release","key_password":"never-print-me"}' >"$credential_data"
+dry=$("$CLI" --dry-run credentials create --type android_keystore --profile production --data-file "$credential_data" 2>&1)
+case "$dry" in
+  *never-print-me*) fail 'credentials dry-run exposed credential secrets' ;;
+esac
+assert_contains "$dry" 'redacted' 'credentials dry-run describes a redacted body'
+: >"$MOCK_ARG_LOG"
+"$CLI" --json credentials create --type android_keystore --profile production --data-file "$credential_data" >/dev/null
+case "$(cat "$MOCK_ARG_LOG")" in
+  *never-print-me*) fail 'credential secret was exposed in curl process arguments' ;;
+esac
+pass 'credential data file keeps secrets out of dry-run and curl argv'
+
 # --- credentials delete ---
 output=$("$CLI" credentials delete cred-001 2>&1)
 assert_contains "$output" 'deleted' 'credentials delete prints confirmation'
@@ -57,4 +72,4 @@ dry=$("$CLI" --dry-run credentials list 2>&1)
 assert_contains "$dry" 'dry-run' 'credentials list dry-run'
 pass 'credentials dry-run'
 
-printf '1..6\n'
+printf '1..7\n'

@@ -6,6 +6,7 @@ use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\MobileApp;
+use App\Support\Audit\AppFileAuditRecorder;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
@@ -15,7 +16,10 @@ class AppFileLibrary
 {
     public const COLLECTION = 'files';
 
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly AppFileAuditRecorder $audits,
+    ) {}
 
     public function query(MobileApp $app): MorphMany
     {
@@ -61,7 +65,8 @@ class AppFileLibrary
             ]);
         }
 
-        $this->record($app, WebhookEventType::AppFileCreated, $media);
+        $this->audits->created($app, $media);
+        $this->recordWebhook($app, WebhookEventType::AppFileCreated, $media);
 
         return $media;
     }
@@ -69,6 +74,10 @@ class AppFileLibrary
     /** @param array<string, mixed>|null $metadata */
     public function updateMetadata(Media $media, ?array $metadata): Media
     {
+        $media->loadMissing('model');
+        $app = $media->model;
+        $oldMetadata = $media->getCustomProperty('metadata');
+
         if ($metadata === null) {
             $media->forgetCustomProperty('metadata');
         } else {
@@ -76,6 +85,10 @@ class AppFileLibrary
         }
 
         $media->save();
+
+        if ($app instanceof MobileApp) {
+            $this->audits->metadataUpdated($app, $media, $oldMetadata, $metadata);
+        }
 
         return $media;
     }
@@ -87,11 +100,12 @@ class AppFileLibrary
         $media->delete();
 
         if ($app instanceof MobileApp) {
-            $this->record($app, WebhookEventType::AppFileDeleted, $media);
+            $this->audits->deleted($app, $media);
+            $this->recordWebhook($app, WebhookEventType::AppFileDeleted, $media);
         }
     }
 
-    private function record(MobileApp $app, WebhookEventType $event, Media $media): void
+    private function recordWebhook(MobileApp $app, WebhookEventType $event, Media $media): void
     {
         $this->webhookEvents->record(
             $app->loadMissing('team')->team,

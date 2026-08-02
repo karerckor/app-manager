@@ -10,8 +10,8 @@ use App\Models\Credential;
 use App\Models\ExpoCredentialLink;
 use App\Models\ExpoProject;
 use App\Models\MobileApp;
+use App\Support\Credentials\CredentialFileStorage;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use JsonException;
 use RuntimeException;
 
@@ -878,7 +878,7 @@ class ExpoCredentialExporter
             throw new RuntimeException('Upload the credential file before pushing it to Expo.');
         }
 
-        return Storage::disk($media->disk)->get($media->getPathRelativeToRoot());
+        return CredentialFileStorage::contents($media);
     }
 
     /** @param array<string, mixed> $resource */

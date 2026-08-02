@@ -3,12 +3,14 @@
 namespace Tests\Feature;
 
 use App\Enums\WebhookEventType;
+use App\Models\Audit;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\MediaLibrary\Conversions\ConversionCollection;
@@ -209,6 +211,20 @@ class AppMediaLibraryTest extends TestCase
             'owner' => 'mobile',
         ], $media->fresh()->getCustomProperty('metadata'));
 
+        $audit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_metadata_updated')
+            ->sole();
+
+        $this->assertSame($user->id, $audit->user_id);
+        $this->assertSame('web', $audit->source);
+        $this->assertSame(['version' => 1], $audit->old_values['file_metadata']);
+        $this->assertSame([
+            'version' => 2,
+            'owner' => 'mobile',
+        ], $audit->new_values['file_metadata']);
+
         $this->actingAs($user)
             ->get(route('accounts.apps.media.files.download', [
                 'team' => $team,
@@ -372,6 +388,8 @@ class AppMediaLibraryTest extends TestCase
 
     public function test_web_upload_and_delete_record_app_file_webhook_events(): void
     {
+        $this->assertContains(Schema::getColumnType('webhook_events', 'aggregate_id'), ['varchar', 'character varying', 'string']);
+
         Storage::fake(config('media-library.disk_name'));
         [$user, $team] = $this->userWithTeam();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
@@ -390,6 +408,19 @@ class AppMediaLibraryTest extends TestCase
             'aggregate_id' => $media->getKey(),
         ]);
 
+        $createdAudit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_created')
+            ->sole();
+
+        $this->assertSame($user->id, $createdAudit->user_id);
+        $this->assertSame('web', $createdAudit->source);
+        $this->assertSame([], $createdAudit->old_values);
+        $this->assertSame($media->uuid, $createdAudit->new_values['file_id']);
+        $this->assertSame('notes.pdf', $createdAudit->new_values['file_name']);
+        $this->assertNull($createdAudit->new_values['file_metadata']);
+
         $this->actingAs($user)
             ->delete(route('accounts.apps.media.files.destroy', [$team, $app, $media]))
             ->assertRedirect();
@@ -399,6 +430,18 @@ class AppMediaLibraryTest extends TestCase
             'event_type' => WebhookEventType::AppFileDeleted->value,
             'aggregate_id' => $media->getKey(),
         ]);
+
+        $deletedAudit = Audit::query()
+            ->where('auditable_type', MobileApp::class)
+            ->where('auditable_id', $app->id)
+            ->where('event', 'file_deleted')
+            ->sole();
+
+        $this->assertSame($user->id, $deletedAudit->user_id);
+        $this->assertSame('web', $deletedAudit->source);
+        $this->assertSame($media->uuid, $deletedAudit->old_values['file_id']);
+        $this->assertSame('notes.pdf', $deletedAudit->old_values['file_name']);
+        $this->assertSame([], $deletedAudit->new_values);
     }
 
     public function test_media_library_is_forbidden_for_a_non_member(): void

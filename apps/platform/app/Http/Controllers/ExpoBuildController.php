@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Builds\ImportEasBuilds;
 use App\Enums\IntegrationStatus;
 use App\Enums\TeamPermission;
 use App\Integrations\Expo\ExpoClient;
@@ -55,6 +56,50 @@ class ExpoBuildController extends Controller
         }
 
         return back()->with('status', 'Expo build retry started.');
+    }
+
+    public function importBuilds(
+        Request $request,
+        Team $team,
+        MobileApp $mobileApp,
+        ImportEasBuilds $import,
+    ): RedirectResponse {
+        $this->ensureEnabled();
+        $this->authorize($request, $team, TeamPermission::ManageApplications);
+
+        $data = $request->validate([
+            'build_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'build_ids.*' => ['required', 'string'],
+        ]);
+
+        $imported = $import->handle(
+            $team,
+            $mobileApp,
+            $request->user(),
+            $data['build_ids'],
+        );
+
+        $count = count($imported);
+
+        return back()->with(
+            'status',
+            $count === 1
+                ? '1 EAS build imported successfully.'
+                : "{$count} EAS builds imported successfully.",
+        );
+    }
+
+    private function ensureEnabled(): void
+    {
+        abort_unless(
+            config('integrations.enabled') && config('integrations.expo.enabled'),
+            404,
+        );
+    }
+
+    private function authorize(Request $request, Team $team, TeamPermission $permission): void
+    {
+        abort_unless($team->allows($request->user(), $permission), 403);
     }
 
     /** @return array{0: ExpoProject, 1: array<string, mixed>} */

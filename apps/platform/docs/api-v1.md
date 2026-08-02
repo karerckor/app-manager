@@ -34,7 +34,9 @@ Scopes чтения и записи независимы: например, CI r
 | `apps:read` / `apps:write` | Просмотр / управление приложениями |
 | `identifiers:read` / `identifiers:write` | Просмотр / управление platform identifiers |
 | `assets:read` / `assets:write` | Скачивание / загрузка и удаление icon и splashscreen |
-| `credentials:read` / `credentials:write` | Чтение secrets и файлов / создание, ротация и удаление credentials |
+| `credentials:read` | Чтение только metadata credentials |
+| `credentials:reveal` | Раскрытие payload и скачивание файлов; требует права команды `manage_credentials` |
+| `credentials:write` | Создание, ротация и удаление credentials |
 | `builds:read` / `builds:write` | История и детали / создание и изменение сборок |
 | `logs:read` / `logs:write` | Чтение / добавление build logs |
 | `integrations:read` / `integrations:write` | Просмотр / подключение, sync и custom provider operations |
@@ -133,13 +135,14 @@ Signing credentials привязываются к build profile, который 
 | `GET` | `/apps/{app_slug}/credentials` | Список credentials приложения |
 | `POST` | `/apps/{app_slug}/credentials` | Создать credential и прикрепить к identifier |
 | `GET` | `/apps/{app_slug}/credentials/{id}` | Получить credential |
+| `POST` | `/apps/{app_slug}/credentials/{id}/reveal` | Получить secret payload (`credentials:reveal`) |
 | `PATCH` | `/apps/{app_slug}/credentials/{id}` | Изменить name, expires_at или payload |
 | `DELETE` | `/apps/{app_slug}/credentials/{id}` | Удалить credential |
 | `GET` | `/apps/{app_slug}/credentials/{id}/file` | Скачать файл |
 | `POST` | `/apps/{app_slug}/credentials/{id}/file` | Заменить файл |
 | `DELETE` | `/apps/{app_slug}/credentials/{id}/file` | Удалить файл |
 
-При создании обязательны `app_identifier_id`, `type`, `name`, подходящий `payload` и multipart-файл `file`. Для `ios_certificate`, `provisioning_profile` и `android_keystore` также обязателен совместимый `profile_type`; эти credentials привязываются к автоматически созданному Profile. Сервисные credentials привязываются непосредственно к identifier и не принимают `profile_type`. `expires_at` опционален. Поля payload шифруются в базе данных. Тип и привязка credential после создания неизменяемы; для их смены credential нужно пересоздать.
+При создании обязательны `app_identifier_id`, `type`, `name`, подходящий `payload` и multipart-файл `file`. Для `ios_certificate`, `provisioning_profile` и `android_keystore` также обязателен совместимый `profile_type`; эти credentials привязываются к автоматически созданному Profile. Сервисные credentials привязываются непосредственно к identifier и не принимают `profile_type`. `expires_at` опционален. Обычные list/show/create/update ответы содержат только metadata и никогда не возвращают `payload`; секреты доступны только через `POST .../reveal` с `Cache-Control: no-store`. Поля payload шифруются в базе данных, а credential-файлы шифруются приложением до записи на storage. Тип и привязка credential после создания неизменяемы; для их смены credential нужно пересоздать.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/credentials \
@@ -193,7 +196,8 @@ curl -X POST http://localhost:8000/api/v1/acme/integrations/expo \
 | --- | --- | --- | --- |
 | `GET` | `/apps/{app_slug}/expo` | `apps:read`, `integrations:read` | Получить link и live Expo metadata, builds и submissions |
 | `POST` | `/apps/{app_slug}/expo` | `apps:write`, `credentials:write`, `integrations:write` | Создать Expo project или связать найденный project |
-| `POST` | `/apps/{app_slug}/expo/sync` | `apps:write`, `credentials:write`, `integrations:write` | Синхронизировать metadata, identifiers и EAS credentials |
+| `POST` | `/apps/{app_slug}/expo/sync` | `apps:write`, `credentials:write`, `integrations:write` | Явно подтянуть metadata, identifiers и EAS credentials из Expo |
+| `PATCH` | `/apps/{app_slug}/expo/automatic-sync` | `apps:write`, `credentials:write`, `integrations:write` | Включить или выключить автоматический push App Manager → Expo для приложения (`{"enabled":true}`) |
 | `DELETE` | `/apps/{app_slug}/expo` | `apps:write`, `integrations:write` | Удалить локальную связь без удаления remote project |
 | `GET` | `/apps/{app_slug}/expo/identifiers` | `identifiers:read`, `integrations:read` | Сравнить identifiers в App Manager и Expo |
 | `POST` | `/apps/{app_slug}/expo/identifiers/sync` | `identifiers:write`, `integrations:write` | Импортировать Expo-only и создать на Expo локальные identifiers |
@@ -305,19 +309,21 @@ Consumer должен проверять timestamp и подпись до JSON p
 
 ## Builds и logs
 
-Builds поддерживают два режима отчётности:
+Builds поддерживают три режима отчётности:
 
 - `automatic` — App Manager запускает GitHub Actions, GitLab CI/CD или Expo EAS Workflow pipeline, проверяет состояние у провайдера и загружает журнал либо безопасную сводку EAS jobs;
-- `manual` — собственный runner управляет lifecycle и дописывает plain-text журнал через API.
+- `manual` — собственный runner управляет lifecycle и дописывает plain-text журнал через API;
+- `eas` — build запущен напрямую на expo.dev (например, `eas build` из CLI); App Manager регистрирует его по `expo_build_id` и сам опрашивает EAS до терминального статуса, забирая реальные таймстемпы, журнал и артефакты.
 
 Pipeline сохраняет режим в каждом новом build, поэтому изменение настройки не меняет уже запущенные задачи. Для automatic build ручная запись статуса или лога возвращает `409`.
 
 | Method | Endpoint | Scope | Назначение |
 | --- | --- | --- | --- |
 | `GET` | `/apps/{app_slug}/builds` | `builds:read` | Последние builds с пагинацией |
-| `POST` | `/apps/{app_slug}/builds` | `builds:write` | Создать manual build в `pending` |
+| `POST` | `/apps/{app_slug}/builds` | `builds:write` | Создать manual или EAS build в `pending` |
 | `GET` | `/apps/{app_slug}/builds/{id}` | `builds:read` | Прочитать состояние build |
-| `PATCH` | `/apps/{app_slug}/builds/{id}` | `builds:write` | Установить `running`, `completed`, `failed` или `cancelled` |
+| `PATCH` | `/apps/{app_slug}/builds/{id}` | `builds:write` | Установить `running`, `completed`, `failed` или `cancelled` (только manual) |
+| `POST` | `/apps/{app_slug}/builds/{id}/sync-eas` | `builds:write` | Немедленно синхронизировать EAS build с expo.dev |
 | `GET` | `/apps/{app_slug}/builds/{id}/logs` | `logs:read` | Прочитать полный журнал |
 | `POST` | `/apps/{app_slug}/builds/{id}/logs` | `logs:write` | Дописать plain-text chunk |
 
@@ -338,7 +344,7 @@ BUILD_RESPONSE=$(curl -sS -X POST \
   }')
 ```
 
-`parameters` — произвольный JSON object размером до 64 KiB. App Manager сохраняет его с build, возвращает в build API и добавляет во все webhook payloads этого build. `context` остаётся техническим snapshot runner-а и не заменяет параметры запуска.
+`parameters` — произвольный JSON object размером до 64 KiB. App Manager сохраняет его в зашифрованном поле build и возвращает только в авторизованном build API; webhook payloads его не содержат. `context` остаётся техническим snapshot runner-а и не заменяет параметры запуска.
 
 Runner использует `data.id` из ответа для последующих запросов:
 
@@ -363,5 +369,24 @@ curl -X PATCH http://localhost:8000/api/v1/acme/apps/customer-app/builds/BUILD_I
 ```
 
 Один log chunk ограничен 256 KiB, полный журнал — 5 MB. Переводы статуса идемпотентны; попытка изменить уже завершённый build на другой terminal status возвращает `409`. Запрос отмены из UI переводит manual build в `cancel_requested`, после чего runner подтверждает `cancelled` либо сообщает фактический `completed`/`failed`. Если runner больше не отвечает, пользователь с правом запуска сборок может выбрать **Force status** в истории и принудительно завершить manual build как `completed`, `failed` или `cancelled`.
+
+### Отслеживание внешнего EAS build
+
+Если build запущен напрямую на expo.dev, зарегистрируйте его с `reporting_mode: "eas"` — приложение должно быть связано с Expo-проектом, а `expo_build_id` обязан присутствовать в последних 50 builds проекта:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/acme/apps/customer-app/builds \
+  -H 'Authorization: Bearer YOUR_API_KEY' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "request_uuid":"7f3a2c1e-9b4d-4e6a-8c5f-1d2e3f4a5b6c",
+    "profile_type":"production",
+    "reporting_mode":"eas",
+    "expo_build_id":"4b425690-00c4-4d74-9fdd-bc44a122e8c3"
+  }'
+```
+
+После создания App Manager сам опрашивает EAS каждые ~10 секунд до терминального статуса: `started_at`/`finished_at` берутся из реальных таймстемпов EAS, журнал загружается из log-файлов EAS, артефакты скачиваются и становятся доступны через artifacts API. Клиенту достаточно poll-ить `GET /builds/{id}` либо подписаться на webhooks `build.started`/`build.completed`. `POST /builds/{id}/sync-eas` форсирует немедленную синхронизацию нетерминального build; ручной `PATCH` статуса для EAS builds возвращает `409`.
 
 Для manual CI/CD pipeline App Manager создаёт build до dispatch и передаёт его UUID через выбранный string input провайдера (`workflow_dispatch` в GitHub Actions или `spec:inputs` в GitLab CI/CD). Runner должен экспортировать это значение как `APP_MANAGER_BUILD_ID` или явно передать в actions fastlane-плагина. Полный пример находится в [`libs/fastlane-plugin/README.md`](../../../libs/fastlane-plugin/README.md).

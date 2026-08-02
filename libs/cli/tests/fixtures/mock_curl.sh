@@ -16,6 +16,9 @@ while [ "$#" -gt 0 ]; do
     --write-out|--header) shift 2 ;;
     --form|--form-string)
       body="$body multipart:$2"
+      case "$2" in
+        *=\<*) body="$body multipart-value:$(cat "${2#*=<}")" ;;
+      esac
       shift 2
       ;;
     --data-binary)

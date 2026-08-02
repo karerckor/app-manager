@@ -4,6 +4,7 @@ namespace Tests\Feature\Tags;
 
 use App\Models\MobileApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class HasTagsTraitTest extends TestCase
@@ -43,5 +44,21 @@ class HasTagsTraitTest extends TestCase
         $app = MobileApp::factory()->create();
         $this->assertSame([], $app->tagList());
         $this->assertFalse($app->hasTag('anything'));
+    }
+
+    public function test_legacy_string_tags_can_be_read_removed_and_persisted(): void
+    {
+        $app = MobileApp::factory()->create();
+        DB::table('mobile_apps')->where('id', $app->id)->update([
+            'tags' => json_encode(['demo', 'ios'], JSON_THROW_ON_ERROR),
+        ]);
+
+        $app = $app->fresh();
+
+        $this->assertSame([['demo', null], ['ios', null]], $app->tags);
+
+        $app->removeTag('demo')->save();
+
+        $this->assertSame([['ios', null]], $app->fresh()->tags);
     }
 }

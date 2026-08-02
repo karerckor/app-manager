@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\PipelineBuildController;
 use App\Http\Controllers\Api\V1\TeamApiKeyController;
 use App\Http\Controllers\Api\V1\WebhookDeliveryController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
+use App\Http\Controllers\BuildLogArchiveController;
 use App\Http\Middleware\SetActorContext;
 use Illuminate\Support\Facades\Route;
 
@@ -109,6 +110,14 @@ Route::prefix('v1/{team:slug}')
                 'team.permission:manage_integrations',
             ])
             ->name('apps.expo.sync');
+        Route::patch('/apps/{mobileApp:slug}/expo/automatic-sync', [ExpoProjectController::class, 'updateAutomaticSync'])
+            ->middleware([
+                'abilities:apps:write,credentials:write,integrations:write',
+                'team.permission:manage_applications',
+                'team.permission:manage_credentials',
+                'team.permission:manage_integrations',
+            ])
+            ->name('apps.expo.automatic-sync.update');
         Route::delete('/apps/{mobileApp:slug}/expo', [ExpoProjectController::class, 'destroy'])
             ->middleware([
                 'abilities:apps:write,integrations:write',
@@ -139,7 +148,6 @@ Route::prefix('v1/{team:slug}')
             ])
             ->name('apps.expo.identifiers.provision');
         Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/credentials/{credential}', [ExpoCredentialController::class, 'store'])
-            ->withoutScopedBindings()
             ->middleware([
                 'abilities:credentials:write,integrations:write',
                 'team.permission:manage_credentials',
@@ -195,9 +203,10 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.index');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.store');
         Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.show');
+        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/reveal', [CredentialController::class, 'reveal'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials', 'throttle:30,1'])->name('apps.credentials.reveal');
         Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.update');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.destroy');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.file.show');
+        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials'])->name('apps.credentials.file.show');
         Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.store');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.destroy');
 
@@ -211,7 +220,9 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'show'])->middleware(['abilities:builds:read', 'team.permission:view'])->name('apps.builds.show');
         Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}', [BuildController::class, 'update'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.update');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [BuildController::class, 'cancel'])->middleware(['abilities:pipelines:run', 'team.permission:run_pipelines'])->name('apps.builds.cancel');
+        Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/sync-eas', [BuildController::class, 'syncEasStatus'])->middleware(['abilities:builds:write', 'team.permission:manage_applications'])->name('apps.builds.sync-eas');
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'show'])->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.show');
+        Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs/archive', BuildLogArchiveController::class)->middleware(['abilities:logs:read', 'team.permission:view'])->name('apps.builds.logs.archive');
         Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/logs', [BuildLogController::class, 'store'])->middleware(['abilities:logs:write', 'team.permission:manage_applications'])->name('apps.builds.logs.store');
 
         Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts', [ArtifactController::class, 'index'])->middleware(['abilities:artifacts:read', 'team.permission:view'])->name('apps.builds.artifacts.index');

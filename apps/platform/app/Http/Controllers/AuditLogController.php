@@ -7,7 +7,9 @@ use App\Models\AppIdentifier;
 use App\Models\Audit;
 use App\Models\BuildRecord;
 use App\Models\Credential;
+use App\Models\Integration;
 use App\Models\MobileApp;
+use App\Models\NotificationDestination;
 use App\Models\Team;
 use App\Models\WebhookEndpoint;
 use App\Support\Audit\AuditEntryPresenter;
@@ -87,6 +89,12 @@ class AuditLogController extends Controller
                             'profiles:id,app_identifier_id',
                             'profiles.appIdentifier:id,mobile_app_id,name,identifier,platform',
                             'profiles.appIdentifier.mobileApp:id,team_id,name,slug',
+                        ],
+                        Integration::class => [
+                            'notificationDestination:id,integration_id',
+                        ],
+                        NotificationDestination::class => [
+                            'integration:id,team_id,name,provider,kind',
                         ],
                         WebhookEndpoint::class => [
                             'integration:id,team_id,name,provider,kind',

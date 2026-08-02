@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Enums\CredentialType;
+use App\Enums\IntegrationProvider;
+use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Models\AppIdentifier;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Credentials\CredentialSchema;
@@ -29,8 +32,8 @@ class DashboardController extends Controller
         $unavailablePlatforms = $this->platformList($request->input('unavailable_platforms', []));
         $credentials = $this->credentialTypeList($request->input('credentials', []));
         $missingCredentials = $this->credentialTypeList($request->input('missing_credentials', []));
-        $expo = $request->string('expo')->toString();
-        $expo = in_array($expo, ['linked', 'unlinked'], true) ? $expo : '';
+        $expoFilters = $this->stringList($request->input('expo', []));
+        $autoSync = $request->boolean('auto_sync');
         $appsQuery = $team->mobileApps();
         $driver = $appsQuery->getConnection()->getDriverName();
 
@@ -48,8 +51,41 @@ class DashboardController extends Controller
                     $query->whereDoesntHave('appIdentifiers', fn (Builder $identifiers) => $identifiers->where('platform', $platform));
                 }
             })
-            ->when($expo === 'linked', fn (Builder $query) => $query->whereHas('expoProject'))
-            ->when($expo === 'unlinked', fn (Builder $query) => $query->whereDoesntHave('expoProject'))
+            ->when($expoFilters !== [], function (Builder $query) use ($expoFilters) {
+                $hasAnyConnection = in_array('any_connection', $expoFilters, true);
+                $hasNotConnected = in_array('not_connected', $expoFilters, true);
+                $hasDetached = in_array('detached', $expoFilters, true);
+                $accountIds = array_values(array_diff($expoFilters, ['any_connection', 'not_connected', 'detached']));
+
+                if ($hasAnyConnection) {
+                    $query->whereHas('expoProject');
+                } else {
+                    $query->where(function (Builder $q) use ($hasNotConnected, $hasDetached, $accountIds) {
+                        if ($hasNotConnected) {
+                            $q->whereDoesntHave('expoProject');
+                        }
+                        if ($hasDetached) {
+                            $q->orWhere(function (Builder $detached) {
+                                $connectedExpIds = Integration::query()->connectedExpo()->pluck('id')->toArray();
+
+                                if (empty($connectedExpIds)) {
+                                    $detached->whereHas('expoProject');
+                                } else {
+                                    $detached->whereHas('expoProject', fn (Builder $ep) => $ep
+                                        ->where(function (Builder $epWhere) use ($connectedExpIds) {
+                                            $epWhere->whereNull('integration_id')
+                                                ->orWhereNotIn('integration_id', $connectedExpIds);
+                                        }));
+                                }
+                            });
+                        }
+                        if ($accountIds !== []) {
+                            $q->orWhereHas('expoProject', fn (Builder $ep) => $ep->whereIn('integration_id', $accountIds));
+                        }
+                    });
+                }
+            })
+            ->when($autoSync, fn (Builder $query) => $query->whereHas('expoProject', fn (Builder $ep) => $ep->where('auto_sync_enabled', true)))
             ->when($credentials !== [], function (Builder $query) use ($credentials) {
                 foreach ($credentials as $type) {
                     $query->whereHas('appIdentifiers', fn (Builder $identifiers) => $identifiers
@@ -117,7 +153,8 @@ class DashboardController extends Controller
                 'tags' => $tags,
                 'available_platforms' => $availablePlatforms,
                 'unavailable_platforms' => $unavailablePlatforms,
-                'expo' => $expo,
+                'expo' => $expoFilters,
+                'auto_sync' => $autoSync,
                 'credentials' => $credentials,
                 'missing_credentials' => $missingCredentials,
             ],
@@ -138,6 +175,12 @@ class DashboardController extends Controller
                         'value' => $type->value,
                         'label' => CredentialSchema::definition($type)['label'],
                     ])
+                    ->values(),
+                'expoAccounts' => Integration::where('provider', IntegrationProvider::Expo->value)
+                    ->whereIn('status', [IntegrationStatus::Active->value, IntegrationStatus::Degraded->value])
+                    ->whereHas('oauthCredential')
+                    ->get(['id', 'name'])
+                    ->map(fn (Integration $integration) => ['value' => $integration->id, 'label' => $integration->name])
                     ->values(),
             ],
             'stats' => [

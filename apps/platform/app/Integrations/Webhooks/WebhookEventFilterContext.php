@@ -83,7 +83,11 @@ class WebhookEventFilterContext
         }
 
         return array_values(array_filter(array_map(
-            fn (array $tag) => is_string($tag[0] ?? null) ? $tag[0] : null,
+            fn (mixed $tag) => match (true) {
+                is_string($tag) => $tag,
+                is_array($tag) && is_string($tag[0] ?? null) => $tag[0],
+                default => null,
+            },
             $model->tagList(),
         )));
     }

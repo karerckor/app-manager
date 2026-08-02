@@ -51,8 +51,8 @@ class TagRulesTest extends TestCase
         $this->assertSame([['ok', null]], TagRules::normalize([['ok', 123]]));
     }
 
-    public function test_normalize_ignores_non_array_and_extra_elements(): void
+    public function test_normalize_accepts_legacy_string_tags_and_ignores_extra_elements(): void
     {
-        $this->assertSame([['ok', '#fff']], TagRules::normalize(['plain', ['ok', '#fff', 'extra']]));
+        $this->assertSame([['plain', null], ['ok', '#fff']], TagRules::normalize(['plain', ['ok', '#fff', 'extra']]));
     }
 }

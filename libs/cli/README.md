@@ -36,9 +36,10 @@ The script is tested without Bash 4-only features so the macOS system Bash can r
 The CI-friendly installer downloads only the `appmctl` executable; it does not clone or partially clone the repository:
 
 ```bash
+APPMCTL_SHA256='PUBLISHED_SHA256_FOR_THIS_RELEASE'
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
-  bash
+  APPMCTL_SHA256="$APPMCTL_SHA256" bash
 
 export PATH="${HOME}/.local/bin:${PATH}"
 appmctl --version
@@ -64,6 +65,7 @@ APPMCTL_REF='FULL_GIT_COMMIT_SHA'
 curl -fsSL \
   "https://raw.githubusercontent.com/karerckor/app-manager/${APPMCTL_REF}/libs/cli/install.sh" |
   APPMCTL_REF="$APPMCTL_REF" \
+  APPMCTL_SHA256='PUBLISHED_SHA256_FOR_THIS_COMMIT' \
   APPMCTL_INSTALL_DIR="$PWD/.appmctl-bin" \
   bash
 
@@ -77,10 +79,11 @@ The installer supports these variables:
 | `APPMCTL_INSTALL_DIR` | `$HOME/.local/bin` | Destination directory |
 | `APPMCTL_REF` | `main` | Branch, tag, or preferably full commit SHA |
 | `APPMCTL_REPOSITORY` | `karerckor/app-manager` | GitHub `owner/repository` |
-| `APPMCTL_SHA256` | unset | Optional expected SHA-256 of `bin/appmctl` |
+| `APPMCTL_SHA256` | unset | Required expected SHA-256 of `bin/appmctl` |
+| `APPMCTL_ALLOW_UNVERIFIED` | `0` | Emergency development-only opt-out from checksum verification |
 | `APPMCTL_DOWNLOAD_URL` | raw GitHub URL | Override for a trusted mirror |
 
-Before replacing an existing installation, the installer requires the Bash shebang, runs `bash -n`, and verifies `APPMCTL_SHA256` when supplied.
+Before replacing an existing installation, the installer requires an expected SHA-256, checks the Bash shebang, runs `bash -n`, and verifies the downloaded executable. Unverified installation requires the explicit `APPMCTL_ALLOW_UNVERIFIED=1` development override.
 
 ### Existing checkout
 
@@ -222,8 +225,8 @@ appmctl apps delete <slug>
 ```bash
 appmctl credentials list [--app APP]
 appmctl credentials get [--app APP] <credential-id>
-appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data JSON] [--file FILE]
-appmctl credentials update [--app APP] <credential-id> --data JSON
+appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data-file FILE|-] [--file FILE]
+appmctl credentials update [--app APP] <credential-id> --data-file FILE|-
 appmctl credentials delete [--app APP] <credential-id>
 appmctl credentials download [--app APP] <credential-id> [-o FILE]
 appmctl credentials upload [--app APP] <credential-id> --file FILE

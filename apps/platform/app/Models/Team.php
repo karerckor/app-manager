@@ -13,12 +13,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
-use Laravel\Cashier\Billable;
 
 #[Fillable(['name', 'slug', 'owner_id', 'check_credential_uniqueness_by_default'])]
 class Team extends Model
 {
-    use Billable, HasFactory, HasUuids;
+    use HasFactory, HasUuids;
 
     public function owner(): BelongsTo
     {
@@ -55,11 +54,6 @@ class Team extends Model
         return $this->hasMany(BuildRecord::class);
     }
 
-    public function billingUsageEvents(): HasMany
-    {
-        return $this->hasMany(BillingUsageEvent::class);
-    }
-
     public function integrations(): HasMany
     {
         return $this->hasMany(Integration::class);
@@ -83,6 +77,11 @@ class Team extends Model
     public function webhookEndpoints(): HasMany
     {
         return $this->hasMany(WebhookEndpoint::class);
+    }
+
+    public function notificationDestinations(): HasMany
+    {
+        return $this->hasMany(NotificationDestination::class);
     }
 
     public function webhookEvents(): HasMany
@@ -150,19 +149,6 @@ class Team extends Model
         return 'slug';
     }
 
-    public function stripeEmail(): ?string
-    {
-        return $this->owner?->email;
-    }
-
-    public function stripeMetadata(): ?array
-    {
-        return [
-            'team_id' => (string) $this->id,
-            'team_slug' => (string) $this->slug,
-        ];
-    }
-
     protected static function booted(): void
     {
         static::creating(function (Team $team) {
@@ -186,7 +172,6 @@ class Team extends Model
     protected function casts(): array
     {
         return [
-            'trial_ends_at' => 'datetime',
             'check_credential_uniqueness_by_default' => 'boolean',
         ];
     }

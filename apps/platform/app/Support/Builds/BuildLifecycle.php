@@ -23,9 +23,10 @@ class BuildLifecycle
         BuildRecord $build,
         ?DateTimeInterface $startedAt = null,
         ?ActorContext $actor = null,
+        bool $suppressEvents = false,
     ): BuildRecord {
-        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $startedAt) {
-            return DB::transaction(function () use ($build, $startedAt, $actor) {
+        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $startedAt, $suppressEvents) {
+            return DB::transaction(function () use ($build, $startedAt, $actor, $suppressEvents) {
                 $current = $this->lock($build);
 
                 if ($current->status === BuildStatus::Running || $current->status !== BuildStatus::Pending) {
@@ -37,13 +38,15 @@ class BuildLifecycle
                     'started_at' => $current->started_at ?? $startedAt ?? now(),
                 ]);
 
-                $this->webhookEvents->record(
-                    $current->team,
-                    WebhookEventType::BuildStarted,
-                    $current,
-                    WebhookPayload::build($current),
-                    $actor,
-                );
+                if (! $suppressEvents) {
+                    $this->webhookEvents->record(
+                        $current->team,
+                        WebhookEventType::BuildStarted,
+                        $current,
+                        WebhookPayload::build($current),
+                        $actor,
+                    );
+                }
 
                 return $current->refresh();
             });
@@ -83,13 +86,14 @@ class BuildLifecycle
         BuildStatus $status,
         ?DateTimeInterface $finishedAt = null,
         ?ActorContext $actor = null,
+        bool $suppressEvents = false,
     ): BuildRecord {
         if (! $status->isTerminal()) {
             throw InvalidBuildTransition::from($build->status, $status);
         }
 
-        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $status, $finishedAt) {
-            return DB::transaction(function () use ($build, $status, $finishedAt, $actor) {
+        return $this->actors->runAs($build, function (ActorContext $actor) use ($build, $status, $finishedAt, $suppressEvents) {
+            return DB::transaction(function () use ($build, $status, $finishedAt, $actor, $suppressEvents) {
                 $current = $this->lock($build);
 
                 if ($current->status === $status) {
@@ -105,13 +109,15 @@ class BuildLifecycle
                     'finished_at' => $current->finished_at ?? $finishedAt ?? now(),
                 ]);
 
-                $this->webhookEvents->record(
-                    $current->team,
-                    WebhookEventType::BuildCompleted,
-                    $current,
-                    WebhookPayload::build($current),
-                    $actor,
-                );
+                if (! $suppressEvents) {
+                    $this->webhookEvents->record(
+                        $current->team,
+                        WebhookEventType::BuildCompleted,
+                        $current,
+                        WebhookPayload::build($current),
+                        $actor,
+                    );
+                }
 
                 return $current->refresh();
             });

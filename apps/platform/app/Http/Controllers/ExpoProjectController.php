@@ -7,6 +7,7 @@ use App\Actions\Integrations\SyncExpoProjects;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\TeamPermission;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Integrations\Expo\ExpoClient;
 use App\Integrations\Expo\ExpoCredentialExporter;
 use App\Integrations\Expo\ExpoGraphqlException;
@@ -34,7 +35,14 @@ class ExpoProjectController extends Controller
     ): RedirectResponse {
         $this->ensureEnabled();
         $this->authorize($request, $team, TeamPermission::ManageApplications);
-        abort_if($mobileApp->expoProject()->exists(), 409, 'This application is already linked to Expo.');
+        abort_if(
+            $mobileApp->expoProject()
+                ->whereHas('integration', fn ($query) => $query->connectedExpo())
+                ->exists(),
+            409,
+            'This application is already linked to an available Expo account.',
+        );
+        $replacingInactiveLink = $mobileApp->expoProject()->exists();
 
         $data = $request->validate([
             'integration_id' => [
@@ -82,6 +90,21 @@ class ExpoProjectController extends Controller
         }
 
         DB::transaction(function () use ($project, $mobileApp, $data): void {
+            $inactiveProject = $mobileApp->expoProject()->lockForUpdate()->first();
+
+            if ($inactiveProject && ! $inactiveProject->is($project)) {
+                $mobileApp->ciCdPipelines()
+                    ->where('integration_id', $inactiveProject->integration_id)
+                    ->where('repository_id', $inactiveProject->external_id)
+                    ->update(['enabled' => false]);
+                $inactiveProject->update([
+                    'mobile_app_id' => null,
+                    'auto_sync_enabled' => false,
+                    'auto_sync_status' => 'idle',
+                    'auto_sync_pending_at' => null,
+                ]);
+            }
+
             $project->update([
                 'mobile_app_id' => $mobileApp->id,
                 'sync_metadata' => (bool) ($data['sync_metadata'] ?? true),
@@ -110,13 +133,21 @@ class ExpoProjectController extends Controller
                 ->with(
                     'status',
                     "Application set up on Expo with {$export['identifiers']} identifiers and "
-                    ."{$export['credentials']} credentials.",
+                    ."{$export['credentials']} credentials."
+                    .($replacingInactiveLink
+                        ? ' The previous local Expo link was replaced; nothing was deleted on Expo.'
+                        : ''),
                 );
         }
 
         return redirect()
             ->route('accounts.apps.expo.index', [$team, $mobileApp])
-            ->with('status', 'Application set up on Expo.');
+            ->with(
+                'status',
+                $replacingInactiveLink
+                    ? 'Application set up on Expo. The previous local Expo link was replaced; nothing was deleted on Expo.'
+                    : 'Application set up on Expo.',
+            );
     }
 
     public function import(
@@ -230,6 +261,45 @@ class ExpoProjectController extends Controller
         return back()->with('status', 'Expo project synced.');
     }
 
+    public function updateAutomaticSync(
+        Request $request,
+        Team $team,
+        MobileApp $mobileApp,
+        ExpoAutoSyncDispatcher $autoSync,
+    ): RedirectResponse {
+        $this->ensureEnabled();
+        $this->authorize($request, $team, TeamPermission::ManageApplications);
+        $this->authorize($request, $team, TeamPermission::ManageCredentials);
+        $project = $mobileApp->expoProject()->with('integration')->firstOrFail();
+        abort_unless($project->team_id === $team->id, 404);
+        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+        $enabled = (bool) $data['enabled'];
+
+        if ($enabled && (! $project->exists_on_expo || ! $project->integration->status->canDispatch())) {
+            throw ValidationException::withMessages([
+                'enabled' => 'Reconnect the Expo account before enabling automatic sync.',
+            ]);
+        }
+
+        $project->update([
+            'auto_sync_enabled' => $enabled,
+            'auto_sync_status' => $enabled ? 'queued' : 'idle',
+            'auto_sync_error' => null,
+            'auto_sync_pending_at' => $enabled ? now() : null,
+        ]);
+
+        if ($enabled) {
+            $autoSync->dispatchForAppIds([$mobileApp->id]);
+        }
+
+        return back()->with(
+            'status',
+            $enabled
+                ? 'Automatic Expo sync enabled. The first push was queued.'
+                : 'Automatic Expo sync disabled.',
+        );
+    }
+
     public function unlink(
         Request $request,
         Team $team,
@@ -243,7 +313,12 @@ class ExpoProjectController extends Controller
                 ->where('integration_id', $project->integration_id)
                 ->where('repository_id', $project->external_id)
                 ->update(['enabled' => false]);
-            $project->update(['mobile_app_id' => null]);
+            $project->update([
+                'mobile_app_id' => null,
+                'auto_sync_enabled' => false,
+                'auto_sync_status' => 'idle',
+                'auto_sync_pending_at' => null,
+            ]);
         });
 
         return back()->with(

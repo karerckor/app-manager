@@ -39,4 +39,12 @@ return [
     'webhooks' => [
         'enabled' => env('OUTBOUND_WEBHOOKS_ENABLED', true),
     ],
+
+    'notifications' => [
+        'enabled' => env('NOTIFICATION_INTEGRATIONS_ENABLED', true),
+        'timeout_seconds' => (int) env('NOTIFICATION_REQUEST_TIMEOUT', 10),
+        'connect_timeout_seconds' => (int) env('NOTIFICATION_CONNECT_TIMEOUT', 3),
+        'telegram_api_url' => env('TELEGRAM_API_URL', 'https://api.telegram.org'),
+        'retry_delays' => [60, 300, 1800],
+    ],
 ];

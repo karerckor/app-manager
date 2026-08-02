@@ -12,6 +12,12 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (! app()->environment(['local', 'development', 'testing'])) {
+            $this->command?->warn('Demo data was not seeded outside a local, development, or testing environment.');
+
+            return;
+        }
+
         User::firstOrCreate(
             ['email' => 'test@example.com'],
             [

@@ -23,13 +23,13 @@ class ExpoCredentialController extends Controller
         Team $team,
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
-        Credential $credential,
+        string $credential,
         ExpoCredentialExporter $exporter,
     ): JsonResponse {
         $project = $this->project($team, $mobileApp, $appIdentifier);
+        $credential = $team->credentials()->findOrFail($credential);
         abort_unless(
-            $credential->team_id === $team->id
-            && $this->isAttached($credential, $appIdentifier),
+            $this->isAttached($credential, $appIdentifier),
             404,
         );
         $alreadyLinked = $project->credentialLinks()

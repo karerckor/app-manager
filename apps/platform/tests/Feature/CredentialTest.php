@@ -7,11 +7,18 @@ use App\Models\Credential;
 use App\Models\Team;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\UsesEncryptionKeys;
 use Tests\TestCase;
 
 class CredentialTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshDatabase, UsesEncryptionKeys;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->ensureEncryptionKey();
+    }
 
     public function test_belongs_to_team(): void
     {

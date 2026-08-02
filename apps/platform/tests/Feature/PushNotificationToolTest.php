@@ -36,13 +36,35 @@ class PushNotificationToolTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Tools/PushNotifications')
                 ->where('canSend', true)
-                ->has('firebaseCredentials', 1)
-                ->where('firebaseCredentials.0.id', $firebase->id)
-                ->where('firebaseCredentials.0.name', 'Atlas Firebase')
-                ->where('firebaseCredentials.0.ready', true)
-                ->where('firebaseCredentials.0.file_name', 'service-account.json')
-                ->missing('firebaseCredentials.0.private_key')
+                ->has('firebaseCredentials.data', 1)
+                ->where('firebaseCredentials.data.0.id', $firebase->id)
+                ->where('firebaseCredentials.data.0.name', 'Atlas Firebase')
+                ->where('firebaseCredentials.data.0.ready', true)
+                ->where('firebaseCredentials.data.0.file_name', 'service-account.json')
+                ->missing('firebaseCredentials.data.0.private_key')
+                ->where('firebaseCredentials.total', 1)
+                ->where('firebaseCredentials.current_page', 1)
+                ->where('firebaseCredentials.last_page', 1)
+                ->where('filters.search', '')
                 ->where('sendUrl', route('accounts.tools.push-notifications.send', $team)));
+    }
+
+    public function test_tool_searches_firebase_credentials_by_name(): void
+    {
+        Storage::fake(config('media-library.disk_name'));
+        [$owner, $team] = $this->team();
+        $this->firebaseCredential($team, 'Production Firebase');
+        $this->firebaseCredential($team, 'Staging Firebase');
+
+        $this->actingAs($owner)
+            ->get(route('accounts.tools.push-notifications.index', $team).'?search=Production')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Tools/PushNotifications')
+                ->has('firebaseCredentials.data', 1)
+                ->where('firebaseCredentials.data.0.name', 'Production Firebase')
+                ->where('firebaseCredentials.total', 1)
+                ->where('filters.search', 'Production'));
     }
 
     public function test_tool_sends_an_expo_notification_to_multiple_recipients(): void

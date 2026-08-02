@@ -21,6 +21,7 @@ use App\Models\Team;
 use App\Models\User;
 use App\Models\WebhookEvent;
 use App\Support\Apps\CredentialPresenter;
+use App\Support\Credentials\CredentialFileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Http\UploadedFile;
@@ -136,7 +137,7 @@ class ExpoIntegrationTest extends TestCase
         $this->assertDatabaseCount('integration_oauth_credentials', 0);
     }
 
-    public function test_disconnecting_expo_hides_preserved_projects_and_all_app_surfaces(): void
+    public function test_disconnecting_expo_preserves_and_surfaces_the_inactive_app_link(): void
     {
         [$owner, $team] = $this->member();
         [$integration] = $this->expoIntegration($team);
@@ -205,23 +206,122 @@ class ExpoIntegrationTest extends TestCase
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Apps/Overview')
-                ->where('app.urls.expo_page', null)
-                ->where('expo.enabled', false)
+                ->where(
+                    'app.urls.expo_page',
+                    route('accounts.apps.expo.index', [$team, $app]),
+                )
+                ->where('expo.enabled', true)
                 ->where('expo.linked', false)
                 ->where('expo.connected_accounts', 0)
-                ->where('expo.project', null));
+                ->where('expo.project', null)
+                ->where('expo.inactive_project.full_name', '@acme/atlas')
+                ->where('expo.inactive_project.account_name', 'acme')
+                ->where('expo.inactive_project.connection_status', 'disconnected'));
 
         $this->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Apps/Identifiers/Show')
-                ->where('app.urls.expo_page', null)
+                ->where(
+                    'app.urls.expo_page',
+                    route('accounts.apps.expo.index', [$team, $app]),
+                )
                 ->where('identifier.services.0.expo.available', false)
                 ->where('identifier.services.0.expo.pushed', false)
                 ->where('identifier.services.0.expo.push_url', null));
 
         $this->get(route('accounts.apps.expo.index', [$team, $app]))
-            ->assertNotFound();
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Apps/Expo/Index')
+                ->where('expo.linked', false)
+                ->where('expo.connected_accounts', 0)
+                ->where('expo.inactive_project.full_name', '@acme/atlas')
+                ->where('expo.inactive_project.connection_status', 'disconnected')
+                ->has('expo.accounts', 0));
+    }
+
+    public function test_inactive_expo_link_can_be_replaced_with_a_project_from_another_account(): void
+    {
+        [$owner, $team] = $this->member();
+        [$inactiveIntegration] = $this->expoIntegration($team);
+        $inactiveIntegration->update([
+            'status' => IntegrationStatus::Disconnected,
+            'disconnected_at' => now(),
+        ]);
+        $inactiveIntegration->oauthCredential()->delete();
+
+        $activeIntegration = Integration::create([
+            'team_id' => $team->id,
+            'kind' => IntegrationKind::AppService,
+            'provider' => IntegrationProvider::Expo,
+            'name' => 'Expo labs',
+            'status' => IntegrationStatus::Active,
+            'external_id' => 'account-2',
+            'external_account_id' => 'account-2',
+            'external_account_name' => 'labs',
+        ]);
+        IntegrationOAuthCredential::create([
+            'integration_id' => $activeIntegration->id,
+            'access_token' => 'expo-labs-token',
+            'token_type' => 'Bearer',
+        ]);
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $inactiveProject = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $inactiveIntegration->id,
+            'mobile_app_id' => $app->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'auto_sync_enabled' => true,
+            'auto_sync_status' => 'queued',
+            'auto_sync_pending_at' => now(),
+            'exists_on_expo' => true,
+        ]);
+        $replacementProject = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $activeIntegration->id,
+            'external_id' => 'project-2',
+            'account_id' => 'account-2',
+            'account_name' => 'labs',
+            'slug' => 'atlas-next',
+            'name' => 'Atlas Next',
+            'full_name' => '@labs/atlas-next',
+            'exists_on_expo' => true,
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.apps.expo.index', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('expo.linked', false)
+                ->where('expo.connected_accounts', 1)
+                ->where('expo.inactive_project.full_name', '@acme/atlas')
+                ->where('expo.inactive_project.connection_status', 'disconnected')
+                ->has('expo.accounts', 1)
+                ->where('expo.accounts.0.name', 'labs'));
+
+        $this->post(route('accounts.apps.expo.setup', [$team, $app]), [
+            'integration_id' => $activeIntegration->id,
+            'mode' => 'existing',
+            'expo_project_id' => $replacementProject->id,
+            'sync_metadata' => false,
+        ])
+            ->assertRedirect(route('accounts.apps.expo.index', [$team, $app]))
+            ->assertSessionHas(
+                'status',
+                'Application set up on Expo. The previous local Expo link was replaced; nothing was deleted on Expo.',
+            );
+
+        $this->assertNull($inactiveProject->refresh()->mobile_app_id);
+        $this->assertFalse($inactiveProject->auto_sync_enabled);
+        $this->assertSame('idle', $inactiveProject->auto_sync_status);
+        $this->assertNull($inactiveProject->auto_sync_pending_at);
+        $this->assertSame($app->id, $replacementProject->refresh()->mobile_app_id);
     }
 
     public function test_identifier_index_compares_database_and_expo_identifiers(): void
@@ -1849,6 +1949,10 @@ class ExpoIntegrationTest extends TestCase
         $this->assertNotNull($media);
         $this->assertSame($fileName, $media->file_name);
         $this->assertSame(
+            $contents,
+            CredentialFileStorage::contents($media),
+        );
+        $this->assertNotSame(
             $contents,
             Storage::disk($media->disk)->get($media->getPathRelativeToRoot()),
         );

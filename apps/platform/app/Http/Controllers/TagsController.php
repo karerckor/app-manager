@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
@@ -23,7 +22,6 @@ class TagsController extends Controller
 
     public function updateApp(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
         abort_unless($mobileApp->team_id === $team->id, 404);
 
         $this->sync($request, $team, $mobileApp);
@@ -33,9 +31,6 @@ class TagsController extends Controller
 
     public function updateCredential(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        abort_unless($team->allows($request->user(), TeamPermission::ManageCredentials), 403);
-        abort_unless($credential->team_id === $team->id, 404);
-
         $this->sync($request, $team, $credential);
 
         return back()->with('status', 'Tags updated.');
@@ -43,7 +38,6 @@ class TagsController extends Controller
 
     public function updateBuild(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
         abort_unless($mobileApp->team_id === $team->id, 404);
         abort_unless($buildRecord->mobile_app_id === $mobileApp->id && $buildRecord->team_id === $team->id, 404);
 
@@ -54,7 +48,6 @@ class TagsController extends Controller
 
     public function updateArtifact(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, Artifact $artifact): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
         abort_unless($mobileApp->team_id === $team->id, 404);
         abort_unless($buildRecord->mobile_app_id === $mobileApp->id && $buildRecord->team_id === $team->id, 404);
         abort_unless($artifact->build_record_id === $buildRecord->id && $artifact->team_id === $team->id, 404);
@@ -81,10 +74,5 @@ class TagsController extends Controller
                 $this->webhookEvents->record($team, $event, $model, $payload);
             }
         });
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 }

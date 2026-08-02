@@ -62,12 +62,14 @@ class TeamIntegrationAuthorizationTest extends TestCase
             'ci_cd' => route('accounts.integrations.index', $team),
             'expo' => route('accounts.integrations.eas.index', $team),
             'webhooks' => route('accounts.integrations.webhooks.index', $team),
+            'notifications' => route('accounts.integrations.notifications.index', $team),
         ];
 
         foreach ([
             'accounts.integrations.index' => 'ci_cd',
             'accounts.integrations.eas.index' => 'expo',
             'accounts.integrations.webhooks.index' => 'webhooks',
+            'accounts.integrations.notifications.index' => 'notifications',
         ] as $routeName => $activeTab) {
             $this->actingAs($owner)
                 ->get(route($routeName, $team))

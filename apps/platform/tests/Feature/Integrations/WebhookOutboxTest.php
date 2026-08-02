@@ -243,7 +243,10 @@ class WebhookOutboxTest extends TestCase
     {
         Queue::fake();
         [$owner, $team] = $this->member(TeamRole::Owner);
-        config(['integrations.webhooks.enabled' => false]);
+        config([
+            'integrations.webhooks.enabled' => false,
+            'integrations.notifications.enabled' => false,
+        ]);
 
         $this->actingAs($owner)
             ->post(route('accounts.integrations.webhooks.store', $team), [

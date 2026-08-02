@@ -21,7 +21,7 @@ class AppFileController extends Controller
 
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team, $mobileApp);
+        abort_unless($mobileApp->team_id === $team->id, 404);
 
         $data = $request->validate([
             'file' => ['required', 'file', 'max:'.config('media-library.max_file_size_kb')],
@@ -39,7 +39,7 @@ class AppFileController extends Controller
         MobileApp $mobileApp,
         Media $media,
     ): RedirectResponse {
-        $this->authorizeTeam($request, $team, $mobileApp);
+        abort_unless($mobileApp->team_id === $team->id, 404);
         $this->assertFileBelongsToApp($mobileApp, $media);
 
         $data = $request->validate([
@@ -57,7 +57,7 @@ class AppFileController extends Controller
         MobileApp $mobileApp,
         string $fileName,
     ): StreamedResponse {
-        $this->authorizeTeam($request, $team, $mobileApp);
+        abort_unless($mobileApp->team_id === $team->id, 404);
         $media = $this->files->findByName($mobileApp, $fileName);
         abort_unless($media instanceof Media, 404);
 
@@ -72,7 +72,7 @@ class AppFileController extends Controller
         MobileApp $mobileApp,
         Media $media,
     ): StreamedResponse {
-        $this->authorizeTeam($request, $team, $mobileApp);
+        abort_unless($mobileApp->team_id === $team->id, 404);
         $this->assertFileBelongsToApp($mobileApp, $media);
         abort_unless(AppFilePreview::type($media->mime_type), 404);
 
@@ -89,17 +89,11 @@ class AppFileController extends Controller
         MobileApp $mobileApp,
         Media $media,
     ): RedirectResponse {
-        $this->authorizeTeam($request, $team, $mobileApp);
+        abort_unless($mobileApp->team_id === $team->id, 404);
         $this->assertFileBelongsToApp($mobileApp, $media);
         $this->files->detach($media);
 
         return back()->with('status', 'File deleted.');
-    }
-
-    private function authorizeTeam(Request $request, Team $team, MobileApp $mobileApp): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
-        abort_unless($mobileApp->team_id === $team->id, 404);
     }
 
     private function assertFileBelongsToApp(MobileApp $mobileApp, Media $media): void

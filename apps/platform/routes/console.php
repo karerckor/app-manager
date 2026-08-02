@@ -3,14 +3,17 @@
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CiCdDispatchStatus;
+use App\Enums\NotificationDeliveryStatus;
 use App\Enums\WebhookDeliveryStatus;
-use App\Jobs\Billing\ReportBillingUsage;
+use App\Integrations\Webhooks\CredentialExpiryMonitor;
 use App\Jobs\Integrations\ReconcileCiCdRun;
 use App\Jobs\Integrations\SyncCiCdRunLogs;
+use App\Jobs\Notifications\DeliverNotification;
+use App\Jobs\Notifications\PublishNotificationEvent;
 use App\Jobs\Webhooks\DeliverWebhook;
 use App\Jobs\Webhooks\PublishWebhookEvent;
-use App\Models\BillingUsageEvent;
 use App\Models\CiCdRun;
+use App\Models\NotificationDelivery;
 use App\Models\WebhookDelivery;
 use App\Models\WebhookEvent;
 use Illuminate\Foundation\Inspiring;
@@ -39,7 +42,9 @@ Schedule::call(function () {
     CiCdRun::query()
         ->where('reporting_mode', BuildReportingMode::Automatic->value)
         ->whereNotNull('external_run_id')
-        ->whereHas('buildRecord', fn ($query) => $query->whereNull('logs_updated_at'))
+        ->whereHas('buildRecord', fn ($query) => $query
+            ->whereNull('logs_updated_at')
+            ->whereNull('logs_archived_at'))
         ->whereHas('buildRecord', fn ($query) => $query->whereIn('status', [
             BuildStatus::Completed->value,
             BuildStatus::Failed->value,
@@ -51,17 +56,10 @@ Schedule::call(function () {
 })->everyFiveMinutes()->name('sync-ci-cd-run-logs')->withoutOverlapping();
 
 Schedule::call(function () {
-    BillingUsageEvent::query()
-        ->whereNull('reported_at')
-        ->where(fn ($query) => $query
-            ->whereNull('next_attempt_at')
-            ->orWhere('next_attempt_at', '<=', now()))
-        ->limit(500)
-        ->pluck('id')
-        ->each(fn (string $id) => ReportBillingUsage::dispatch($id)
-            ->onQueue(config('billing.queue', 'billing')));
-})->everyMinute()->name('report-billing-usage')->withoutOverlapping()
-    ->when(fn () => (bool) config('billing.enabled'));
+    app(CredentialExpiryMonitor::class)->recordDue();
+})->hourly()->name('record-credential-expiry-events')->withoutOverlapping()
+    ->when(fn () => config('integrations.enabled')
+        && (config('integrations.webhooks.enabled') || config('integrations.notifications.enabled')));
 
 Schedule::call(function () {
     WebhookEvent::query()
@@ -88,4 +86,30 @@ Schedule::call(function () {
 })->everyMinute()->name('recover-webhook-deliveries')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.webhooks.enabled'));
 
+Schedule::call(function () {
+    WebhookEvent::query()
+        ->whereNull('notifications_published_at')
+        ->limit(500)
+        ->pluck('id')
+        ->each(fn (string $id) => PublishNotificationEvent::dispatch($id)->onQueue('notifications'));
+})->everyMinute()->name('publish-notification-outbox')->withoutOverlapping()
+    ->when(fn () => config('integrations.enabled') && config('integrations.notifications.enabled'));
+
+Schedule::call(function () {
+    NotificationDelivery::query()
+        ->where(fn ($query) => $query
+            ->where('status', NotificationDeliveryStatus::Pending->value)
+            ->orWhere(fn ($retry) => $retry
+                ->where('status', NotificationDeliveryStatus::RetryScheduled->value)
+                ->where('next_attempt_at', '<=', now()))
+            ->orWhere(fn ($stale) => $stale
+                ->where('status', NotificationDeliveryStatus::Delivering->value)
+                ->where('updated_at', '<=', now()->subMinutes(15))))
+        ->limit(500)
+        ->pluck('id')
+        ->each(fn (string $id) => DeliverNotification::dispatch($id)->onQueue('notifications'));
+})->everyMinute()->name('recover-notification-deliveries')->withoutOverlapping()
+    ->when(fn () => config('integrations.enabled') && config('integrations.notifications.enabled'));
+
 Schedule::command('audits:prune')->daily()->name('prune-audits')->withoutOverlapping();
+Schedule::command('build-logs:archive')->daily()->name('archive-build-logs')->withoutOverlapping();

@@ -17,7 +17,6 @@ class CredentialResource extends JsonResource
             'type' => $this->type->value,
             'name' => $this->name,
             'tags' => $this->tags ?? [],
-            'payload' => $this->payload,
             'expires_at' => $this->expires_at,
             'app_identifiers' => AppIdentifierResource::collection($this->whenLoaded('appIdentifiers')),
             'profiles' => $this->whenLoaded('profiles', fn () => $this->profiles->map(fn ($profile) => [

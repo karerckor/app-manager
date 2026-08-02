@@ -13,6 +13,8 @@ class TeamInvitation extends Model
 {
     use HasUuids;
 
+    public ?string $plainTextToken = null;
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
@@ -35,6 +37,26 @@ class TeamInvitation extends Model
         return 'token';
     }
 
+    public function getRouteKey(): mixed
+    {
+        return $this->plainTextToken ?? parent::getRouteKey();
+    }
+
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        $field ??= $this->getRouteKeyName();
+        $token = (string) $value;
+        $invitation = $this->newQuery()
+            ->where($field, hash('sha256', $token))
+            ->first();
+
+        if ($invitation) {
+            $invitation->plainTextToken = $token;
+        }
+
+        return $invitation;
+    }
+
     protected function casts(): array
     {
         return [
@@ -47,7 +69,8 @@ class TeamInvitation extends Model
     protected static function booted(): void
     {
         static::creating(function (TeamInvitation $invitation) {
-            $invitation->token ??= hash('sha256', Str::random(64));
+            $invitation->plainTextToken ??= $invitation->token ?: Str::random(64);
+            $invitation->token = hash('sha256', $invitation->plainTextToken);
         });
     }
 }

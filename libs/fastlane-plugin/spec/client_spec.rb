@@ -194,6 +194,9 @@ RSpec.describe Fastlane::AppManager::Client do
     it "returns credential metadata and protects downloaded credential files" do
       response = Struct.new(:body).new("certificate-bytes")
       allow(client).to receive(:get_json).and_return("data" => credentials)
+      allow(client).to receive(:json_request).and_return(
+        "data" => { "payload" => { "password" => "p12-secret" } }
+      )
       allow(client).to receive(:request).and_return(response)
 
       Dir.mktmpdir do |directory|

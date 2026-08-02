@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Audit;
 
+use App\Enums\IntegrationKind;
+use App\Enums\IntegrationProvider;
+use App\Enums\IntegrationStatus;
 use App\Enums\TeamRole;
 use App\Models\AppIdentifier;
 use App\Models\Audit;
 use App\Models\BuildRecord;
+use App\Models\Integration;
 use App\Models\MobileApp;
+use App\Models\NotificationDestination;
 use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -138,6 +143,127 @@ class AuditLogPageTest extends TestCase
                 ->where('audits.data.0.source_label', 'CI/CD')
                 ->where('audits.data.0.ip_address', '192.0.2.10')
                 ->where('audits.data.0.user_agent', 'App Manager Runner/1.0'));
+    }
+
+    public function test_notification_audits_link_to_the_specific_destination(): void
+    {
+        [$user, $team] = $this->owner();
+
+        Integration::disableAuditing();
+        NotificationDestination::disableAuditing();
+        try {
+            $integration = Integration::create([
+                'team_id' => $team->id,
+                'kind' => IntegrationKind::Notification,
+                'provider' => IntegrationProvider::Telegram,
+                'name' => 'News',
+                'status' => IntegrationStatus::Active,
+            ]);
+            $destination = NotificationDestination::create([
+                'team_id' => $team->id,
+                'integration_id' => $integration->id,
+                'destination' => '6133017300',
+                'credentials' => ['bot_token' => 'test-token'],
+                'subscribed_events' => ['build.completed'],
+                'templates' => [],
+            ]);
+            $integration->update(['external_id' => $destination->id]);
+        } finally {
+            Integration::enableAuditing();
+            NotificationDestination::enableAuditing();
+        }
+
+        Audit::create([
+            'user_type' => User::class,
+            'user_id' => $user->id,
+            'event' => 'updated',
+            'auditable_type' => Integration::class,
+            'auditable_id' => $integration->id,
+            'old_values' => ['name' => 'Release room'],
+            'new_values' => ['name' => 'News'],
+            'team_id' => $team->id,
+            'source' => 'web',
+        ]);
+        Audit::create([
+            'user_type' => User::class,
+            'user_id' => $user->id,
+            'event' => 'created',
+            'auditable_type' => NotificationDestination::class,
+            'auditable_id' => $destination->id,
+            'old_values' => [],
+            'new_values' => ['destination' => '6133017300'],
+            'team_id' => $team->id,
+            'source' => 'web',
+        ]);
+
+        $destinationUrl = route('accounts.integrations.notifications.index', [
+            'team' => $team,
+            'selected' => $destination->id,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('accounts.audit.index', $team))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('audits.data', 2)
+                ->where('audits.data.0.target.type', 'Notification destination')
+                ->where('audits.data.0.target.label', 'News')
+                ->where('audits.data.0.target.meta', 'Telegram · 6133017300')
+                ->where('audits.data.0.target.href', $destinationUrl)
+                ->where('audits.data.1.target.type', 'Integration')
+                ->where('audits.data.1.target.label', 'News')
+                ->where('audits.data.1.target.href', $destinationUrl));
+    }
+
+    public function test_file_audits_have_file_labels_metadata_changes_and_media_links(): void
+    {
+        [$user, $team] = $this->owner();
+
+        MobileApp::disableAuditing();
+        $app = MobileApp::factory()->create(['team_id' => $team->id, 'name' => 'Acme Wallet']);
+        MobileApp::enableAuditing();
+
+        Audit::create([
+            'user_type' => User::class,
+            'user_id' => $user->id,
+            'event' => 'file_metadata_updated',
+            'auditable_type' => MobileApp::class,
+            'auditable_id' => $app->id,
+            'old_values' => [
+                'file_id' => 'file-uuid',
+                'file_name' => 'release.json',
+                'file_metadata' => ['channel' => 'beta'],
+            ],
+            'new_values' => [
+                'file_id' => 'file-uuid',
+                'file_name' => 'release.json',
+                'file_metadata' => ['channel' => 'stable'],
+            ],
+            'team_id' => $team->id,
+            'source' => 'web',
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('accounts.audit.index', [
+                'team' => $team,
+                'apps' => [$app->id],
+                'events' => ['file_metadata_updated'],
+            ]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('audits.data', 1)
+                ->where('audits.data.0.action_label', 'File metadata updated')
+                ->where('audits.data.0.target.type', 'File')
+                ->where('audits.data.0.target.label', 'release.json')
+                ->where('audits.data.0.target.meta', 'Acme Wallet')
+                ->where('audits.data.0.target.href', route('accounts.apps.media.index', [$team, $app]))
+                ->where('audits.data.0.changes', [[
+                    'key' => 'file_metadata',
+                    'field' => 'Metadata',
+                    'mode' => 'changed',
+                    'from' => '{"channel":"beta"}',
+                    'to' => '{"channel":"stable"}',
+                ]]));
     }
 
     public function test_non_owner_member_is_forbidden(): void

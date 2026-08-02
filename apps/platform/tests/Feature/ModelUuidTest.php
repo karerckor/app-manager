@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\AppIdentifier;
-use App\Models\BillingUsageEvent;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Profile;
@@ -29,15 +28,8 @@ class ModelUuidTest extends TestCase
         $profile = Profile::factory()->create(['app_identifier_id' => $appIdentifier->id]);
         $credential = Credential::factory()->create(['team_id' => $team->id]);
         $profile->credentials()->attach($credential);
-        $billingUsageEvent = BillingUsageEvent::create([
-            'team_id' => $team->id,
-            'event_key' => 'build_run:test',
-            'meter_event_name' => 'app_manager_build_runs',
-            'quantity' => 1,
-            'occurred_at' => now(),
-        ]);
 
-        $models = [$user, $team, $mobileApp, $appIdentifier, $profile, $credential, $billingUsageEvent];
+        $models = [$user, $team, $mobileApp, $appIdentifier, $profile, $credential];
 
         foreach ($models as $model) {
             $this->assertTrue(Str::isUuid($model->getKey()));
@@ -52,7 +44,6 @@ class ModelUuidTest extends TestCase
             $appIdentifier->mobile_app_id,
             $profile->app_identifier_id,
             $credential->team_id,
-            $billingUsageEvent->team_id,
         ];
 
         foreach ($foreignKeys as $foreignKey) {

@@ -27,6 +27,9 @@ class TagRules
      * Normalize raw tuples: trim text, drop empty text, dedupe by text
      * (case-insensitive, first wins), lowercase hex, coerce to 2-element tuples.
      *
+     * Legacy string entries are accepted so records written before tags became
+     * colored tuples can still be read, edited, and saved in the canonical shape.
+     *
      * @param  array<int, mixed>|null  $tags
      * @return array<int, array{0: string, 1: string|null}>
      */
@@ -36,11 +39,11 @@ class TagRules
         $seen = [];
 
         foreach ($tags ?? [] as $tag) {
-            if (! is_array($tag)) {
+            if (! is_array($tag) && ! is_string($tag)) {
                 continue;
             }
 
-            $text = is_string($tag[0] ?? null) ? trim($tag[0]) : '';
+            $text = is_string($tag) ? trim($tag) : (is_string($tag[0] ?? null) ? trim($tag[0]) : '');
 
             if ($text === '') {
                 continue;
@@ -52,7 +55,7 @@ class TagRules
                 continue;
             }
 
-            $rawColor = $tag[1] ?? null;
+            $rawColor = is_array($tag) ? ($tag[1] ?? null) : null;
             $color = is_string($rawColor) && $rawColor !== '' ? strtolower($rawColor) : null;
 
             $seen[$key] = true;

@@ -17,7 +17,6 @@ class AppBuildPageController extends Controller
 {
     public function index(Request $request, Team $team, MobileApp $mobileApp): Response
     {
-        $this->authorizeTeam($request, $team);
         [$canRun, $canManage] = $this->permissions($request, $team);
         $filters = $request->validate([
             'tags' => ['nullable', 'array', 'max:20'],
@@ -95,7 +94,6 @@ class AppBuildPageController extends Controller
 
     public function show(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): Response
     {
-        $this->authorizeTeam($request, $team);
         [$canRun, $canManage] = $this->permissions($request, $team);
         $buildRecord->load(['ciCdRun.pipeline', 'artifacts.media']);
 
@@ -112,11 +110,6 @@ class AppBuildPageController extends Controller
             $team->allows($request->user(), TeamPermission::RunPipelines),
             $team->allows($request->user(), TeamPermission::ManageApplications),
         ];
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 
     private function applyDurationFilter($query, string $operator, int $minutes): void

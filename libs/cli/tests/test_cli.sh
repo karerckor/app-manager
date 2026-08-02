@@ -54,6 +54,11 @@ case "$dry_output" in
 esac
 pass 'dry-run is safe and does not require curl'
 
+if APP_MANAGER_INSTANCE_URL='http://manager.example' "$CLI" --dry-run request GET apps >/dev/null 2>&1; then
+  fail 'CLI accepted plaintext HTTP for a non-loopback host'
+fi
+pass 'non-loopback HTTP requires an explicit opt-in'
+
 response_file="$TEST_DIR/response.json"
 body_file="$TEST_DIR/request.json"
 printf '{"name":"From file"}' >"$body_file"
@@ -76,7 +81,8 @@ upload_file="$TEST_DIR/icon.png"
 printf 'fake image' >"$upload_file"
 "$CLI" request POST apps/customer-app/assets/icon --form 'label=icon=primary' --file "file=$upload_file" >/dev/null
 multipart_request=$(cat "$MOCK_LOG")
-assert_contains "$multipart_request" 'multipart:label=icon=primary' 'multipart preserves equals signs in values'
+assert_contains "$multipart_request" 'multipart:label=<' 'multipart sends text fields through protected files'
+assert_contains "$multipart_request" 'icon=primary' 'multipart preserves equals signs in values'
 assert_contains "$multipart_request" "multipart:file=@$upload_file" 'multipart sends a file field'
 pass 'request supports multipart fields and files'
 
@@ -105,4 +111,4 @@ log_call_count=$(grep -c $'^POST\thttps://manager.example/api/v1/mobile-team/app
 [ "$log_call_count" -eq 3 ] || fail "stream did not honor the chunk size (got $log_call_count log calls)"
 pass 'stream manages build status and honors chunk size'
 
-printf '1..7\n'
+printf '1..8\n'

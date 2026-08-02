@@ -1,5 +1,5 @@
 <script>
-    import { Link } from '@inertiajs/svelte';
+    import { Link, router } from '@inertiajs/svelte';
     import {
         BellRing,
         Braces,
@@ -23,9 +23,10 @@
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let canSend = false;
-    export let firebaseCredentials = [];
+    export let firebaseCredentials = { data: [], links: [], total: 0, current_page: 1, last_page: 1 };
     export let sendUrl;
     export let credentialsUrl;
+    export let filters = { search: '' };
 
     const defaultIosTemplate = JSON.stringify({
         message: {
@@ -84,7 +85,7 @@
     let badge = '';
     let sound = 'default';
     let channelId = 'default';
-    let credentialId = firebaseCredentials.find((credential) => credential.ready)?.id ?? '';
+    let credentialId = (firebaseCredentials.data ?? []).find((credential) => credential.ready)?.id ?? '';
     let fcmPlatform = 'ios';
     let iosTemplate = defaultIosTemplate;
     let androidTemplate = defaultAndroidTemplate;
@@ -92,8 +93,55 @@
     let error = '';
     let results = null;
     let copied = false;
+    let searchQuery = filters.search ?? '';
+    let searchTimer;
+    let isSearching = false;
+    let loadingMore = false;
+    let accumulatedCredentials = firebaseCredentials.data ?? [];
+    let loadedPage = firebaseCredentials.current_page ?? 1;
+    let lastPage = firebaseCredentials.last_page ?? 1;
+    let pendingReset = false;
 
-    $: readyCredentials = firebaseCredentials.filter((credential) => credential.ready);
+    $: if (firebaseCredentials) {
+        const fc = firebaseCredentials;
+        const page = fc.current_page ?? 1;
+        const data = fc.data ?? [];
+
+        if (pendingReset) {
+            accumulatedCredentials = [...data];
+            loadedPage = page;
+            lastPage = fc.last_page ?? 1;
+            isSearching = false;
+            loadingMore = false;
+            pendingReset = false;
+        } else if (page > loadedPage) {
+            if (page === 1) {
+                accumulatedCredentials = [...data];
+            } else {
+                const seen = new Set(accumulatedCredentials.map(c => c.id));
+                const fresh = data.filter(c => !seen.has(c.id));
+                if (fresh.length) {
+                    accumulatedCredentials = [...accumulatedCredentials, ...fresh];
+                }
+            }
+
+            loadedPage = page;
+            lastPage = fc.last_page ?? 1;
+            isSearching = false;
+            loadingMore = false;
+        }
+    }
+
+    $: readyCredentials = accumulatedCredentials.filter((credential) => credential.ready);
+    $: loading = isSearching || loadingMore;
+    $: credentialOptions = [
+        { value: '', label: 'Select a service account', disabled: true },
+        ...accumulatedCredentials.map((credential) => ({
+            value: credential.id,
+            label: `${credential.name}${credential.ready ? '' : ' · file missing'}`,
+            disabled: !credential.ready,
+        })),
+    ];
     $: activeTemplate = fcmPlatform === 'ios' ? iosTemplate : androidTemplate;
     $: canSubmit = canSend
         && recipients.length > 0
@@ -227,6 +275,37 @@
     };
 
     const resultDetails = (result) => JSON.stringify(result.details, null, 2);
+
+    const triggerSearch = (query) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            searchQuery = query;
+            isSearching = true;
+            pendingReset = true;
+            router.get(window.location.href, {
+                search: query.trim() || undefined,
+            }, {
+                only: ['firebaseCredentials', 'filters'],
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            });
+        }, 350);
+    };
+
+    const loadMore = () => {
+        if (loadingMore || isSearching || loadedPage >= lastPage) return;
+        loadingMore = true;
+        router.get(window.location.href, {
+            search: searchQuery.trim() || undefined,
+            page: loadedPage + 1,
+        }, {
+            only: ['firebaseCredentials', 'filters'],
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    };
 
     const selectProvider = (value) => {
         provider = value;
@@ -403,13 +482,28 @@
                         <div class="p-5 space-y-5">
                             <label>
                                 <span class="label">FCM HTTP v1 credential</span>
-                                <Select bind:value={credentialId} options={[{ value: '', label: 'Select a service account', disabled: true }, ...firebaseCredentials.map((credential) => ({ value: credential.id, label: `${credential.name}${credential.ready ? '' : ' · file missing'}`, disabled: !credential.ready }))]} ariaLabel="FCM HTTP v1 credential" disabled={!canSend || !readyCredentials.length} />
+                                <Select
+                                    bind:value={credentialId}
+                                    options={credentialOptions}
+                                    ariaLabel="FCM HTTP v1 credential"
+                                    disabled={!canSend || !readyCredentials.length}
+                                    searchable
+                                    searchMode="remote"
+                                    onSearch={triggerSearch}
+                                    bind:searchValue={searchQuery}
+                                    {loading}
+                                    onScrollEnd={loadMore}
+                                />
                             </label>
 
-                            {#if !firebaseCredentials.length}
+                            {#if !firebaseCredentials.total}
                                 <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warn-fill bg-warn-text/10 px-4 py-3 text-xs text-warn-fill">
-                                    <span>Add a Firebase HTTP v1 service-account JSON in Credentials Vault first.</span>
-                                    <Link href={credentialsUrl} class="font-bold text-warn-fill underline underline-offset-2">Open vault</Link>
+                                    {#if searchQuery}
+                                        <span>No credentials match "{searchQuery}".</span>
+                                    {:else}
+                                        <span>Add a Firebase HTTP v1 service-account JSON in Credentials Vault first.</span>
+                                        <Link href={credentialsUrl} class="font-bold text-warn-fill underline underline-offset-2">Open vault</Link>
+                                    {/if}
                                 </div>
                             {:else if !readyCredentials.length}
                                 <div class="rounded-md border border-warn-fill bg-warn-text/10 px-4 py-3 text-xs text-warn-fill">Upload the service-account JSON file for an FCM credential before sending.</div>

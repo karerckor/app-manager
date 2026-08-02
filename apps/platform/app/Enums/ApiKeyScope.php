@@ -13,6 +13,7 @@ enum ApiKeyScope: string
     case FilesRead = 'files:read';
     case FilesWrite = 'files:write';
     case CredentialsRead = 'credentials:read';
+    case CredentialsReveal = 'credentials:reveal';
     case CredentialsWrite = 'credentials:write';
     case BuildsRead = 'builds:read';
     case BuildsWrite = 'builds:write';
@@ -91,6 +92,7 @@ enum ApiKeyScope: string
                     self::AssetsRead->value,
                     self::FilesRead->value,
                     self::CredentialsRead->value,
+                    self::CredentialsReveal->value,
                     self::BuildsWrite->value,
                     self::LogsWrite->value,
                     self::ArtifactsWrite->value,
@@ -108,7 +110,7 @@ enum ApiKeyScope: string
             self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
             self::FilesWrite, self::BuildsWrite, self::LogsWrite,
             self::ArtifactsWrite => TeamPermission::ManageApplications,
-            self::CredentialsWrite => TeamPermission::ManageCredentials,
+            self::CredentialsReveal, self::CredentialsWrite => TeamPermission::ManageCredentials,
             self::IntegrationsRead, self::IntegrationsWrite, self::IntegrationsProxy,
             self::PipelinesRead, self::PipelinesWrite,
             self::WebhooksRead, self::WebhooksWrite,
@@ -164,7 +166,8 @@ enum ApiKeyScope: string
             self::AssetsWrite => 'Upload, replace and delete application assets.',
             self::FilesRead => 'View and download files attached to an application.',
             self::FilesWrite => 'Upload, update and delete files attached to an application.',
-            self::CredentialsRead => 'View credential metadata, secrets and files.',
+            self::CredentialsRead => 'View credential metadata.',
+            self::CredentialsReveal => 'Reveal credential secrets and download credential files.',
             self::CredentialsWrite => 'Create, rotate and delete credentials.',
             self::BuildsRead => 'View build history and build details.',
             self::BuildsWrite => 'Create, start, update and cancel builds.',

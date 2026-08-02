@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\Builds\CreateEasBuild;
 use App\Actions\Builds\CreateManualBuild;
 use App\Actions\Integrations\RequestPipelineBuildCancellation;
 use App\Enums\BuildReportingMode;
@@ -11,6 +12,7 @@ use App\Exceptions\InvalidBuildTransition;
 use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\BuildRecordResource;
+use App\Jobs\Integrations\ReconcileEasBuild;
 use App\Models\AppIdentifier;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
@@ -38,12 +40,15 @@ class BuildController extends Controller
         Request $request,
         Team $team,
         MobileApp $mobileApp,
-        CreateManualBuild $create,
+        CreateManualBuild $createManual,
+        CreateEasBuild $createEas,
     ): JsonResponse {
         $this->assertApp($team, $mobileApp);
         $data = $request->validate([
             'request_uuid' => ['required', 'uuid'],
             'profile_type' => ['required', Rule::enum(ProfileType::class)],
+            'reporting_mode' => ['sometimes', Rule::in(['manual', 'eas'])],
+            'expo_build_id' => ['required_if:reporting_mode,eas', 'nullable', 'string'],
             'app_identifier_id' => ['nullable', 'uuid'],
             'context' => ['sometimes', 'array'],
             'parameters' => [
@@ -56,22 +61,39 @@ class BuildController extends Controller
                 },
             ],
         ]);
+
+        $reportingMode = $data['reporting_mode'] ?? 'manual';
         $identifier = isset($data['app_identifier_id'])
             ? AppIdentifier::query()
                 ->whereKey($data['app_identifier_id'])
                 ->where('mobile_app_id', $mobileApp->id)
                 ->firstOrFail()
             : null;
-        $build = $create->handle(
-            $team,
-            $mobileApp,
-            $request->user(),
-            $data['request_uuid'],
-            ProfileType::from($data['profile_type']),
-            $identifier,
-            $data['context'] ?? [],
-            $data['parameters'] ?? [],
-        );
+
+        if ($reportingMode === 'eas') {
+            $build = $createEas->handle(
+                $team,
+                $mobileApp,
+                $request->user(),
+                $data['request_uuid'],
+                $data['expo_build_id'],
+                ProfileType::from($data['profile_type']),
+                $identifier,
+                $data['context'] ?? [],
+                $data['parameters'] ?? [],
+            );
+        } else {
+            $build = $createManual->handle(
+                $team,
+                $mobileApp,
+                $request->user(),
+                $data['request_uuid'],
+                ProfileType::from($data['profile_type']),
+                $identifier,
+                $data['context'] ?? [],
+                $data['parameters'] ?? [],
+            );
+        }
 
         return (new BuildRecordResource($build))->response()->setStatusCode(201);
     }
@@ -129,6 +151,26 @@ class BuildController extends Controller
         $build = $cancel->handle($buildRecord);
 
         return new BuildRecordResource($build->load('ciCdRun'));
+    }
+
+    public function syncEasStatus(
+        Team $team,
+        MobileApp $mobileApp,
+        BuildRecord $buildRecord,
+    ): BuildRecordResource {
+        $this->assertBuild($team, $mobileApp, $buildRecord);
+        abort_unless(
+            $buildRecord->reporting_mode === BuildReportingMode::Eas,
+            409,
+            'This endpoint is only available for EAS builds.',
+        );
+
+        if (! $buildRecord->status->isTerminal()) {
+            ReconcileEasBuild::dispatchSync($buildRecord->id);
+            $buildRecord->refresh();
+        }
+
+        return new BuildRecordResource($buildRecord);
     }
 
     private function assertApp(Team $team, MobileApp $mobileApp): void

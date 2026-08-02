@@ -83,9 +83,11 @@ return [
             'visibility' => 'private',
             'throw' => true,
             'report' => false,
-            'options' => [
+            'options' => array_filter([
                 'ACL' => env('MEDIA_S3_OBJECT_ACL', 'bucket-owner-full-control'),
-            ],
+                'ServerSideEncryption' => env('MEDIA_S3_SERVER_SIDE_ENCRYPTION', 'AES256'),
+                'SSEKMSKeyId' => env('MEDIA_S3_KMS_KEY_ID'),
+            ], fn ($value) => $value !== null && $value !== ''),
         ],
 
     ],

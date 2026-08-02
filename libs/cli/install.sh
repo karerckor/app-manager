@@ -9,6 +9,7 @@ INSTALLER_NAME="appmctl installer"
 REPOSITORY="${APPMCTL_REPOSITORY:-karerckor/app-manager}"
 REF="${APPMCTL_REF:-main}"
 EXPECTED_SHA256="${APPMCTL_SHA256:-}"
+ALLOW_UNVERIFIED="${APPMCTL_ALLOW_UNVERIFIED:-0}"
 INSTALL_DIR="${APPMCTL_INSTALL_DIR:-${HOME:-}/.local/bin}"
 DOWNLOAD_URL="${APPMCTL_DOWNLOAD_URL:-https://raw.githubusercontent.com/${REPOSITORY}/${REF}/libs/cli/bin/appmctl}"
 STAGING_FILE=""
@@ -53,6 +54,10 @@ sha256_file() {
 command_exists curl || die "curl is required"
 command_exists bash || die "bash is required"
 command_exists mktemp || die "mktemp is required"
+
+if [ -z "$EXPECTED_SHA256" ] && [ "$ALLOW_UNVERIFIED" != "1" ]; then
+  die "APPMCTL_SHA256 is required (set APPMCTL_ALLOW_UNVERIFIED=1 only for an explicitly trusted development source)"
+fi
 
 if ! mkdir -p -- "$INSTALL_DIR"; then
   die "could not create install directory: $INSTALL_DIR"

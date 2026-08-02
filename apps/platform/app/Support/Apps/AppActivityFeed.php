@@ -86,7 +86,11 @@ class AppActivityFeed
 
             return [
                 'type' => strtolower($model).'_'.$audit->event,
-                'title' => self::auditTitle($model, $audit->event),
+                'title' => self::auditTitle(
+                    $model,
+                    $audit->event,
+                    array_replace($audit->old_values ?? [], $audit->new_values ?? []),
+                ),
                 'actor' => $audit->user ? ['id' => $audit->user->id, 'name' => $audit->user->name] : null,
                 'source' => $audit->source,
                 'timestamp' => $audit->created_at,
@@ -95,8 +99,20 @@ class AppActivityFeed
         })->all();
     }
 
-    private static function auditTitle(string $model, string $event): string
+    /** @param array<string, mixed> $values */
+    private static function auditTitle(string $model, string $event, array $values): string
     {
+        if ($model === 'MobileApp' && str_starts_with($event, 'file_')) {
+            $file = is_string($values['file_name'] ?? null) ? $values['file_name'] : 'file';
+
+            return match ($event) {
+                'file_created' => "File {$file} added",
+                'file_metadata_updated' => "File {$file} metadata updated",
+                'file_deleted' => "File {$file} deleted",
+                default => "File {$file} changed",
+            };
+        }
+
         $label = match ($model) {
             'MobileApp' => 'App',
             'AppIdentifier' => 'Identifier',

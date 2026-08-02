@@ -35,7 +35,7 @@ return [
         'prefix' => env('MEDIA_S3_PREFIX'),
         'use_path_style_endpoint' => env('MEDIA_S3_USE_PATH_STYLE_ENDPOINT', false),
         'object_acl' => env('MEDIA_S3_OBJECT_ACL', 'bucket-owner-full-control'),
-        'server_side_encryption' => env('MEDIA_S3_SERVER_SIDE_ENCRYPTION'),
+        'server_side_encryption' => env('MEDIA_S3_SERVER_SIDE_ENCRYPTION', 'AES256'),
         'kms_key_id' => env('MEDIA_S3_KMS_KEY_ID'),
     ],
 ];

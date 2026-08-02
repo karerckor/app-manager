@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 
@@ -25,10 +26,15 @@ use OwenIt\Auditing\Contracts\Auditable;
     'profile_type',
     'status',
     'reporting_mode',
+    'expo_build_id',
     'context_snapshot',
     'parameters',
     'log_output',
     'logs_updated_at',
+    'log_archive_disk',
+    'log_archive_path',
+    'log_archive_size',
+    'logs_archived_at',
     'started_at',
     'cancel_requested_at',
     'finished_at',
@@ -78,6 +84,10 @@ class BuildRecord extends Model implements Auditable
     {
         static::deleting(function (BuildRecord $build): void {
             $build->artifacts()->cursor()->each(fn (Artifact $artifact) => $artifact->delete());
+
+            if ($build->log_archive_disk && $build->log_archive_path) {
+                Storage::disk($build->log_archive_disk)->delete($build->log_archive_path);
+            }
         });
     }
 
@@ -90,6 +100,8 @@ class BuildRecord extends Model implements Auditable
             'context_snapshot' => 'array',
             'parameters' => 'encrypted:array',
             'logs_updated_at' => 'datetime',
+            'log_archive_size' => 'integer',
+            'logs_archived_at' => 'datetime',
             'started_at' => 'datetime',
             'cancel_requested_at' => 'datetime',
             'finished_at' => 'datetime',

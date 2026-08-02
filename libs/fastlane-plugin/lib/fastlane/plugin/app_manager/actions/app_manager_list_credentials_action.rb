@@ -7,7 +7,8 @@ module Fastlane
     class AppManagerListCredentialsAction < Action
       def self.run(_params)
         credentials = Helper::AppManagerHelper.list_credentials
-        Actions.lane_context[SharedValues::APP_MANAGER_CREDENTIALS] = credentials
+        safe_credentials = credentials.map { |credential| credential.reject { |key, _| key.to_s == "payload" } }
+        Actions.lane_context[SharedValues::APP_MANAGER_CREDENTIALS] = safe_credentials
         print_credentials_table(credentials)
         credentials
       end

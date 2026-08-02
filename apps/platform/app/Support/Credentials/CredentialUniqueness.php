@@ -86,19 +86,7 @@ class CredentialUniqueness
             return null;
         }
 
-        $stream = $media->stream();
-
-        if (! is_resource($stream)) {
-            throw new RuntimeException('Unable to read the stored credential file.');
-        }
-
-        try {
-            $context = hash_init('sha256');
-            hash_update_stream($context, $stream);
-            $fileHash = hash_final($context);
-        } finally {
-            fclose($stream);
-        }
+        $fileHash = hash('sha256', CredentialFileStorage::contents($media));
 
         return $this->fingerprint(
             $credential->type,

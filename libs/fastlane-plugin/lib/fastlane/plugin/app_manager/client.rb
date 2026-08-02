@@ -231,6 +231,14 @@ module Fastlane
           credential_id: credential_id,
           credential_name: credential_name
         )
+        secret = json_request(
+          app_endpoint("credentials", credential.fetch("id"), "reveal"),
+          method: :post,
+          body: {}
+        )["data"]
+        unless secret.is_a?(Hash) && secret["payload"].is_a?(Hash)
+          raise Error, "App Manager returned an invalid credential secret response"
+        end
         path = download(
           app_endpoint("credentials", credential.fetch("id"), "file"),
           output_path,
@@ -243,7 +251,7 @@ module Fastlane
           id: credential["id"],
           type: credential["type"],
           name: credential["name"],
-          payload: credential["payload"] || {},
+          payload: secret["payload"],
           expires_at: credential["expires_at"],
           profile_type: profile_type,
           app_identifier: resolved_app_identifier

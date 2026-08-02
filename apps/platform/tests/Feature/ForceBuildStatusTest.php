@@ -37,6 +37,7 @@ class ForceBuildStatusTest extends TestCase
             'status' => BuildStatus::Running,
             'started_at' => now(),
             'parameters' => ['channel' => 'qa'],
+            'tags' => ['demo', 'ios'],
         ]);
 
         $this->actingAs($owner)
@@ -60,7 +61,8 @@ class ForceBuildStatusTest extends TestCase
         $this->assertNotNull($build->finished_at);
         $event = WebhookEvent::query()->where('event_type', WebhookEventType::BuildCompleted)->sole();
         $this->assertSame(BuildStatus::Cancelled->value, $event->payload['status']);
-        $this->assertSame(['channel' => 'qa'], $event->payload['parameters']);
+        $this->assertArrayNotHasKey('parameters', $event->payload);
+        $this->assertSame(['demo', 'ios'], $event->filter_context['tags']);
         $this->assertSame($owner->id, $event->actor_user_id);
     }
 

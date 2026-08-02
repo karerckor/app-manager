@@ -3,6 +3,8 @@
 namespace App\Integrations\Webhooks;
 
 use App\Enums\WebhookEventType;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
+use App\Jobs\Notifications\PublishNotificationEvent;
 use App\Jobs\Webhooks\PublishWebhookEvent;
 use App\Models\Team;
 use App\Models\WebhookEvent;
@@ -16,6 +18,7 @@ class WebhookEventRecorder
     public function __construct(
         private readonly ActorContextManager $actorContext,
         private readonly WebhookEventFilterContext $filterContext,
+        private readonly ExpoAutoSyncDispatcher $expoAutoSync,
     ) {}
 
     /** @param array<string, mixed> $payload */
@@ -25,8 +28,16 @@ class WebhookEventRecorder
         Model|string $aggregate,
         array $payload,
         ?ActorContext $actor = null,
+        bool $dispatchExpoSync = true,
     ): ?WebhookEvent {
-        if (! config('integrations.enabled') || ! config('integrations.webhooks.enabled')) {
+        if ($dispatchExpoSync && $aggregate instanceof Model) {
+            $this->expoAutoSync->dispatchForAggregate($aggregate);
+        }
+
+        $webhooksEnabled = (bool) config('integrations.webhooks.enabled');
+        $notificationsEnabled = (bool) config('integrations.notifications.enabled');
+
+        if (! config('integrations.enabled') || (! $webhooksEnabled && ! $notificationsEnabled)) {
             return null;
         }
 
@@ -44,9 +55,17 @@ class WebhookEventRecorder
             'payload' => $payload,
             'filter_context' => $this->filterContext->for($aggregate),
             'occurred_at' => now(),
+            'published_at' => $webhooksEnabled ? null : now(),
+            'notifications_published_at' => $notificationsEnabled ? null : now(),
         ]);
 
-        DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id)->onQueue('webhooks'));
+        if ($webhooksEnabled) {
+            DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id)->onQueue('webhooks'));
+        }
+
+        if ($notificationsEnabled) {
+            DB::afterCommit(fn () => PublishNotificationEvent::dispatch($event->id)->onQueue('notifications'));
+        }
 
         return $event;
     }

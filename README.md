@@ -115,6 +115,8 @@ App Manager supports two reporting modes:
 
 The selected reporting mode is snapshotted onto each build. Manual lifecycle writes are rejected for automatic builds. Build creation is idempotent by team and `request_uuid`, and terminal state transitions are protected from conflicting rewrites.
 
+Completed build logs are retained in the database for 30 days by default. The daily `build-logs:archive` task then moves them to the configured private media storage (local or S3), while authorized users can still download the original `.log` file from the build page or API. Set `BUILD_LOG_RETENTION_DAYS` to change the retention window, and keep the Laravel scheduler running in every deployment.
+
 ### Webhooks and auditing
 
 Domain events are recorded in an outbox and delivered asynchronously to subscribed webhook endpoints. Endpoint secrets are shown when created or rotated, payloads are signed, delivery attempts are retained, and failed deliveries can be inspected or replayed. Private-network webhook targets are rejected by default.
@@ -169,7 +171,7 @@ Open [http://localhost:8000](http://localhost:8000). The one-time self-hosted in
 
 ### Private file storage
 
-Local development uses the private filesystem under `storage/app/private`. New media is never written to Laravel's public disk, and credential, asset, and artifact downloads are streamed through authorized application routes.
+Local development uses the private filesystem under `storage/app/private`. New media is never written to Laravel's public disk, and credential, asset, and artifact downloads are streamed through authorized application routes. Credential files are additionally encrypted by the application before they reach local or S3 storage. After upgrading an existing installation, run `php artisan credentials:encrypt-files --dry-run` and then `php artisan credentials:encrypt-files` to encrypt legacy plaintext credential media.
 
 The self-hosted installer lets the first owner select either the local private filesystem or an S3-compatible bucket. It verifies write, read, and delete access before completing installation, then stores any supplied object-storage credentials inside the encrypted installation settings.
 
@@ -191,7 +193,7 @@ MEDIA_S3_ENDPOINT=
 MEDIA_S3_USE_PATH_STYLE_ENDPOINT=false
 MEDIA_S3_OBJECT_ACL=bucket-owner-full-control
 
-# Optional upload headers. Alternatively enforce encryption on the bucket.
+# Server-side encryption is enabled by default in addition to application encryption.
 MEDIA_S3_SERVER_SIDE_ENCRYPTION=aws:kms
 MEDIA_S3_KMS_KEY_ID=arn:aws:kms:eu-central-1:123456789012:key/example
 ```
@@ -283,9 +285,10 @@ See the [API v1 reference](apps/platform/docs/api-v1.md) for request fields, res
 `appmctl` is a single Bash executable intended for local automation and CI images where installing a language-specific SDK is undesirable.
 
 ```bash
+APPMCTL_SHA256='PUBLISHED_SHA256_FOR_THIS_RELEASE'
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
-  bash
+  APPMCTL_SHA256="$APPMCTL_SHA256" bash
 
 export PATH="${HOME}/.local/bin:${PATH}"
 export APP_MANAGER_API_KEY='1|plain-text-api-key'
@@ -297,7 +300,7 @@ appmctl --json request GET apps
 appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --step Build -- pnpm build
 ```
 
-The installer can pin a commit and verify a SHA-256 checksum. The CLI supports generic JSON and multipart requests, binary downloads, dry runs with secret redaction, and live log streaming that preserves the wrapped command's exit status.
+The installer requires a SHA-256 checksum and can also pin a commit. The CLI supports generic JSON and multipart requests, binary downloads, dry runs with secret redaction, and live log streaming that preserves the wrapped command's exit status.
 
 Read the complete [App Manager CLI guide](libs/cli/README.md).
 

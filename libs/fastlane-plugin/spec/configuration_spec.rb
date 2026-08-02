@@ -26,6 +26,17 @@ RSpec.describe Fastlane::AppManager::Configuration do
       expect(configuration.api_root).to eq("https://manager.example/api/v1")
     end
 
+    it "rejects plaintext HTTP for non-loopback hosts" do
+      expect do
+        described_class.configure(
+          api_key: "secret",
+          base_url: "http://manager.example",
+          team: "mobile-team",
+          app: "customer-app"
+        )
+      end.to raise_error(Fastlane::AppManager::Error, /must use HTTPS/)
+    end
+
     it "rejects missing values and invalid URLs" do
       expect do
         described_class.configure(api_key: "", base_url: "localhost:8000", team: "", app: "")

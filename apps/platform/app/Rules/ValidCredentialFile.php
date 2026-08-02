@@ -69,14 +69,22 @@ class ValidCredentialFile implements ValidationRule
 
     private function readableWithOpensslCli(string $contents, string $password): bool
     {
-        $temp = tempnam(sys_get_temp_dir(), 'p12');
+        $directory = storage_path('framework/cache');
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            return false;
+        }
+
+        $temp = tempnam($directory, 'p12');
 
         if ($temp === false) {
             return false;
         }
 
         try {
-            file_put_contents($temp, $contents);
+            chmod($temp, 0600);
+            if (file_put_contents($temp, $contents, LOCK_EX) === false) {
+                return false;
+            }
 
             // Pass the password via the child environment (env:) rather than argv (pass:)
             // so it is not exposed in the process list / /proc/<pid>/cmdline.
@@ -92,7 +100,9 @@ class ValidCredentialFile implements ValidationRule
         } catch (\Throwable) {
             return false;
         } finally {
-            @unlink($temp);
+            if (is_file($temp) && ! unlink($temp)) {
+                report(new \RuntimeException('Unable to remove a temporary credential validation file.'));
+            }
         }
     }
 

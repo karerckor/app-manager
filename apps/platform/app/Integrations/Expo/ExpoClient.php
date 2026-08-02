@@ -7,6 +7,7 @@ use App\Models\Integration;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class ExpoClient
@@ -140,6 +141,117 @@ class ExpoClient
         ]);
 
         return (array) data_get($data, 'app.createApp', []);
+    }
+
+    /** @return array<string, mixed> */
+    public function updateProjectInfo(
+        Integration $integration,
+        string $appId,
+        string $displayName,
+    ): array {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            mutation AppManagerSetExpoProjectInfo($appId: ID!, $appInfo: AppInfoInput!) {
+              app {
+                setAppInfo(appId: $appId, appInfo: $appInfo) {
+                  id
+                  name
+                  slug
+                  profileImageUrl
+                }
+              }
+            }
+            GRAPHQL, [
+            'appId' => $appId,
+            'appInfo' => ['displayName' => $displayName],
+        ]);
+
+        return (array) data_get($data, 'app.setAppInfo', []);
+    }
+
+    /** @return array<string, mixed> */
+    public function projectSummary(Integration $integration, string $appId): array
+    {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            query AppManagerExpoProjectSummary($appId: String!) {
+              app {
+                byId(appId: $appId) {
+                  id
+                  name
+                  slug
+                  fullName
+                  profileImageUrl(width: EXTRA_LARGE)
+                }
+              }
+            }
+            GRAPHQL, ['appId' => $appId]);
+
+        return (array) data_get($data, 'app.byId', []);
+    }
+
+    /** @return array<string, mixed> */
+    public function uploadProjectIcon(
+        Integration $integration,
+        string $appId,
+        string $contents,
+        string $mimeType,
+    ): array {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            mutation AppManagerCreateExpoProjectIconUpload($appId: ID!) {
+              uploadSession {
+                createAppScopedUploadSession(appID: $appId, type: PROFILE_IMAGE_UPLOAD)
+              }
+            }
+            GRAPHQL, ['appId' => $appId]);
+        $session = (array) data_get(
+            $data,
+            'uploadSession.createAppScopedUploadSession',
+            [],
+        );
+        $url = (string) ($session['url'] ?? '');
+        $headers = $session['headers'] ?? [];
+        if (is_string($headers)) {
+            $headers = json_decode($headers, true) ?: [];
+        }
+
+        if ($url === '' || ! is_array($headers)) {
+            throw new ExpoGraphqlException('Expo did not return a valid icon upload session.');
+        }
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->withBody($contents, $mimeType)
+                ->timeout(max(1, (int) config('integrations.expo.timeout_seconds', 30)))
+                ->put($url);
+        } catch (ConnectionException) {
+            throw new ExpoGraphqlException('The Expo icon upload could not be reached.', status: 503);
+        }
+
+        if ($response->failed()) {
+            throw new ExpoGraphqlException(
+                'Expo rejected the project icon upload (HTTP '.$response->status().').',
+                status: $response->status(),
+            );
+        }
+
+        return $session;
+    }
+
+    /** @return array<string, mixed> */
+    public function removeProjectIcon(Integration $integration, string $appId): array
+    {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            mutation AppManagerRemoveExpoProjectIcon($appId: ID!) {
+              app {
+                removeProfileImage(appId: $appId) {
+                  id
+                  name
+                  profileImageUrl
+                }
+              }
+            }
+            GRAPHQL, ['appId' => $appId]);
+
+        return (array) data_get($data, 'app.removeProfileImage', []);
     }
 
     /** @return array<string, mixed> */
@@ -401,6 +513,7 @@ class ExpoClient
                     createdAt
                     updatedAt
                     completedAt
+                    workerStartedAt
                     canRetry
                     error {
                       errorCode
@@ -500,6 +613,211 @@ class ExpoClient
             GRAPHQL, ['workflowRunId' => $workflowRunId]);
 
         return (array) data_get($data, 'workflowRun.cancelWorkflowRun', []);
+    }
+
+    /** @return array<string, mixed> */
+    public function easBuild(Integration $integration, string $buildId): array
+    {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            query AppManagerExpoBuild($buildId: ID!) {
+              builds {
+                byId(buildId: $buildId) {
+                  id
+                  platform
+                  status
+                  buildProfile
+                  distribution
+                  appIdentifier
+                  appVersion
+                  appBuildVersion
+                  gitRef
+                  gitCommitHash
+                  message
+                  createdAt
+                  updatedAt
+                  completedAt
+                  workerStartedAt
+                  canRetry
+                  error {
+                    errorCode
+                    message
+                  }
+                  artifacts {
+                    applicationArchiveUrl
+                    buildUrl
+                  }
+                  project {
+                    id
+                    name
+                    slug
+                    fullName
+                    ... on App {
+                      ownerAccount {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            GRAPHQL, ['buildId' => $buildId]);
+
+        return (array) data_get($data, 'builds.byId', []);
+    }
+
+    public function easBuildLogs(Integration $integration, string $buildId): string
+    {
+        $data = $this->request($integration, <<<'GRAPHQL'
+            query AppManagerExpoBuildLogFiles($buildId: ID!) {
+              builds {
+                byId(buildId: $buildId) {
+                  id
+                  logFiles
+                }
+              }
+            }
+            GRAPHQL, ['buildId' => $buildId]);
+
+        $logFiles = array_values(array_filter(
+            (array) data_get($data, 'builds.byId.logFiles', []),
+            fn ($url) => is_string($url) && $url !== '',
+        ));
+
+        $sections = [];
+
+        foreach ($logFiles as $url) {
+            // Log files live behind pre-signed storage URLs; an Authorization
+            // header would make signed-URL requests fail.
+            try {
+                $response = Http::withUserAgent('App Manager Expo integration')
+                    ->timeout(max(1, (int) config('integrations.expo.timeout_seconds', 30)))
+                    ->get($url);
+            } catch (ConnectionException) {
+                continue;
+            }
+
+            if ($response->failed()) {
+                continue;
+            }
+
+            $content = $this->formatEasLogContent(trim($response->body()));
+
+            if ($content !== '') {
+                $sections[] = $content;
+            }
+        }
+
+        return implode("\n", $sections);
+    }
+
+    /**
+     * EAS log files are newline-delimited JSON entries; surface the human
+     * readable message of each entry and keep unrecognized lines verbatim.
+     */
+    private function formatEasLogContent(string $content): string
+    {
+        $lines = [];
+
+        foreach (preg_split("/\r?\n/", $content) ?: [] as $line) {
+            $line = trim($line);
+
+            if ($line === '') {
+                continue;
+            }
+
+            $entry = json_decode($line, true);
+            $lines[] = is_array($entry) && is_string($entry['msg'] ?? null)
+                ? rtrim($entry['msg'])
+                : $line;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    public function downloadFile(Integration $integration, string $url, string $destinationPath): bool
+    {
+        try {
+            // Artifacts can be hundreds of megabytes; stream the body to disk
+            // instead of buffering it in memory.
+            $response = Http::withToken($this->credentials->get($integration)->accessToken)
+                ->withUserAgent('App Manager Expo integration')
+                ->timeout(300)
+                ->withOptions(['allow_redirects' => ['max' => 5], 'stream' => true])
+                ->get($url);
+        } catch (ConnectionException $exception) {
+            Log::warning('EAS artifact download connection failed', [
+                'url' => $url,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
+
+        if ($response->failed()) {
+            Log::warning('EAS artifact download HTTP error', [
+                'url' => $url,
+                'status' => $response->status(),
+                'body_preview' => substr($response->body(), 0, 500),
+            ]);
+
+            return false;
+        }
+
+        $contentType = strtolower((string) $response->header('Content-Type'));
+        if (str_starts_with($contentType, 'text/html') || str_starts_with($contentType, 'application/json')) {
+            Log::warning('EAS artifact URL returned unexpected content type', [
+                'url' => $url,
+                'content_type' => $contentType,
+            ]);
+        }
+
+        $dir = dirname($destinationPath);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $source = $response->toPsrResponse()->getBody();
+        $destination = fopen($destinationPath, 'wb');
+
+        if ($destination === false) {
+            Log::warning('EAS artifact file write failed', [
+                'url' => $url,
+                'destination' => $destinationPath,
+            ]);
+
+            return false;
+        }
+
+        try {
+            while (! $source->eof()) {
+                fwrite($destination, $source->read(1024 * 1024));
+            }
+        } finally {
+            fclose($destination);
+            $source->close();
+        }
+
+        $written = filesize($destinationPath);
+
+        if ($written === false || $written === 0) {
+            Log::warning('EAS artifact file write failed', [
+                'url' => $url,
+                'destination' => $destinationPath,
+            ]);
+
+            @unlink($destinationPath);
+
+            return false;
+        }
+
+        Log::info('EAS artifact downloaded', [
+            'url' => $url,
+            'destination' => $destinationPath,
+            'size' => $written,
+        ]);
+
+        return true;
     }
 
     /** @return array<string, mixed> */

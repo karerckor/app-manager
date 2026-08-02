@@ -36,8 +36,6 @@ class AppIdentifierPageController extends Controller
         MobileApp $mobileApp,
         ExpoClient $expoClient,
     ): Response {
-        $this->authorizeTeam($request, $team);
-
         $mobileApp->load([
             'appIdentifiers' => fn ($q) => $q
                 ->withCount('credentials')
@@ -142,8 +140,6 @@ class AppIdentifierPageController extends Controller
 
     public function show(Request $request, Team $team, MobileApp $mobileApp, AppIdentifier $appIdentifier): Response
     {
-        $this->authorizeTeam($request, $team);
-
         $appIdentifier->load(['credentials.media', 'profiles.credentials.media']);
         $supportsCredentials = $appIdentifier->platform !== Platform::Web;
 
@@ -171,12 +167,6 @@ class AppIdentifierPageController extends Controller
         ExpoClient $expoClient,
         ExpoCredentialExporter $exporter,
     ): RedirectResponse {
-        $this->authorizeTeam($request, $team);
-        abort_unless(
-            $team->allows($request->user(), TeamPermission::ManageApplications)
-            && $team->allows($request->user(), TeamPermission::ManageCredentials),
-            403,
-        );
         abort_unless(
             config('integrations.enabled') && config('integrations.expo.enabled'),
             404,
@@ -432,10 +422,5 @@ class AppIdentifierPageController extends Controller
     private function identifierKey(string $platform, string $identifier): string
     {
         return $platform.'|'.$identifier;
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 }

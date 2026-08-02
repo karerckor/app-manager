@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Enums\WebhookEventType;
+use App\Http\Requests\StoreMobileAppRequest;
+use App\Http\Requests\UpdateMobileAppRequest;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\MobileApp;
@@ -11,44 +13,18 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class MobileAppController extends Controller
 {
     public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
 
-    public function store(Request $request, Team $team): RedirectResponse
+    public function store(StoreMobileAppRequest $request, Team $team): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $data = $request->validated();
+        $data['slug'] = $this->availableSlug($team, ($data['slug'] ?? null) ?: $data['name']);
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'slug' => [
-                'nullable',
-                'string',
-                'max:255',
-                'alpha_dash:ascii',
-                Rule::unique('mobile_apps')->where('team_id', $team->id),
-            ],
-            'description' => ['nullable', 'string', 'max:2000'],
-            'metadata' => ['sometimes', 'nullable', 'array'],
-        ]);
-
-        $baseSlug = Str::slug(($data['slug'] ?? null) ?: $data['name']) ?: 'app';
-        $slug = $baseSlug;
-        $suffix = 2;
-
-        while ($team->mobileApps()->where('slug', $slug)->exists()) {
-            $slug = $baseSlug.'-'.$suffix++;
-        }
-
-        $app = DB::transaction(function () use ($team, $data, $slug) {
-            $app = $team->mobileApps()->create([
-                'name' => $data['name'],
-                'slug' => $slug,
-                'description' => $data['description'] ?? null,
-                'metadata' => $data['metadata'] ?? null,
-            ]);
+        $app = DB::transaction(function () use ($team, $data) {
+            $app = $team->mobileApps()->create($data);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppCreated,
@@ -62,24 +38,16 @@ class MobileAppController extends Controller
         return redirect()->route('accounts.apps.show', ['team' => $team, 'mobileApp' => $app])->with('status', 'Application created.');
     }
 
-    public function update(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
+    public function update(UpdateMobileAppRequest $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
-
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:2000'],
-            'metadata' => ['sometimes', 'nullable', 'array'],
-        ]);
-
-        DB::transaction(function () use ($mobileApp, $team, $data) {
+        DB::transaction(function () use ($mobileApp, $team, $request) {
             $attributes = [
-                'name' => $data['name'],
-                'description' => $data['description'] ?? null,
+                'name' => $request->validated('name'),
+                'description' => $request->validated('description') ?? null,
             ];
 
-            if (array_key_exists('metadata', $data)) {
-                $attributes['metadata'] = $data['metadata'];
+            if ($request->has('metadata')) {
+                $attributes['metadata'] = $request->validated('metadata');
             }
 
             $mobileApp->update($attributes);
@@ -98,8 +66,6 @@ class MobileAppController extends Controller
 
     public function destroy(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
-
         DB::transaction(function () use ($mobileApp, $team) {
             $payload = WebhookPayload::mobileApp($mobileApp);
             $mobileApp->delete();
@@ -116,8 +82,16 @@ class MobileAppController extends Controller
             ->with('status', 'Application deleted.');
     }
 
-    private function authorizeTeam(Request $request, Team $team): void
+    private function availableSlug(Team $team, string $value): string
     {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
+        $baseSlug = Str::slug($value) ?: 'app';
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        while ($team->mobileApps()->where('slug', $slug)->exists()) {
+            $slug = $baseSlug.'-'.$suffix++;
+        }
+
+        return $slug;
     }
 }

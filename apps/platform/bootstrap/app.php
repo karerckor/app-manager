@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Middleware\EnsureBillingEnabled;
+use App\Http\Middleware\EnsureOwnsModel;
 use App\Http\Middleware\EnsureSelfHostedInstallation;
 use App\Http\Middleware\EnsureTeamMember;
 use App\Http\Middleware\EnsureTeamPermission;
@@ -25,13 +25,12 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->preventRequestForgery(except: [
-            'stripe/webhook',
             'webhooks/github',
         ]);
 
         $middleware->alias([
             'abilities' => CheckAbilities::class,
-            'billing.enabled' => EnsureBillingEnabled::class,
+            'owns.model' => EnsureOwnsModel::class,
             'team.member' => EnsureTeamMember::class,
             'team.permission' => EnsureTeamPermission::class,
         ]);
@@ -49,8 +48,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash([
             'access_token',
+            'bot_token',
+            'current_password',
+            'github.client_secret',
+            'github.private_key',
+            'gitlab.client_secret',
+            'password',
+            'password_confirmation',
+            'payload.key_password',
+            'payload.password',
+            'payload.store_password',
             'storage.s3.secret_access_key',
             'storage.s3.session_token',
+            'webhook_url',
         ]);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),

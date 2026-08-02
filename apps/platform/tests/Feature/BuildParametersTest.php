@@ -64,7 +64,7 @@ class BuildParametersTest extends TestCase
         $this->assertDatabaseCount('ci_cd_runs', 0);
 
         $event = WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->sole();
-        $this->assertSame($parameters, $event->payload['parameters']);
+        $this->assertArrayNotHasKey('parameters', $event->payload);
 
         $this->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSuccessful()
@@ -122,7 +122,7 @@ class BuildParametersTest extends TestCase
         $this->assertSame($parameters, $build->parameters);
         $this->assertSame($parameters, $build->ciCdRun->request_snapshot['inputs']);
         $event = WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->sole();
-        $this->assertSame($parameters, $event->payload['parameters']);
+        $this->assertArrayNotHasKey('parameters', $event->payload);
 
         $this->get(route('accounts.apps.builds.index', [$team, $app]))
             ->assertSuccessful()

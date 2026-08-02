@@ -14,11 +14,11 @@ use App\Models\ExpoCredentialLink;
 use App\Models\ExpoProject;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Credentials\CredentialFileStorage;
 use App\Support\Credentials\CredentialUniqueness;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -318,6 +318,7 @@ class ImportExpoProject
                     WebhookEventType::MobileAppCreated,
                     $app,
                     WebhookPayload::mobileApp($app),
+                    dispatchExpoSync: false,
                 );
             }
 
@@ -327,6 +328,7 @@ class ImportExpoProject
                     $event['type'],
                     $event['identifier'],
                     WebhookPayload::appIdentifier($event['identifier']),
+                    dispatchExpoSync: false,
                 );
             }
 
@@ -339,6 +341,7 @@ class ImportExpoProject
                     $event['type'],
                     $credential,
                     WebhookPayload::credential($credential),
+                    dispatchExpoSync: false,
                 );
             }
 
@@ -748,15 +751,13 @@ class ImportExpoProject
 
         $media = $credential->getFirstMedia('file');
         if ($media) {
-            $stored = Storage::disk($media->disk)->get($media->getPathRelativeToRoot());
+            $stored = CredentialFileStorage::contents($media);
             if (hash_equals(hash('sha256', $stored), hash('sha256', $contents))) {
                 return ['synced' => true, 'changed' => false];
             }
         }
 
-        $credential->addMediaFromString($contents)
-            ->usingFileName($fileName)
-            ->toMediaCollection('file');
+        CredentialFileStorage::storeContents($credential, $contents, $fileName);
 
         return ['synced' => true, 'changed' => true];
     }

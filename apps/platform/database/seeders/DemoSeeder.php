@@ -11,11 +11,14 @@ use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Integrations\Notifications\NotificationEventCatalog;
 use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
+use App\Models\NotificationDestination;
 use App\Models\User;
 use App\Models\WebhookEndpoint;
+use App\Support\Credentials\CredentialFileStorage;
 use Illuminate\Database\Seeder;
 
 /**
@@ -42,6 +45,16 @@ class DemoSeeder extends Seeder
 
     public function run(): void
     {
+        if (! app()->environment(['local', 'development', 'testing'])) {
+            $this->command?->warn('DemoSeeder is disabled outside local, development, and testing environments.');
+
+            return;
+        }
+
+        if (\App\Models\EncryptionKey::count() === 0) {
+            \App\Support\Encryption\EncryptionKeyManager::createKey();
+        }
+
         // Demo user. The User model's 'hashed' cast hashes the password on set.
         $user = User::firstOrCreate(
             ['email' => 'demo@example.com'],
@@ -112,10 +125,11 @@ class DemoSeeder extends Seeder
         // friendly name is the Android key alias stored in the payload above.
         $media = $keystore->getFirstMedia('file');
 
-        if (! $media || ! $this->isValidDemoKeystore($media->getPath())) {
-            $keystore->addMediaFromString($this->makeDemoKeystore())
-                ->usingFileName('production.keystore')
-                ->toMediaCollection('file');
+        if (! $media || ! CredentialFileStorage::withTemporaryPlaintext(
+            $media,
+            fn (string $path): bool => $this->isValidDemoKeystore($path),
+        )) {
+            CredentialFileStorage::storeContents($keystore, $this->makeDemoKeystore(), 'production.keystore');
         }
 
         // iOS App Store target and its two required signing credentials.
@@ -147,17 +161,19 @@ class DemoSeeder extends Seeder
 
         if (
             ! $certificateMedia
-            || ! $this->isValidIosCertificate($certificateMedia->getPath())
+            || ! CredentialFileStorage::withTemporaryPlaintext(
+                $certificateMedia,
+                fn (string $path): bool => $this->isValidIosCertificate($path),
+            )
             || ! $profileMedia
-            || ! $this->isValidDemoProvisioningProfile($profileMedia->getPath())
+            || ! CredentialFileStorage::withTemporaryPlaintext(
+                $profileMedia,
+                fn (string $path): bool => $this->isValidDemoProvisioningProfile($path),
+            )
         ) {
             $materials = $this->makeIosSigningMaterials();
-            $iosCertificate->addMediaFromString($materials['certificate'])
-                ->usingFileName('distribution.p12')
-                ->toMediaCollection('file');
-            $provisioningProfile->addMediaFromString($materials['provisioning_profile'])
-                ->usingFileName('appstore.mobileprovision')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($iosCertificate, $materials['certificate'], 'distribution.p12');
+            CredentialFileStorage::storeContents($provisioningProfile, $materials['provisioning_profile'], 'appstore.mobileprovision');
         }
 
         if (! $app->hasMedia('app_icon')) {
@@ -180,9 +196,7 @@ class DemoSeeder extends Seeder
         $identifier->credentials()->syncWithoutDetaching([$googlePlay->id]);
 
         if (! $googlePlay->hasMedia('file')) {
-            $googlePlay->addMediaFromString($this->makeDemoServiceAccount())
-                ->usingFileName('google-play-service-account.json')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($googlePlay, $this->makeDemoServiceAccount(), 'google-play-service-account.json', 'application/json');
         }
 
         // Firebase Cloud Messaging HTTP v1 service account on the Android identifier.
@@ -193,9 +207,7 @@ class DemoSeeder extends Seeder
         $identifier->credentials()->syncWithoutDetaching([$firebaseHttpV1->id]);
 
         if (! $firebaseHttpV1->hasMedia('file')) {
-            $firebaseHttpV1->addMediaFromString($this->makeDemoServiceAccount())
-                ->usingFileName('firebase-http-v1-service-account.json')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($firebaseHttpV1, $this->makeDemoServiceAccount(), 'firebase-http-v1-service-account.json', 'application/json');
         }
 
         // App Store Connect API key (TestFlight submission) on the iOS identifier.
@@ -210,9 +222,7 @@ class DemoSeeder extends Seeder
                 'private_key_bits' => 2048,
                 'private_key_type' => OPENSSL_KEYTYPE_RSA,
             ]), $p8);
-            $appleKey->addMediaFromString($p8)
-                ->usingFileName('appstore-api-key.p8')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($appleKey, $p8, 'appstore-api-key.p8', 'application/x-pem-file');
         }
 
         // Client Firebase config for Android.
@@ -223,9 +233,7 @@ class DemoSeeder extends Seeder
         $identifier->credentials()->syncWithoutDetaching([$androidFirebase->id]);
 
         if (! $androidFirebase->hasMedia('file')) {
-            $androidFirebase->addMediaFromString($this->makeGoogleServicesJson())
-                ->usingFileName('google-services.json')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($androidFirebase, $this->makeGoogleServicesJson(), 'google-services.json', 'application/json');
         }
 
         // Client Firebase config for iOS.
@@ -236,9 +244,7 @@ class DemoSeeder extends Seeder
         $iosIdentifier->credentials()->syncWithoutDetaching([$iosFirebase->id]);
 
         if (! $iosFirebase->hasMedia('file')) {
-            $iosFirebase->addMediaFromString($this->makeGoogleServiceInfoPlist())
-                ->usingFileName('GoogleService-Info.plist')
-                ->toMediaCollection('file');
+            CredentialFileStorage::storeContents($iosFirebase, $this->makeGoogleServiceInfoPlist(), 'GoogleService-Info.plist', 'application/xml');
         }
 
         // App metadata: free-form JSON that flows into the mobile app at build
@@ -262,7 +268,7 @@ class DemoSeeder extends Seeder
         // the Platform UI. The completed build has a full log; the pending
         // build simulates a job waiting for a CI runner.
         $app->buildRecords()->firstOrCreate(
-            ['request_uuid' => 'demo-build-completed-0001'],
+            ['request_uuid' => '00000000-0000-4000-8000-000000000001'],
             [
                 'team_id' => $team->id,
                 'app_identifier_id' => $identifier->id,
@@ -280,12 +286,12 @@ class DemoSeeder extends Seeder
                 ]),
                 'started_at' => now()->subHours(2),
                 'finished_at' => now()->subHours(2)->addMinutes(3),
-                'tags' => ['demo', 'android'],
+                'tags' => [['demo', null], ['android', null]],
             ],
         );
 
         $app->buildRecords()->firstOrCreate(
-            ['request_uuid' => 'demo-build-pending-0001'],
+            ['request_uuid' => '00000000-0000-4000-8000-000000000002'],
             [
                 'team_id' => $team->id,
                 'app_identifier_id' => $iosIdentifier->id,
@@ -295,7 +301,7 @@ class DemoSeeder extends Seeder
                 'reporting_mode' => BuildReportingMode::Manual,
                 'context_snapshot' => ['runner' => 'self-hosted'],
                 'parameters' => ['channel' => 'beta'],
-                'tags' => ['demo', 'ios'],
+                'tags' => [['demo', null], ['ios', null]],
             ],
         );
 
@@ -329,6 +335,45 @@ class DemoSeeder extends Seeder
 
         if ($webhookIntegration->external_id !== $webhookEndpoint->id) {
             $webhookIntegration->update(['external_id' => $webhookEndpoint->id]);
+        }
+
+        // Notification destination: templates and subscriptions are ready, while
+        // the operator still needs to add a real provider credential.
+        $notificationIntegration = Integration::firstOrCreate(
+            [
+                'team_id' => $team->id,
+                'kind' => IntegrationKind::Notification,
+                'name' => 'Release room',
+            ],
+            [
+                'provider' => IntegrationProvider::Slack,
+                'status' => IntegrationStatus::Disabled,
+                'disabled_at' => now(),
+                'created_by_user_id' => $user->id,
+                'updated_by_user_id' => $user->id,
+            ],
+        );
+
+        if ($notificationIntegration->provider === IntegrationProvider::Custom) {
+            $notificationIntegration->update([
+                'provider' => IntegrationProvider::Slack,
+                'status' => IntegrationStatus::Disabled,
+                'disabled_at' => now(),
+            ]);
+        }
+
+        $notificationDestination = NotificationDestination::updateOrCreate(
+            ['integration_id' => $notificationIntegration->id],
+            [
+                'team_id' => $team->id,
+                'destination' => '#mobile-releases',
+                'subscribed_events' => ['build.started', 'build.completed', 'artifact.created'],
+                'templates' => NotificationEventCatalog::defaultTemplates(),
+            ],
+        );
+
+        if ($notificationIntegration->external_id !== $notificationDestination->id) {
+            $notificationIntegration->update(['external_id' => $notificationDestination->id]);
         }
 
         // Project files: arbitrary files attached to the app, downloadable

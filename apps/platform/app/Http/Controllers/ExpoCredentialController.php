@@ -22,7 +22,7 @@ class ExpoCredentialController extends Controller
         Team $team,
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
-        Credential $credential,
+        string $credential,
         ExpoCredentialExporter $exporter,
     ): RedirectResponse {
         abort_unless(
@@ -30,9 +30,9 @@ class ExpoCredentialController extends Controller
             404,
         );
         abort_unless($team->allows($request->user(), TeamPermission::ManageCredentials), 403);
+        $credential = $team->credentials()->findOrFail($credential);
         abort_unless(
             $appIdentifier->mobile_app_id === $mobileApp->id
-            && $credential->team_id === $team->id
             && $this->isAttached($credential, $appIdentifier),
             404,
         );

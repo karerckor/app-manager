@@ -8,6 +8,7 @@ use App\Enums\WebhookEventType;
 use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\CredentialResource;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
@@ -15,10 +16,11 @@ use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Rules\ValidCredentialFile;
+use App\Support\Audit\CredentialAccessAuditRecorder;
 use App\Support\Credentials\BuildProfileSchema;
+use App\Support\Credentials\CredentialFileStorage;
 use App\Support\Credentials\CredentialSchema;
 use App\Support\Credentials\CredentialUniqueness;
-use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -36,6 +38,8 @@ class CredentialController extends Controller
     public function __construct(
         private readonly WebhookEventRecorder $webhookEvents,
         private readonly CredentialUniqueness $credentialUniqueness,
+        private readonly ExpoAutoSyncDispatcher $expoAutoSync,
+        private readonly CredentialAccessAuditRecorder $credentialAccessAudits,
     ) {}
 
     public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
@@ -84,7 +88,7 @@ class CredentialController extends Controller
             : null;
         $this->ensureProfileIsSupported($profileType, $identifier);
 
-        $credential = DB::transaction(function () use ($team, $data, $identifier, $profileType, $mobileApp) {
+        $credential = DB::transaction(function () use ($team, $data, $identifier, $profileType, $mobileApp, $request) {
             $credential = $team->credentials()->create([
                 ...Arr::only($data, ['name', 'type', 'expires_at']),
                 'payload' => $data['payload'] ?? null,
@@ -99,7 +103,7 @@ class CredentialController extends Controller
             } else {
                 $identifier->credentials()->attach($credential);
             }
-            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+            CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             $this->refreshFingerprint($credential);
             $this->webhookEvents->record(
                 $team,
@@ -122,6 +126,25 @@ class CredentialController extends Controller
         string $credential,
     ): CredentialResource {
         return new CredentialResource($this->credential($team, $mobileApp, $credential));
+    }
+
+    public function reveal(
+        Team $team,
+        MobileApp $mobileApp,
+        string $credential,
+    ): JsonResponse {
+        $credential = $this->credential($team, $mobileApp, $credential);
+        $this->credentialAccessAudits->revealed($credential);
+
+        return response()->json([
+            'data' => [
+                'id' => $credential->id,
+                'payload' => (object) ($credential->payload ?? []),
+            ],
+        ])->withHeaders([
+            'Cache-Control' => 'no-store, private',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function update(
@@ -161,7 +184,7 @@ class CredentialController extends Controller
             $credential->update(Arr::only($data, ['name', 'expires_at', 'payload']));
 
             if ($request->hasFile('file')) {
-                $credential->addMediaFromRequest('file')->toMediaCollection('file');
+                CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             }
 
             $this->refreshFingerprint($credential);
@@ -180,6 +203,7 @@ class CredentialController extends Controller
     public function destroy(Request $request, Team $team, MobileApp $mobileApp, string $credential): Response
     {
         $credential = $this->credential($team, $mobileApp, $credential);
+        $appIds = $this->expoAutoSync->appIdsForCredential($credential);
         DB::transaction(function () use ($credential, $team) {
             $payload = WebhookPayload::credential($credential);
             $credential->delete();
@@ -190,6 +214,7 @@ class CredentialController extends Controller
                 $payload,
             );
         });
+        $this->expoAutoSync->dispatchForAppIds($appIds);
 
         return response()->noContent();
     }
@@ -199,10 +224,13 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): StreamedResponse {
-        $media = $this->credential($team, $mobileApp, $credential)->getFirstMedia('file');
+        $credentialModel = $this->credential($team, $mobileApp, $credential);
+        $media = $credentialModel->getFirstMedia('file');
         abort_unless($media, 404);
 
-        return MediaFileResponse::download($media);
+        $this->credentialAccessAudits->downloaded($credentialModel, $media);
+
+        return CredentialFileStorage::download($media);
     }
 
     public function upload(
@@ -220,8 +248,8 @@ class CredentialController extends Controller
                 new ValidCredentialFile($credential->type, $credential->payload ?? []),
             ],
         ]);
-        DB::transaction(function () use ($credential, $team) {
-            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+        DB::transaction(function () use ($credential, $team, $request) {
+            CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             $this->refreshFingerprint($credential);
             $this->webhookEvents->record(
                 $team,

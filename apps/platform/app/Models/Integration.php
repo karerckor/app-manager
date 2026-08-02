@@ -98,6 +98,11 @@ class Integration extends Model implements Auditable
         return $this->hasOne(WebhookEndpoint::class);
     }
 
+    public function notificationDestination(): HasOne
+    {
+        return $this->hasOne(NotificationDestination::class);
+    }
+
     public function expoProjects(): HasMany
     {
         return $this->hasMany(ExpoProject::class);

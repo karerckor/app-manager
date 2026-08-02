@@ -65,7 +65,7 @@ class AppContext
                 'media_regenerate' => route('accounts.apps.media.regenerate', [$team, $app]),
                 'identifiers_page' => route('accounts.apps.identifiers.index', [$team, $app]),
                 'builds_page' => route('accounts.apps.builds.index', [$team, $app]),
-                'expo_page' => ExpoAppContext::available($team)
+                'expo_page' => ExpoAppContext::available($team, $app)
                     ? route('accounts.apps.expo.index', [$team, $app])
                     : null,
                 'update' => route('accounts.apps.update', [$team, $app]),

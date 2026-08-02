@@ -11,7 +11,10 @@ class TeamInvitationNotification extends Notification
 {
     use Queueable;
 
-    public function __construct(public TeamInvitation $invitation) {}
+    public function __construct(
+        public TeamInvitation $invitation,
+        public string $plainTextToken,
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -24,7 +27,9 @@ class TeamInvitationNotification extends Notification
             ->subject("You're invited to {$this->invitation->team->name}")
             ->greeting('You have been invited')
             ->line("{$this->invitation->inviter?->name} invited you to join {$this->invitation->team->name} as {$this->invitation->role}.")
-            ->action('Accept invitation', route('team-invitations.show', ['invitation' => $this->invitation]))
+            ->action('Accept invitation', route('team-invitations.show', [
+                'invitation' => $this->plainTextToken,
+            ]))
             ->line('This invitation expires in 7 days. Sign in with the invited email address to accept it.');
     }
 }

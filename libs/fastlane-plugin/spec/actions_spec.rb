@@ -349,7 +349,7 @@ RSpec.describe "App Manager actions" do
 
   it "lists credentials and exposes them through lane context" do
     credentials = [
-      { "id" => "cert-1", "type" => "ios_certificate", "name" => "App Store" },
+      { "id" => "cert-1", "type" => "ios_certificate", "name" => "App Store", "payload" => { "password" => "secret" } },
       { "id" => "keystore-1", "type" => "android_keystore", "name" => "Production" }
     ]
     allow(Fastlane::Helper::AppManagerHelper).to receive(:list_credentials).and_return(credentials)
@@ -359,7 +359,10 @@ RSpec.describe "App Manager actions" do
     expect(result).to eq(credentials)
     expect(
       Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_CREDENTIALS]
-    ).to eq(credentials)
+    ).to eq([
+      { "id" => "cert-1", "type" => "ios_certificate", "name" => "App Store" },
+      { "id" => "keystore-1", "type" => "android_keystore", "name" => "Production" }
+    ])
   ensure
     Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_CREDENTIALS] = nil
   end

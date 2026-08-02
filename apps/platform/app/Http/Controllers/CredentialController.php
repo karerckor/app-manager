@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
-use App\Enums\TeamPermission;
 use App\Enums\WebhookEventType;
+use App\Http\Requests\AttachCredentialRequest;
+use App\Http\Requests\DetachCredentialRequest;
+use App\Http\Requests\UploadCredentialFileRequest;
+use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
@@ -13,10 +16,11 @@ use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Rules\ValidCredentialFile;
+use App\Support\Audit\CredentialAccessAuditRecorder;
 use App\Support\Credentials\BuildProfileSchema;
+use App\Support\Credentials\CredentialFileStorage;
 use App\Support\Credentials\CredentialSchema;
 use App\Support\Credentials\CredentialUniqueness;
-use App\Support\Storage\MediaFileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,44 +36,21 @@ class CredentialController extends Controller
     public function __construct(
         private readonly WebhookEventRecorder $webhookEvents,
         private readonly CredentialUniqueness $credentialUniqueness,
+        private readonly ExpoAutoSyncDispatcher $expoAutoSync,
+        private readonly CredentialAccessAuditRecorder $credentialAccessAudits,
     ) {}
 
     public function attach(
-        Request $request,
+        AttachCredentialRequest $request,
         Team $team,
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
     ): RedirectResponse {
-        $this->authorizeManagement($request, $team);
+        $credential = $team->credentials()->findOrFail($request->validated('credential_id'));
 
-        $data = $request->validate([
-            'credential_id' => [
-                'required',
-                Rule::exists('credentials', 'id')->where('team_id', $team->id),
-            ],
-        ]);
-        $credential = $team->credentials()->findOrFail($data['credential_id']);
-
-        if (! CredentialSchema::supportsPlatform($credential->type, $appIdentifier->platform->value)) {
-            throw ValidationException::withMessages([
-                'credential_id' => 'This credential cannot be attached to the selected platform.',
-            ]);
-        }
-
-        $profileData = $request->validate([
-            'profile_type' => CredentialSchema::requiresProfile($credential->type)
-                ? ['required', Rule::enum(ProfileType::class)]
-                : ['prohibited'],
-        ]);
-        $profileType = isset($profileData['profile_type'])
-            ? ProfileType::from($profileData['profile_type'])
+        $profileType = $request->has('profile_type')
+            ? ProfileType::from($request->validated('profile_type'))
             : null;
-
-        if ($profileType && ! BuildProfileSchema::supportsPlatform($profileType, $appIdentifier->platform)) {
-            throw ValidationException::withMessages([
-                'profile_type' => 'This build target cannot be used with the selected platform.',
-            ]);
-        }
 
         DB::transaction(function () use ($credential, $appIdentifier, $profileType, $team) {
             if ($profileType) {
@@ -96,8 +77,6 @@ class CredentialController extends Controller
 
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-
         $type = CredentialType::tryFrom((string) $request->input('type'));
         $rules = [
             'app_identifier_id' => [
@@ -120,7 +99,6 @@ class CredentialController extends Controller
 
         $data = $request->validate($rules);
         $type = CredentialType::from($data['type']);
-
         $identifier = AppIdentifier::findOrFail($data['app_identifier_id']);
 
         if (! CredentialSchema::supportsPlatform($type, $identifier->platform->value)) {
@@ -186,7 +164,7 @@ class CredentialController extends Controller
             }
 
             if (! $reused && $request->hasFile('file')) {
-                $credential->addMediaFromRequest('file')->toMediaCollection('file');
+                CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             }
 
             $this->webhookEvents->record(
@@ -210,22 +188,18 @@ class CredentialController extends Controller
     }
 
     public function detach(
-        Request $request,
+        DetachCredentialRequest $request,
         Team $team,
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
-        Credential $credential,
+        string $credential,
     ): RedirectResponse {
-        $this->authorizeManagement($request, $team);
         abort_unless($mobileApp->team_id === $team->id, 404);
         abort_unless($appIdentifier->mobile_app_id === $mobileApp->id, 404);
-        abort_unless($credential->team_id === $team->id, 404);
+        $credential = $team->credentials()->findOrFail($credential);
 
-        $data = $request->validate([
-            'profile_type' => ['nullable', Rule::enum(ProfileType::class)],
-        ]);
-        $profileType = isset($data['profile_type'])
-            ? ProfileType::from($data['profile_type'])
+        $profileType = $request->has('profile_type')
+            ? ProfileType::from($request->validated('profile_type'))
             : null;
 
         DB::transaction(function () use ($credential, $appIdentifier, $profileType, $team) {
@@ -247,15 +221,13 @@ class CredentialController extends Controller
                 WebhookPayload::credential($credential),
             );
         });
+        $this->expoAutoSync->dispatchForAppIds([$mobileApp->id]);
 
         return back()->with('status', 'Credential detached. It remains in Credentials Vault.');
     }
 
     public function update(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-        abort_unless($credential->team_id === $team->id, 404);
-
         $type = CredentialType::tryFrom((string) $request->input('type'));
 
         if ($type
@@ -305,7 +277,7 @@ class CredentialController extends Controller
             ]);
 
             if ($request->hasFile('file')) {
-                $credential->addMediaFromRequest('file')->toMediaCollection('file');
+                CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             }
 
             $credential->forceFill([
@@ -325,8 +297,7 @@ class CredentialController extends Controller
 
     public function destroy(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-        abort_unless($credential->team_id === $team->id, 404);
+        $appIds = $this->expoAutoSync->appIdsForCredential($credential);
 
         DB::transaction(function () use ($credential, $team) {
             $payload = WebhookPayload::credential($credential);
@@ -338,24 +309,15 @@ class CredentialController extends Controller
                 $payload,
             );
         });
+        $this->expoAutoSync->dispatchForAppIds($appIds);
 
         return back()->with('status', 'Credential removed.');
     }
 
-    public function upload(Request $request, Team $team, Credential $credential): RedirectResponse
+    public function upload(UploadCredentialFileRequest $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeManagement($request, $team);
-        abort_unless($credential->team_id === $team->id, 404);
-        $request->validate([
-            'file' => [
-                'required',
-                'file',
-                'max:20480',
-                new ValidCredentialFile($credential->type, $credential->payload ?? []),
-            ],
-        ]);
-        DB::transaction(function () use ($credential, $team) {
-            $credential->addMediaFromRequest('file')->toMediaCollection('file');
+        DB::transaction(function () use ($credential, $team, $request) {
+            CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             $credential->forceFill([
                 'fingerprint' => $this->credentialUniqueness->fingerprintCredential($credential),
             ])->saveQuietly();
@@ -372,19 +334,15 @@ class CredentialController extends Controller
 
     public function download(Request $request, Team $team, Credential $credential): StreamedResponse
     {
-        $this->authorizeManagement($request, $team);
-        abort_unless($credential->team_id === $team->id, 404);
         $media = $credential->getFirstMedia('file');
         abort_unless($media, 404);
+        $this->credentialAccessAudits->downloaded($credential, $media);
 
-        return MediaFileResponse::download($media);
+        return CredentialFileStorage::download($media);
     }
 
     public function reveal(Request $request, Team $team, Credential $credential): JsonResponse
     {
-        $this->authorizeManagement($request, $team);
-        abort_unless($credential->team_id === $team->id, 404);
-
         $validator = Validator::make($request->all(), [
             'password' => ['required', 'current_password:web'],
             'scope' => ['sometimes', Rule::in(['passwords', 'all'])],
@@ -415,16 +373,12 @@ class CredentialController extends Controller
         abort_if($secrets === [], 404);
 
         $request->session()->put('auth.password_confirmed_at', now()->timestamp);
+        $this->credentialAccessAudits->revealed($credential);
 
         return response()
             ->json(['secrets' => $secrets])
             ->header('Cache-Control', 'no-store, private')
             ->header('Pragma', 'no-cache')
             ->header('X-Content-Type-Options', 'nosniff');
-    }
-
-    private function authorizeManagement(Request $request, Team $team): void
-    {
-        abort_unless($team->allows($request->user(), TeamPermission::ManageCredentials), 403);
     }
 }

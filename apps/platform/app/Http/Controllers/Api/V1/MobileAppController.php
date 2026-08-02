@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Enums\WebhookEventType;
 use App\Http\Concerns\ResolvesPageSize;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\StoreMobileAppRequest;
+use App\Http\Requests\Api\V1\UpdateMobileAppRequest;
 use App\Http\Resources\Api\V1\MobileAppResource;
 use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
@@ -16,7 +18,6 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class MobileAppController extends Controller
 {
@@ -31,9 +32,9 @@ class MobileAppController extends Controller
         );
     }
 
-    public function store(Request $request, Team $team): JsonResponse
+    public function store(StoreMobileAppRequest $request, Team $team): JsonResponse
     {
-        $data = $request->validate($this->rules($team));
+        $data = $request->validated();
         $data['slug'] = $this->availableSlug($team, ($data['slug'] ?? null) ?: $data['name']);
 
         $mobileApp = DB::transaction(function () use ($team, $data) {
@@ -58,11 +59,10 @@ class MobileAppController extends Controller
         return new MobileAppResource($mobileApp);
     }
 
-    public function update(Request $request, Team $team, MobileApp $mobileApp): MobileAppResource
+    public function update(UpdateMobileAppRequest $request, Team $team, MobileApp $mobileApp): MobileAppResource
     {
-        $data = $request->validate($this->rules($team, $mobileApp));
-        DB::transaction(function () use ($mobileApp, $team, $data) {
-            $mobileApp->update($data);
+        DB::transaction(function () use ($mobileApp, $team, $request) {
+            $mobileApp->update($request->validated());
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppUpdated,
@@ -88,24 +88,6 @@ class MobileAppController extends Controller
         });
 
         return response()->noContent();
-    }
-
-    private function rules(Team $team, ?MobileApp $mobileApp = null): array
-    {
-        $required = $mobileApp ? 'sometimes' : 'required';
-
-        return [
-            'name' => [$required, 'string', 'max:255'],
-            'slug' => [
-                'sometimes',
-                'string',
-                'max:255',
-                'alpha_dash:ascii',
-                Rule::unique('mobile_apps')->where('team_id', $team->id)->ignore($mobileApp?->id),
-            ],
-            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
-            'metadata' => ['sometimes', 'nullable', 'array'],
-        ];
     }
 
     private function availableSlug(Team $team, string $value): string

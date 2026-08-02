@@ -20,6 +20,12 @@ class BuildLog
             return DB::transaction(function () use ($build, $content) {
                 $current = BuildRecord::query()->lockForUpdate()->findOrFail($build->id);
 
+                if ($current->logs_archived_at !== null) {
+                    throw ValidationException::withMessages([
+                        'content' => 'This build log has already been archived.',
+                    ]);
+                }
+
                 if (strlen($content) > self::MAX_CHUNK_BYTES) {
                     throw ValidationException::withMessages([
                         'content' => 'A build log chunk may not exceed 256 KiB.',
@@ -46,6 +52,12 @@ class BuildLog
 
     public function replace(BuildRecord $build, string $content): BuildRecord
     {
+        if ($build->logs_archived_at !== null) {
+            throw ValidationException::withMessages([
+                'content' => 'This build log has already been archived.',
+            ]);
+        }
+
         if (strlen($content) > self::MAX_TOTAL_BYTES) {
             throw ValidationException::withMessages([
                 'content' => 'The build log may not exceed 5 MB.',

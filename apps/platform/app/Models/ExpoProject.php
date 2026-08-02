@@ -21,12 +21,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'description',
     'icon_url',
     'sync_metadata',
+    'auto_sync_enabled',
+    'auto_sync_status',
+    'auto_sync_snapshot',
+    'auto_sync_error',
+    'auto_sync_pending_at',
+    'auto_sync_started_at',
     'exists_on_expo',
     'last_synced_at',
+    'last_pushed_at',
 ])]
 class ExpoProject extends Model
 {
     use HasUuids;
+
+    protected $attributes = [
+        'auto_sync_enabled' => false,
+        'auto_sync_status' => 'idle',
+    ];
 
     public function team(): BelongsTo
     {
@@ -52,8 +64,13 @@ class ExpoProject extends Model
     {
         return [
             'sync_metadata' => 'boolean',
+            'auto_sync_enabled' => 'boolean',
+            'auto_sync_snapshot' => 'array',
+            'auto_sync_pending_at' => 'datetime',
+            'auto_sync_started_at' => 'datetime',
             'exists_on_expo' => 'boolean',
             'last_synced_at' => 'datetime',
+            'last_pushed_at' => 'datetime',
         ];
     }
 }

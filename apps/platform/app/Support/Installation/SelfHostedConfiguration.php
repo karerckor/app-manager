@@ -16,8 +16,7 @@ class SelfHostedConfiguration
 
     public function enabled(): bool
     {
-        return (bool) config('installer.enabled')
-            && config('billing.distribution') === 'self-hosted';
+        return (bool) config('installer.enabled');
     }
 
     public function installed(): bool

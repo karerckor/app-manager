@@ -24,4 +24,11 @@ return [
      * appropriate ceiling for their storage and PHP upload configuration.
      */
     'max_file_size_kb' => (int) env('MEDIA_MAX_FILE_SIZE_KB', 102400),
+
+    /*
+     * Spatie Media Library reads `max_file_size` (bytes) when attaching files.
+     * Without this key the package default of 10 MB applies, which rejects
+     * ordinary mobile build artifacts. Keep it in lockstep with the KB limit.
+     */
+    'max_file_size' => ((int) env('MEDIA_MAX_FILE_SIZE_KB', 102400)) * 1024,
 ];
