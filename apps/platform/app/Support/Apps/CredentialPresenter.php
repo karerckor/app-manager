@@ -25,6 +25,11 @@ class CredentialPresenter
         $media = $credential->getFirstMedia('file');
         $definition = CredentialSchema::definition($credential->type);
         $payload = $credential->payload ?? [];
+        $reference = $credential->vaultReference;
+        $passwordFieldsCount = collect($definition['fields'])
+            ->filter(fn (array $field): bool => $field['input'] === 'password'
+                && array_key_exists($field['name'], $payload))
+            ->count();
         $expoLink = $expoProject?->credentialLinks
             ->first(fn ($link) => $link->credential_id === $credential->id
                 && $link->app_identifier_id === $identifier->id);
@@ -56,7 +61,7 @@ class CredentialPresenter
                     ? ''
                     : ($payload[$field['name']] ?? ''),
             ]),
-            'reveal_url' => $payload !== []
+            'reveal_url' => $passwordFieldsCount > 0
                 ? route('accounts.credentials.reveal', ['team' => $team, 'credential' => $credential])
                 : null,
             'update_url' => route('accounts.credentials.update', ['team' => $team, 'credential' => $credential]),
@@ -72,6 +77,20 @@ class CredentialPresenter
                 'name' => $media->file_name,
                 'size' => $media->size,
                 'download_url' => route('accounts.credentials.download', ['team' => $team, 'credential' => $credential]),
+            ] : null,
+            'storage_mode' => $credential->storage_mode->value,
+            'vault' => $reference ? [
+                'provider' => $reference->provider->value,
+                'provider_label' => $reference->provider->label(),
+                'resource' => $reference->resource,
+                'metadata' => $reference->metadata,
+                'metadata_version' => $reference->metadata_version,
+                'metadata_source' => $reference->metadata_source->value,
+                'verification' => [
+                    'status' => $reference->verification_status->value,
+                    'verified_at' => $reference->verified_at,
+                    'error' => $reference->verification_error,
+                ],
             ] : null,
             'expo' => [
                 'available' => $expoProject !== null

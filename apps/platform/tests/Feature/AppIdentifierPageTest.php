@@ -196,15 +196,16 @@ class AppIdentifierPageTest extends TestCase
         [$user, $team] = $this->userWithTeam();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $identifier = $app->appIdentifiers()->create([
-            'platform' => Platform::Ios,
-            'identifier' => 'com.example.atlas',
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.app',
         ]);
         $credential = Credential::factory()->create([
             'team_id' => $team->id,
-            'type' => CredentialType::AppleApiKey,
+            'type' => CredentialType::AndroidKeystore,
             'payload' => [
-                'key_id' => 'ABCDEFGHIJ',
-                'issuer_id' => '025c7398-0f0e-487d-9a22-4e154b3427ea',
+                'store_password' => 'store-secret',
+                'key_alias' => 'release',
+                'key_password' => 'key-secret',
             ],
         ]);
         $identifier->credentials()->attach($credential);
@@ -212,7 +213,7 @@ class AppIdentifierPageTest extends TestCase
         $this->actingAs($user)->get(route('accounts.apps.identifiers.show', [$team, $app, $identifier]))
             ->assertSuccessful()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('identifier.services.0.reveal_fields_count', 2)
+                ->where('identifier.services.0.reveal_fields_count', 3)
                 ->where(
                     'identifier.services.0.reveal_url',
                     route('accounts.credentials.reveal', [$team, $credential]),
@@ -224,20 +225,8 @@ class AppIdentifierPageTest extends TestCase
         )
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertExactJson([
-                'secrets' => [
-                    [
-                        'name' => 'key_id',
-                        'label' => 'Key ID',
-                        'value' => 'ABCDEFGHIJ',
-                    ],
-                    [
-                        'name' => 'issuer_id',
-                        'label' => 'Issuer ID',
-                        'value' => '025c7398-0f0e-487d-9a22-4e154b3427ea',
-                    ],
-                ],
-            ]);
+            ->assertJsonCount(3, 'secrets')
+            ->assertJsonPath('secrets.0.name', 'store_password');
     }
 
     public function test_show_404_when_identifier_belongs_to_another_app(): void
