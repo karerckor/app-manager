@@ -67,7 +67,7 @@ _webhooks_list() {
   fi
 
   api_get "webhooks" || return 1
-  local fmt='{"type":"table","fields":["id","url","events","created_at"],"headers":["id","url","events","created_at"]}'
+  local fmt='{"type":"table","fields":["id","url","subscribed_events // [] | join(\", \")","enabled"],"headers":["id","url","events","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -104,7 +104,7 @@ _webhooks_get() {
   fi
 
   api_get "webhooks/$webhook_id" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"events","active":"active","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","secret_hint":"secret_hint","consecutive_failures":"consecutive_failures","last_delivered_at":"last_delivered_at","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -164,7 +164,7 @@ _webhooks_create() {
 
   api_post "webhooks" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","active":"active","created_at":"created_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","created_at":"created_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -372,7 +372,7 @@ _webhooks_deliveries() {
   fi
 
   api_get "webhooks/$webhook_id/deliveries" || return 1
-  local fmt='{"type":"table","fields":["id","event","status_code","delivered_at"],"headers":["id","event","status","delivered_at"]}'
+  local fmt='{"type":"table","fields":["id","event_type","status","response_status","attempt_count","delivered_at"],"headers":["id","event","status","http","attempts","delivered_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

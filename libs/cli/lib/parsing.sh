@@ -21,8 +21,10 @@ Resources:
   artifacts       Manage build artifacts
   files           Manage files attached to an app
   assets          Manage app icons and splash screens
+  identifiers     Manage per-platform app identifiers
   credentials     Manage app credentials
   integrations    Manage integrations
+  eas             Manage the Expo/EAS integration
   pipelines       Manage CI/CD pipelines
   webhooks        Manage webhook endpoints
 
@@ -89,7 +91,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|credentials|integrations|pipelines|webhooks)
+      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -114,8 +116,10 @@ dispatch_command() {
     artifacts) source "$cmd_dir/artifacts.sh"; command_artifacts "${REMAINING_ARGS[@]}" ;;
     files) source "$cmd_dir/files.sh"; command_files "${REMAINING_ARGS[@]}" ;;
     assets) source "$cmd_dir/assets.sh"; command_assets "${REMAINING_ARGS[@]}" ;;
+    identifiers) source "$cmd_dir/identifiers.sh"; command_identifiers "${REMAINING_ARGS[@]}" ;;
     credentials) source "$cmd_dir/credentials.sh"; command_credentials "${REMAINING_ARGS[@]}" ;;
     integrations) source "$cmd_dir/integrations.sh"; command_integrations "${REMAINING_ARGS[@]}" ;;
+    eas) source "$cmd_dir/eas.sh"; command_eas "${REMAINING_ARGS[@]}" ;;
     pipelines) source "$cmd_dir/pipelines.sh"; command_pipelines "${REMAINING_ARGS[@]}" ;;
     webhooks) source "$cmd_dir/webhooks.sh"; command_webhooks "${REMAINING_ARGS[@]}" ;;
     '') usage; return 1 ;;

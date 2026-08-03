@@ -33,6 +33,20 @@ assert_contains "$output" 'splashscreen.original' 'assets list returns splashscr
 assert_contains "$(cat "$MOCK_LOG")" 'apps/customer-app/assets' 'assets list hits the assets endpoint'
 pass 'assets list'
 
+# --- assets list without --json renders the url map as an aligned table ---
+# The endpoint answers with an object keyed by "<asset>.<variant>", so the generic
+# table formatter cannot read it. Only --json was covered before, which hid that.
+: >"$MOCK_LOG"
+output=$("$CLI" assets list 2>&1)
+assert_contains "$output" 'asset' 'assets list prints a header'
+assert_contains "$output" 'icon.original' 'assets list prints the asset key'
+assert_contains "$output" 'assets/icon/files/original' 'assets list prints the download url'
+assert_contains "$output" 'icon.ios-icon-40' 'assets list prints generated variants'
+case "$output" in
+  *jq*error*) fail 'assets list must not emit jq errors' ;;
+esac
+pass 'assets list default output'
+
 # --- assets show (preview) ---
 : >"$MOCK_LOG"
 output_file="$TEST_DIR/preview.png"
@@ -99,4 +113,4 @@ help=$("$CLI" assets --help 2>&1)
 assert_contains "$help" 'icon' 'assets --help mentions icon'
 pass 'assets --help'
 
-printf '1..10\n'
+printf '1..11\n'

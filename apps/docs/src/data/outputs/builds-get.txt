@@ -1,0 +1,9 @@
+id:              019fc789-47b5-7034-9291-4cd3c57b75d5
+profile:         production
+status:          completed
+reporting_mode:  manual
+tags:            android, 1.4.0
+request_uuid:    10000000-0000-4000-8000-000000000001
+created_at:      2026-08-03T12:11:30.000000Z
+started_at:      2026-08-03T09:11:30.000000Z
+finished_at:     2026-08-03T09:17:30.000000Z

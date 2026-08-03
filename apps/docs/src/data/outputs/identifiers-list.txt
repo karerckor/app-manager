@@ -1,0 +1,5 @@
+id                                    platform  identifier             name                    version
+------------------------------------  --------  ---------------------  ----------------------  -------
+019fc789-479a-71b2-800a-1b8c4aed6fc7  android   com.acme.customer      Customer App (Android)  1.4.0  
+019fc789-4798-703f-ab58-5e949ba0ab5c  ios       com.acme.customer      Customer App (iOS)      1.4.0  
+019fc789-479d-7105-be55-2a8476292572  web       customer.acme.example  Customer Web            1.4.0  

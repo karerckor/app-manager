@@ -77,7 +77,7 @@ _pipelines_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  local fmt='{"type":"table","fields":["id","name","repository_full_name","workflow_name","enabled"],"headers":["id","name","repository","workflow","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -120,7 +120,7 @@ _pipelines_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","enabled":"enabled","profile_type":"profile_type","reporting_mode":"reporting_mode","repository":"repository_full_name","workflow":"workflow_name","workflow_path":"workflow_path","default_ref":"default_ref","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -297,6 +297,8 @@ _pipelines_run() {
   local integration_id=""
   local pipeline_id=""
   local inputs=""
+  local ref=""
+  local request_uuid=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -305,12 +307,18 @@ _pipelines_run() {
       --integration-id=*) integration_id=${1#*=}; shift ;;
       --inputs) require_value "$1" "$2"; inputs="$2"; shift 2 ;;
       --inputs=*) inputs=${1#*=}; shift ;;
+      --ref) require_value "$1" "$2"; ref="$2"; shift 2 ;;
+      --ref=*) ref=${1#*=}; shift ;;
+      --request-uuid) require_value "$1" "$2"; request_uuid="$2"; shift 2 ;;
+      --request-uuid=*) request_uuid=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]\n'
+        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON] [--ref REF] [--request-uuid UUID]\n'
+        printf '\nThe run is idempotent on --request-uuid; one is generated when omitted.\n'
+        printf '--ref overrides the pipeline default ref. Prints the created build record.\n'
         return 0
         ;;
       -*) die "unknown pipelines run option: $1" ;;
@@ -325,12 +333,27 @@ _pipelines_run() {
 
   local path="integrations/$integration_id/pipelines/$pipeline_id/runs"
 
-  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  if [ -n "$inputs" ]; then
-    "$JQ_BIN" -n --argjson i "$inputs" '{inputs: $i}' >"$body_file"
-  else
-    printf '{}' >"$body_file"
+  # request_uuid is required by the API and makes a retried CI step reuse the same
+  # build instead of dispatching a second one.
+  if [ -z "$request_uuid" ]; then
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
+
+  require_jq
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg uuid "$request_uuid")
+  local jq_expr='{request_uuid: $uuid'
+  if [ -n "$ref" ]; then
+    jq_args+=(--arg ref "$ref")
+    jq_expr="$jq_expr, ref: \$ref"
+  fi
+  if [ -n "$inputs" ]; then
+    jq_args+=(--argjson inputs "$inputs")
+    jq_expr="$jq_expr, inputs: \$inputs"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" \
+    || { rm -f -- "$body_file"; die "--inputs must be valid JSON"; }
 
   if [ "$DRY_RUN" -eq 1 ]; then
     local url
@@ -339,14 +362,16 @@ _pipelines_run() {
     printf 'dry-run: no request sent\n'
     printf 'method: POST\n'
     printf 'url: %s\n' "$url"
-    [ -n "$inputs" ] && printf 'inputs: %s\n' "$inputs"
+    printf 'body: %s\n' "$(cat "$body_file")"
     rm -f -- "$body_file"
     return 0
   fi
 
   api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  printf 'Pipeline run triggered\n'
+  # The response is the build record the dispatch created, and callers need its id.
+  local fmt='{"type":"resource","fields":{"build_id":"id","status":"status","reporting_mode":"reporting_mode","dispatch_status":"dispatch_status","external_run_url":"external_run_url","request_uuid":"request_uuid","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
 _pipelines_inputs() {

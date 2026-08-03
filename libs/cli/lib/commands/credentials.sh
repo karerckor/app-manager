@@ -82,7 +82,7 @@ _credentials_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","credential_type.slug","build_profile","created_at"],"headers":["id","type","profile","created_at"]}'
+  local fmt='{"type":"table","fields":["id","type","name","expires_at"],"headers":["id","type","name","expires_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -126,7 +126,7 @@ _credentials_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","type":"credential_type.slug","profile":"build_profile","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","type":"type","name":"name","profiles":"profiles // [] | map(.type) | join(\", \")","expires_at":"expires_at","file":"file.name","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

@@ -1,0 +1,6 @@
+id                                    profile     status     created_at                 
+------------------------------------  ----------  ---------  ---------------------------
+019fc789-47b5-7034-9291-4cd3c57b75d5  production  completed  2026-08-03T12:11:30.000000Z
+019fc789-47b9-7013-aadf-bf9444bdc86e  appstore    running    2026-08-03T12:11:30.000000Z
+019fc789-47bc-7119-8785-94a76a5a36fe  production  failed     2026-08-03T12:11:30.000000Z
+019fc789-47bf-70f2-b53a-bc8c81ebcaf3  appstore    pending    2026-08-03T12:11:30.000000Z

@@ -293,7 +293,7 @@ _builds_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","app":"app.slug","profile":"profile_type","status":"status","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","profile":"profile_type","status":"status","reporting_mode":"reporting_mode","tags":"tags // [] | map(.[0]) | join(\", \")","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -354,16 +354,7 @@ _builds_create() {
   fi
 
   if [ -z "$request_uuid" ]; then
-    if command_exists uuidgen; then
-      request_uuid=$(uuidgen)
-    else
-      request_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s-%s-%s-%s' \
-        "$(head -c 8 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 12 /dev/urandom | xxd -p)")
-    fi
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"

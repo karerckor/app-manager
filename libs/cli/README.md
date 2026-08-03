@@ -10,8 +10,10 @@ It provides domain-aware subcommands for all major API resources, plus generic a
 - **`files`** — list, inspect, download, upload, update, and delete files attached to an app
 - **`assets`** — list, preview, download, upload, and delete app icons and splash screens
 - **`apps`** — list, get, create, update, and delete applications
+- **`identifiers`** — manage per-platform bundle IDs, package names, and web domains
 - **`credentials`** — manage app credentials and credential types
 - **`integrations`** — list integrations, repositories, workflows, and refs
+- **`eas`** — connect an Expo account, link projects, and sync identifiers and credentials
 - **`pipelines`** — manage and trigger CI/CD pipelines
 - **`webhooks`** — manage webhook endpoints, deliveries, and secrets
 - **`request`** — generic access to any team API endpoint
@@ -51,10 +53,16 @@ The default destination is `$HOME/.local/bin/appmctl`. Select another directory 
 ```bash
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+  APPMCTL_SHA256="$APPMCTL_SHA256" \
   APPMCTL_INSTALL_DIR="$PWD/.appmctl-bin" bash
 
 export PATH="$PWD/.appmctl-bin:$PATH"
 ```
+
+`APPMCTL_SHA256` is required. The installer aborts without it, because piping an
+unverified remote script into `bash` is how a compromised upstream reaches a runner. Set
+`APPMCTL_ALLOW_UNVERIFIED=1` only against a source you already control.
+
 
 Do not put `APPMCTL_INSTALL_DIR=...` immediately before `curl`: that variable would be available to `curl`, but not to the `bash` process running the installer.
 
@@ -109,6 +117,7 @@ APPMCTL_BIN_DIR="${CI_PROJECT_DIR:-$PWD}/.appmctl-bin"
 
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+  APPMCTL_SHA256="$APPMCTL_SHA256" \
   APPMCTL_INSTALL_DIR="$APPMCTL_BIN_DIR" bash
 
 export PATH="$APPMCTL_BIN_DIR:$PATH"
@@ -127,6 +136,7 @@ GitHub Actions persists the installed directory for later steps through `$GITHUB
   run: |
     curl -fsSL \
       https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+      APPMCTL_SHA256="$APPMCTL_SHA256" \
       APPMCTL_INSTALL_DIR="$RUNNER_TEMP/appmctl-bin" bash
     echo "$RUNNER_TEMP/appmctl-bin" >> "$GITHUB_PATH"
 
@@ -148,7 +158,7 @@ GitLab CI can install it in `before_script`:
 
 ```yaml
 before_script:
-  - curl -fsSL https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
+  - curl -fsSL https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | APPMCTL_SHA256="$APPMCTL_SHA256" APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
   - export PATH="$CI_PROJECT_DIR/.appmctl-bin:$PATH"
 
 build:
@@ -275,6 +285,27 @@ appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]
 appmctl apps delete <slug>
 ```
 
+### `appmctl identifiers`
+
+```bash
+appmctl identifiers list   [--app APP] [--per-page N]
+appmctl identifiers show   [--app APP] <identifier-id>
+appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID \
+                           [--name NAME] [--version VERSION] [--version-code N]
+appmctl identifiers update [--app APP] <identifier-id> [same flags]
+appmctl identifiers delete [--app APP] <identifier-id>
+```
+
+Identifiers are the per-platform bundle IDs, package names, and web domains an app
+ships under. `--version-code` applies to Android only, and the API rejects it for
+other platforms. Uniqueness is enforced per app and platform.
+
+```bash
+appmctl identifiers create --platform android --identifier com.acme.customer \
+  --name 'Customer App' --version 1.4.0 --version-code 42
+appmctl identifiers list
+```
+
 ### `appmctl credentials`
 
 ```bash
@@ -298,6 +329,41 @@ appmctl integrations workflows --integration-id ID
 appmctl integrations refs --integration-id ID
 ```
 
+### `appmctl eas`
+
+```bash
+# Expo account, attached to an integration
+appmctl eas connect --token TOKEN [--account NAME]
+appmctl eas projects --integration-id ID
+appmctl eas import   --integration-id ID --project-id ID
+
+# Project link, attached to an app
+appmctl eas status            [--app APP]
+appmctl eas link              [--app APP] --integration-id ID --mode create|existing [--project-id ID]
+appmctl eas auto-sync         [--app APP] --enabled true|false
+appmctl eas identifiers       [--app APP]
+appmctl eas sync-identifiers  [--app APP]
+appmctl eas provision         [--app APP] --identifier-id ID [--credential-ids ID,ID]
+appmctl eas attach-credential [--app APP] --identifier-id ID --credential-id ID
+
+# Either scope, chosen by the flag you pass
+appmctl eas sync       (--app APP | --integration-id ID)
+appmctl eas disconnect (--app APP | --integration-id ID)
+```
+
+The Expo API splits across two scopes: the account hangs off an integration, and the
+project link hangs off an app. `sync` and `disconnect` exist in both, so they take the
+scope from the flag — `--integration-id` for the account, `--app` for the project link
+— and refuse to run when given both.
+
+The Expo GraphQL and REST proxies are not wrapped. Their payloads pass straight
+through, so use `appmctl request` for them:
+
+```bash
+appmctl request POST integrations/int-002/expo/graphql \
+  --data '{"query":"{ me { username } }"}' --json
+```
+
 ### `appmctl pipelines`
 
 ```bash
@@ -306,9 +372,14 @@ appmctl pipelines get --integration-id ID <pipeline-id>
 appmctl pipelines create --integration-id ID --name NAME [--config JSON]
 appmctl pipelines update --integration-id ID <pipeline-id> [--name NAME] [--config JSON]
 appmctl pipelines delete --integration-id ID <pipeline-id>
-appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]
+appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON] [--ref REF] [--request-uuid UUID]
 appmctl pipelines inputs --integration-id ID <pipeline-id>
 ```
+
+`run` dispatches the workflow and prints the build record the platform created, so the
+build id for `builds wait` comes straight out of the trigger. The run is idempotent on
+`--request-uuid`, which is generated when omitted — pass your own so a retried CI step
+attaches to the same build instead of dispatching a second workflow.
 
 ### `appmctl webhooks`
 
@@ -612,6 +683,8 @@ bash libs/cli/tests/test_webhooks.sh      # Webhooks subcommands
 bash libs/cli/tests/test_logs_artifacts.sh # Logs + artifacts subcommands
 bash libs/cli/tests/test_files.sh         # Files subcommands
 bash libs/cli/tests/test_assets.sh        # Assets (icon + splash screen) subcommands
+bash libs/cli/tests/test_identifiers.sh   # Identifiers subcommands
+bash libs/cli/tests/test_eas.sh           # Expo/EAS subcommands
 ```
 
 The test suite uses a mock `curl` executable and covers URL construction, secret handling, all subcommand actions, dry-run output, formatted output, and backward compatibility with `request`/`stream`. Keep the script compatible with Bash 3.2 and avoid adding runtime dependencies without updating the requirements and CI examples.

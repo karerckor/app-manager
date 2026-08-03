@@ -34,7 +34,7 @@ pass 'webhooks list'
 # --- webhooks get ---
 output=$("$CLI" --json webhooks get wh-001 2>&1)
 assert_contains "$output" 'wh-001' 'webhooks get returns data'
-assert_contains "$output" 'active' 'webhooks get includes active field'
+assert_contains "$output" 'enabled' 'webhooks get includes the enabled field'
 pass 'webhooks get'
 
 # --- webhooks create ---
@@ -74,4 +74,24 @@ output=$("$CLI" webhooks redeliver --webhook-id wh-001 del-001 2>&1)
 assert_contains "$output" 'redelivered' 'webhooks redeliver prints confirmation'
 pass 'webhooks redeliver'
 
-printf '1..9\n'
+# --- default output must map to fields the API actually returns ---
+# WebhookEndpointResource exposes subscribed_events and enabled, and
+# WebhookDeliveryResource exposes event_type and response_status. The old formats
+# asked for events/active/status_code, which printed blank columns.
+output=$("$CLI" webhooks list 2>&1)
+assert_contains "$output" 'build.completed, build.failed' 'webhooks list prints subscribed events'
+assert_contains "$output" 'true' 'webhooks list prints the enabled flag'
+pass 'webhooks list default output'
+
+output=$("$CLI" webhooks get wh-001 2>&1)
+assert_contains "$output" 'build.completed, build.failed' 'webhooks get prints subscribed events'
+assert_contains "$output" 'Release notifier' 'webhooks get prints the integration name'
+pass 'webhooks get default output'
+
+output=$("$CLI" webhooks deliveries wh-001 2>&1)
+assert_contains "$output" 'build.completed' 'webhooks deliveries prints the event type'
+assert_contains "$output" '200' 'webhooks deliveries prints the response status'
+assert_contains "$output" 'delivered' 'webhooks deliveries prints the delivery status'
+pass 'webhooks deliveries default output'
+
+printf '1..12\n'

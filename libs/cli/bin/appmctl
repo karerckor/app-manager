@@ -49,6 +49,30 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Generate an idempotency key. The API validates these as UUIDs, so the urandom
+# fallback forces the version and variant nibbles rather than emitting 32 random
+# hex characters, which would be the right shape but not a valid UUID.
+new_request_uuid() {
+  if command_exists uuidgen; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+    return 0
+  fi
+
+  if [ -r /proc/sys/kernel/random/uuid ]; then
+    cat /proc/sys/kernel/random/uuid
+    return 0
+  fi
+
+  local hex
+  hex=$(od -An -tx1 -N16 /dev/urandom 2>/dev/null | tr -d ' \n') || return 1
+  [ "${#hex}" -eq 32 ] || return 1
+
+  local variant
+  variant=$(printf '%x' $(( 0x${hex:16:2} & 0x3f | 0x80 )))
+  printf '%s-%s-4%s-%s%s-%s\n' \
+    "${hex:0:8}" "${hex:8:4}" "${hex:13:3}" "$variant" "${hex:18:2}" "${hex:20:12}"
+}
+
 require_value() {
   [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 requires a value"
 }
@@ -599,6 +623,11 @@ format_resource() {
     fi
   done < <("$JQ_BIN" -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$fields")
 
+  # The printed label carries a trailing colon, so the column has to be one wider
+  # than the longest key. Without this the longest rows sit a character to the
+  # right of every other row.
+  max_label=$((max_label + 1))
+
   while IFS='=' read -r label path; do
     value=$("$JQ_BIN" -r ".data.${path} // \"\"" "$json_file")
     printf "%-${max_label}s  %s\n" "$label:" "$value"
@@ -744,8 +773,10 @@ Resources:
   artifacts       Manage build artifacts
   files           Manage files attached to an app
   assets          Manage app icons and splash screens
+  identifiers     Manage per-platform app identifiers
   credentials     Manage app credentials
   integrations    Manage integrations
+  eas             Manage the Expo/EAS integration
   pipelines       Manage CI/CD pipelines
   webhooks        Manage webhook endpoints
 
@@ -812,7 +843,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|credentials|integrations|pipelines|webhooks)
+      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -835,6 +866,8 @@ dispatch_command() {
     artifacts) command_artifacts "${REMAINING_ARGS[@]}" ;;
     files) command_files "${REMAINING_ARGS[@]}" ;;
     assets) command_assets "${REMAINING_ARGS[@]}" ;;
+    identifiers) command_identifiers "${REMAINING_ARGS[@]}" ;;
+    eas) command_eas "${REMAINING_ARGS[@]}" ;;
     credentials) command_credentials "${REMAINING_ARGS[@]}" ;;
     integrations) command_integrations "${REMAINING_ARGS[@]}" ;;
     pipelines) command_pipelines "${REMAINING_ARGS[@]}" ;;
@@ -1666,7 +1699,7 @@ _builds_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","app":"app.slug","profile":"profile_type","status":"status","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","profile":"profile_type","status":"status","reporting_mode":"reporting_mode","tags":"tags // [] | map(.[0]) | join(\", \")","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -1727,16 +1760,7 @@ _builds_create() {
   fi
 
   if [ -z "$request_uuid" ]; then
-    if command_exists uuidgen; then
-      request_uuid=$(uuidgen)
-    else
-      request_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s-%s-%s-%s' \
-        "$(head -c 8 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 12 /dev/urandom | xxd -p)")
-    fi
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
@@ -3023,8 +3047,42 @@ _assets_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["asset","url"],"headers":["asset","url"]}'
-  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+
+  if [ "$PRETTY_JSON" -eq 1 ]; then
+    emit_response
+    return
+  fi
+
+  _assets_print_url_map "$LAST_RESPONSE_FILE"
+}
+
+# This endpoint answers with an object keyed by "<asset>.<variant>", not the array
+# of records the table formatter expects, so it gets its own printer.
+_assets_print_url_map() {
+  local json_file="$1"
+  local key
+  local value
+  local width=5
+  local dashes
+
+  require_jq
+
+  while IFS= read -r key; do
+    [ "${#key}" -gt "$width" ] && width=${#key}
+  done < <("$JQ_BIN" -r '.data // {} | keys_unsorted[]' "$json_file")
+
+  if [ "$width" -eq 5 ] && [ "$("$JQ_BIN" -r '.data // {} | length' "$json_file")" = "0" ]; then
+    printf '(no assets)\n'
+    return 0
+  fi
+
+  dashes=$(printf '%*s' "$width" '' | tr ' ' '-')
+  printf "%-${width}s  %s\n" 'asset' 'url'
+  printf '%s  %s\n' "$dashes" '---'
+
+  while IFS=$'\t' read -r key value; do
+    printf "%-${width}s  %s\n" "$key" "$value"
+  done < <("$JQ_BIN" -r '.data // {} | to_entries[] | "\(.key)\t\(.value)"' "$json_file")
 }
 
 _assets_show() {
@@ -3217,6 +3275,387 @@ _assets_delete() {
 
   api_delete "$path" || return 1
   printf 'Asset %s deleted\n' "$type"
+}
+
+
+# "identifiers" subcommands: list, show, create, update, delete.
+#
+# App identifiers are the per-platform bundle IDs, package names, and web domains
+# an app ships under. Uniqueness, the Android-only version_code rule, and the web
+# domain format are enforced by the API, not here, so the CLI cannot drift from it.
+
+identifiers_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] identifiers <action> [options]
+
+Actions:
+  list                List identifiers for an app
+  show                Show a single identifier
+  create              Add an identifier
+  update              Update an identifier
+  delete              Remove an identifier
+
+Options:
+  --app APP           App slug (default: APP_MANAGER_APP)
+  --platform PLATFORM ios, android, or web (required for create)
+  --identifier ID     Bundle ID, package name, or domain (required for create)
+  --name NAME         Display name
+  --version VERSION   Marketing version
+  --version-code N    Android version code (android only)
+  --per-page N        Page size for list
+
+Run "appmctl identifiers <action> --help" for action-specific help.
+EOF
+}
+
+validate_platform() {
+  case "$1" in
+    ios|android|web) ;;
+    *) die "--platform must be \"ios\", \"android\", or \"web\"" ;;
+  esac
+}
+
+command_identifiers() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _identifiers_list "$@" ;;
+    show) _identifiers_show "$@" ;;
+    create) _identifiers_create "$@" ;;
+    update) _identifiers_update "$@" ;;
+    delete) _identifiers_delete "$@" ;;
+    -h|--help|"") identifiers_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown identifiers action: $action (use list, show, create, update, delete)" ;;
+  esac
+}
+
+_identifiers_list() {
+  local app="${APP:-}"
+  local per_page=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --per-page) require_value "$1" "$2"; per_page="$2"; shift 2 ;;
+      --per-page=*) per_page=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl identifiers list [--app APP] [--per-page N]\n'
+        return 0
+        ;;
+      *) die "unknown identifiers list option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+
+  local path="apps/$APP/identifiers"
+  if [ -n "$per_page" ]; then
+    case "$per_page" in
+      ''|*[!0-9]*) die "--per-page must be a positive integer" ;;
+    esac
+    path="$path?per_page=$per_page"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","platform","identifier","name","version"],"headers":["id","platform","identifier","name","version"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_identifiers_show() {
+  local app="${APP:-}"
+  local identifier_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl identifiers show [--app APP] <identifier-id>\n'
+        return 0
+        ;;
+      -*) die "unknown identifiers show option: $1" ;;
+      *)
+        [ -z "$identifier_id" ] || die "unexpected argument: $1"
+        identifier_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$identifier_id" ] || die "identifier ID is required"
+
+  local path="apps/$APP/identifiers/$identifier_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$(_identifiers_resource_format)"
+}
+
+_identifiers_create() {
+  local app="${APP:-}"
+  local platform=""
+  local identifier=""
+  local name=""
+  local version=""
+  local version_code=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --platform) require_value "$1" "$2"; platform="$2"; shift 2 ;;
+      --platform=*) platform=${1#*=}; shift ;;
+      --identifier) require_value "$1" "$2"; identifier="$2"; shift 2 ;;
+      --identifier=*) identifier=${1#*=}; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; shift 2 ;;
+      --name=*) name=${1#*=}; shift ;;
+      --version) require_value "$1" "$2"; version="$2"; shift 2 ;;
+      --version=*) version=${1#*=}; shift ;;
+      --version-code) require_value "$1" "$2"; version_code="$2"; shift 2 ;;
+      --version-code=*) version_code=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID [--name NAME] [--version VERSION] [--version-code N]\n'
+        return 0
+        ;;
+      *) die "unknown identifiers create option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$platform" ] || die "--platform is required"
+  validate_platform "$platform"
+  [ -n "$identifier" ] || die "--identifier is required"
+  _identifiers_validate_version_code "$version_code"
+
+  require_jq
+  ensure_tmpdir
+  body_file=$(new_temp_file identifiers-create) || return 1
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+
+  local path="apps/$APP/identifiers"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || return 1
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$(_identifiers_resource_format)"
+}
+
+_identifiers_update() {
+  local app="${APP:-}"
+  local identifier_id=""
+  local platform=""
+  local identifier=""
+  local name=""
+  local version=""
+  local version_code=""
+  local has_fields=0
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --platform) require_value "$1" "$2"; platform="$2"; has_fields=1; shift 2 ;;
+      --platform=*) platform=${1#*=}; has_fields=1; shift ;;
+      --identifier) require_value "$1" "$2"; identifier="$2"; has_fields=1; shift 2 ;;
+      --identifier=*) identifier=${1#*=}; has_fields=1; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; has_fields=1; shift 2 ;;
+      --name=*) name=${1#*=}; has_fields=1; shift ;;
+      --version) require_value "$1" "$2"; version="$2"; has_fields=1; shift 2 ;;
+      --version=*) version=${1#*=}; has_fields=1; shift ;;
+      --version-code) require_value "$1" "$2"; version_code="$2"; has_fields=1; shift 2 ;;
+      --version-code=*) version_code=${1#*=}; has_fields=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl identifiers update [--app APP] <identifier-id> [--platform PLATFORM] [--identifier ID] [--name NAME] [--version VERSION] [--version-code N]\n'
+        return 0
+        ;;
+      -*) die "unknown identifiers update option: $1" ;;
+      *)
+        [ -z "$identifier_id" ] || die "unexpected argument: $1"
+        identifier_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$identifier_id" ] || die "identifier ID is required"
+  [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
+  [ -z "$platform" ] || validate_platform "$platform"
+  _identifiers_validate_version_code "$version_code"
+
+  require_jq
+  ensure_tmpdir
+  body_file=$(new_temp_file identifiers-update) || return 1
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+
+  local path="apps/$APP/identifiers/$identifier_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: PATCH\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || return 1
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$(_identifiers_resource_format)"
+}
+
+_identifiers_delete() {
+  local app="${APP:-}"
+  local identifier_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl identifiers delete [--app APP] <identifier-id>\n'
+        return 0
+        ;;
+      -*) die "unknown identifiers delete option: $1" ;;
+      *)
+        [ -z "$identifier_id" ] || die "unexpected argument: $1"
+        identifier_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$identifier_id" ] || die "identifier ID is required"
+
+  local path="apps/$APP/identifiers/$identifier_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: DELETE\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  printf 'Identifier %s deleted\n' "$identifier_id"
+}
+
+# version_code is an integer on the API. Reject non-numeric input locally so the
+# body stays well-typed; the android-only restriction is left to the API.
+_identifiers_validate_version_code() {
+  [ -n "$1" ] || return 0
+  case "$1" in
+    ''|*[!0-9]*) die "--version-code must be a positive integer" ;;
+  esac
+  [ "$1" -ge 1 ] || die "--version-code must be a positive integer"
+}
+
+_identifiers_build_body() {
+  local body_file="$1"
+  local platform="$2"
+  local identifier="$3"
+  local name="$4"
+  local version="$5"
+  local version_code="$6"
+
+  local jq_args=(-n)
+  local jq_expr='{'
+  local first=1
+
+  if [ -n "$platform" ]; then
+    jq_args+=(--arg platform "$platform")
+    jq_expr="$jq_expr platform: \$platform"
+    first=0
+  fi
+  if [ -n "$identifier" ]; then
+    jq_args+=(--arg identifier "$identifier")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr identifier: \$identifier"
+    first=0
+  fi
+  if [ -n "$name" ]; then
+    jq_args+=(--arg name "$name")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr name: \$name"
+    first=0
+  fi
+  if [ -n "$version" ]; then
+    jq_args+=(--arg version "$version")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr version: \$version"
+    first=0
+  fi
+  if [ -n "$version_code" ]; then
+    jq_args+=(--argjson version_code "$version_code")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr version_code: \$version_code"
+    first=0
+  fi
+
+  jq_expr="$jq_expr }"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build the request body"
+}
+
+_identifiers_resource_format() {
+  printf '%s' '{"type":"resource","fields":{"id":"id","platform":"platform","identifier":"identifier","name":"name","version":"version","version_code":"version_code","created_at":"created_at","updated_at":"updated_at"}}'
 }
 
 
@@ -3595,7 +4034,7 @@ _credentials_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","credential_type.slug","build_profile","created_at"],"headers":["id","type","profile","created_at"]}'
+  local fmt='{"type":"table","fields":["id","type","name","expires_at"],"headers":["id","type","name","expires_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -3639,7 +4078,7 @@ _credentials_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","type":"credential_type.slug","profile":"build_profile","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","type":"type","name":"name","profiles":"profiles // [] | map(.type) | join(\", \")","expires_at":"expires_at","file":"file.name","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4195,6 +4634,606 @@ _integrations_refs() {
 }
 
 
+# "eas" subcommands for the Expo/EAS integration.
+#
+# The API splits across two scopes: the Expo account, which hangs off an
+# integration, and the project link, which hangs off an app. Actions that exist in
+# both scopes pick one from the flag you pass -- --integration-id targets the
+# account, --app targets the project link -- and refuse to guess when given both.
+#
+# The GraphQL and REST proxies are deliberately absent. Their payloads are
+# pass-through, so "appmctl request" serves them better than a wrapper would.
+
+eas_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] eas <action> [options]
+
+Account actions (Expo account on an integration):
+  connect             Connect an Expo account with an access token
+  projects            List projects visible to the connected account
+  import              Import an Expo project as an App Manager app
+
+Project actions (link between an app and an Expo project):
+  status              Show the linked project and its sync state
+  link                Link an app to an Expo project
+  auto-sync           Enable or disable automatic sync
+  identifiers         List identifiers with their Expo sync status
+  sync-identifiers    Push local identifiers to Expo
+  provision           Provision Expo credentials for an identifier
+  attach-credential   Push one stored credential to Expo
+
+Either scope:
+  sync                Re-sync (--app for a project, --integration-id for an account)
+  disconnect          Unlink a project (--app) or remove the account (--integration-id)
+
+Options:
+  --app APP           App slug (default: APP_MANAGER_APP)
+  --integration-id ID Expo integration ID
+  --token TOKEN       Expo access token (connect)
+  --account NAME      Expo account name (connect)
+  --project-id ID     Expo project ID (import, link)
+  --mode MODE         create or existing (link)
+  --enabled BOOL      true or false (auto-sync)
+  --identifier-id ID  App identifier ID (provision, attach-credential)
+  --credential-id ID  Credential ID (attach-credential)
+  --credential-ids L  Comma-separated credential IDs (provision)
+
+Run "appmctl eas <action> --help" for action-specific help.
+EOF
+}
+
+command_eas() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    connect) _eas_connect "$@" ;;
+    status) _eas_status "$@" ;;
+    sync) _eas_sync "$@" ;;
+    disconnect) _eas_disconnect "$@" ;;
+    projects) _eas_projects "$@" ;;
+    import) _eas_import "$@" ;;
+    link) _eas_link "$@" ;;
+    auto-sync) _eas_auto_sync "$@" ;;
+    identifiers) _eas_identifiers "$@" ;;
+    sync-identifiers) _eas_sync_identifiers "$@" ;;
+    provision) _eas_provision "$@" ;;
+    attach-credential) _eas_attach_credential "$@" ;;
+    -h|--help|"") eas_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown eas action: $action (run \"appmctl eas --help\" for the list)" ;;
+  esac
+}
+
+_eas_dry_run_plan() {
+  local method="$1"
+  local path="$2"
+  local url
+  require_config
+  url=$(build_url "$path") || return 1
+  printf 'dry-run: no request sent\n'
+  printf 'method: %s\n' "$method"
+  printf 'url: %s\n' "$url"
+}
+
+_eas_project_format() {
+  printf '%s' '{"type":"resource","fields":{"project":"project.full_name","slug":"project.slug","account":"project.account.name","expo_project_id":"project.external_id","exists_on_expo":"project.exists_on_expo","automatic_sync":"project.automatic_sync.enabled","auto_sync_status":"project.automatic_sync.status","last_synced_at":"project.last_synced_at"}}'
+}
+
+_eas_connect() {
+  local token=""
+  local account=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --token) require_value "$1" "$2"; token="$2"; shift 2 ;;
+      --token=*) token=${1#*=}; shift ;;
+      --account) require_value "$1" "$2"; account="$2"; shift 2 ;;
+      --account=*) account=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas connect --token TOKEN [--account NAME]\n'
+        printf '\nThe token is read from the argument only for parity with the API; prefer\n'
+        printf 'exporting it and using --token "$EXPO_TOKEN" so it stays out of shell history.\n'
+        return 0
+        ;;
+      *) die "unknown eas connect option: $1" ;;
+    esac
+  done
+
+  [ -n "$token" ] || die "--token is required"
+
+  require_jq
+  ensure_tmpdir
+  body_file=$(new_temp_file eas-connect) || return 1
+  local jq_args=(-n --arg token "$token")
+  local jq_expr='{access_token: $token'
+  if [ -n "$account" ]; then
+    jq_args+=(--arg account "$account")
+    jq_expr="$jq_expr, account_name: \$account"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build the request body"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "integrations/expo" || return 1
+    printf 'body: expo credentials (%s bytes; redacted)\n' "$(wc -c <"$body_file" | tr -d '[:space:]')"
+    return 0
+  fi
+
+  api_post "integrations/expo" "$body_file" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","provider":"provider","account":"name","status":"status","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_status() {
+  local app="${APP:-}"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas status [--app APP]\n'
+        return 0
+        ;;
+      *) die "unknown eas status option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  local path="apps/$APP/expo"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan GET "$path"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$(_eas_project_format)"
+}
+
+# Actions valid in both scopes resolve the target from whichever flag is present.
+# An explicit --app plus an explicit --integration-id is an error, not a preference.
+_eas_sync() {
+  local app=""
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas sync (--app APP | --integration-id ID)\n'
+        return 0
+        ;;
+      *) die "unknown eas sync option: $1" ;;
+    esac
+  done
+
+  if [ -n "$app" ] && [ -n "$integration_id" ]; then
+    die "pass either --app or --integration-id, not both"
+  fi
+
+  local path
+  if [ -n "$integration_id" ]; then
+    path="integrations/$integration_id/expo/sync"
+  else
+    APP="${app:-${APP:-}}"
+    [ -n "$APP" ] || die "--app or --integration-id is required"
+    require_app
+    path="apps/$APP/expo/sync"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path"
+    return 0
+  fi
+
+  api_post "$path" "" || return 1
+  emit_response
+}
+
+_eas_disconnect() {
+  local app=""
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas disconnect (--app APP | --integration-id ID)\n'
+        printf '\n--app unlinks the project and leaves the account connected.\n'
+        printf '--integration-id removes the Expo account from the team.\n'
+        return 0
+        ;;
+      *) die "unknown eas disconnect option: $1" ;;
+    esac
+  done
+
+  if [ -n "$app" ] && [ -n "$integration_id" ]; then
+    die "pass either --app or --integration-id, not both"
+  fi
+
+  local path
+  local scope
+  if [ -n "$integration_id" ]; then
+    path="integrations/$integration_id/expo"
+    scope="account"
+  else
+    APP="${app:-${APP:-}}"
+    [ -n "$APP" ] || die "--app or --integration-id is required"
+    require_app
+    path="apps/$APP/expo"
+    scope="project"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan DELETE "$path"
+    return 0
+  fi
+
+  api_delete "$path" || return 1
+  if [ "$scope" = "account" ]; then
+    printf 'Expo account disconnected from integration %s\n' "$integration_id"
+  else
+    printf 'Expo project unlinked from %s\n' "$APP"
+  fi
+}
+
+_eas_projects() {
+  local integration_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas projects --integration-id ID\n'
+        return 0
+        ;;
+      *) die "unknown eas projects option: $1" ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  local path="integrations/$integration_id/expo/projects"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan GET "$path"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","full_name","external_id","exists_on_expo","last_synced_at"],"headers":["id","project","expo_id","on_expo","last_synced"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_import() {
+  local integration_id=""
+  local project_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --project-id) require_value "$1" "$2"; project_id="$2"; shift 2 ;;
+      --project-id=*) project_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas import --integration-id ID --project-id ID\n'
+        printf '\nUse "appmctl eas projects" to find the project ID.\n'
+        return 0
+        ;;
+      *) die "unknown eas import option: $1" ;;
+    esac
+  done
+
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$project_id" ] || die "--project-id is required"
+  local path="integrations/$integration_id/expo/projects/$project_id/import"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path"
+    return 0
+  fi
+
+  api_post "$path" "" || return 1
+  local fmt='{"type":"resource","fields":{"project":"full_name","expo_project_id":"external_id","app":"mobile_app.slug","exists_on_expo":"exists_on_expo"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_link() {
+  local app="${APP:-}"
+  local integration_id=""
+  local mode=""
+  local project_id=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --integration-id) require_value "$1" "$2"; integration_id="$2"; shift 2 ;;
+      --integration-id=*) integration_id=${1#*=}; shift ;;
+      --mode) require_value "$1" "$2"; mode="$2"; shift 2 ;;
+      --mode=*) mode=${1#*=}; shift ;;
+      --project-id) require_value "$1" "$2"; project_id="$2"; shift 2 ;;
+      --project-id=*) project_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas link [--app APP] --integration-id ID --mode create|existing [--project-id ID]\n'
+        printf '\nmode=create makes a new Expo project for the app.\n'
+        printf 'mode=existing links to an Expo project that already exists and needs --project-id.\n'
+        return 0
+        ;;
+      *) die "unknown eas link option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$integration_id" ] || die "--integration-id is required"
+  [ -n "$mode" ] || die "--mode is required"
+  case "$mode" in
+    create|existing) ;;
+    *) die "--mode must be \"create\" or \"existing\"" ;;
+  esac
+  if [ "$mode" = "existing" ] && [ -z "$project_id" ]; then
+    die "--project-id is required when --mode is existing"
+  fi
+
+  require_jq
+  ensure_tmpdir
+  body_file=$(new_temp_file eas-link) || return 1
+  local jq_args=(-n --arg integration "$integration_id" --arg mode "$mode")
+  local jq_expr='{integration_id: $integration, mode: $mode'
+  if [ -n "$project_id" ]; then
+    jq_args+=(--arg project "$project_id")
+    jq_expr="$jq_expr, expo_project_id: \$project"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build the request body"
+
+  local path="apps/$APP/expo"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path" || return 1
+    printf 'body: %s\n' "$(cat "$body_file")"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || return 1
+  local fmt='{"type":"resource","fields":{"project":"full_name","slug":"slug","expo_project_id":"external_id","exists_on_expo":"exists_on_expo"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_auto_sync() {
+  local app="${APP:-}"
+  local enabled=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --enabled) require_value "$1" "$2"; enabled="$2"; shift 2 ;;
+      --enabled=*) enabled=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas auto-sync [--app APP] --enabled true|false\n'
+        return 0
+        ;;
+      *) die "unknown eas auto-sync option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$enabled" ] || die "--enabled is required"
+  case "$enabled" in
+    true|false) ;;
+    *) die "--enabled must be \"true\" or \"false\"" ;;
+  esac
+
+  require_jq
+  ensure_tmpdir
+  body_file=$(new_temp_file eas-auto-sync) || return 1
+  "$JQ_BIN" -n --argjson enabled "$enabled" '{enabled: $enabled}' >"$body_file" \
+    || die "could not build the request body"
+
+  local path="apps/$APP/expo/automatic-sync"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan PATCH "$path" || return 1
+    printf 'body: %s\n' "$(cat "$body_file")"
+    return 0
+  fi
+
+  api_patch "$path" "$body_file" || return 1
+  local fmt='{"type":"resource","fields":{"enabled":"automatic_sync.enabled","status":"automatic_sync.status","error":"automatic_sync.error","last_pushed_at":"automatic_sync.last_pushed_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_identifiers() {
+  local app="${APP:-}"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas identifiers [--app APP]\n'
+        printf '\nsync_status is one of synced, app_manager_only, or expo_only.\n'
+        return 0
+        ;;
+      *) die "unknown eas identifiers option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  local path="apps/$APP/expo/identifiers"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan GET "$path"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["local_id","platform","identifier","name","sync_status"],"headers":["local_id","platform","identifier","name","sync_status"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_eas_sync_identifiers() {
+  local app="${APP:-}"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas sync-identifiers [--app APP]\n'
+        return 0
+        ;;
+      *) die "unknown eas sync-identifiers option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  local path="apps/$APP/expo/identifiers/sync"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path"
+    return 0
+  fi
+
+  api_post "$path" "" || return 1
+  emit_response
+}
+
+_eas_provision() {
+  local app="${APP:-}"
+  local identifier_id=""
+  local credential_ids=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --identifier-id) require_value "$1" "$2"; identifier_id="$2"; shift 2 ;;
+      --identifier-id=*) identifier_id=${1#*=}; shift ;;
+      --credential-ids) require_value "$1" "$2"; credential_ids="$2"; shift 2 ;;
+      --credential-ids=*) credential_ids=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas provision [--app APP] --identifier-id ID [--credential-ids ID,ID]\n'
+        printf '\nWithout --credential-ids the API provisions whatever the identifier is missing.\n'
+        return 0
+        ;;
+      *) die "unknown eas provision option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$identifier_id" ] || die "--identifier-id is required"
+
+  local path="apps/$APP/expo/identifiers/$identifier_id/provision"
+  local body_arg=""
+
+  if [ -n "$credential_ids" ]; then
+    require_jq
+    ensure_tmpdir
+    body_file=$(new_temp_file eas-provision) || return 1
+    "$JQ_BIN" -n --arg ids "$credential_ids" \
+      '{credential_ids: ($ids | split(",") | map(select(length > 0)))}' >"$body_file" \
+      || die "could not build the request body"
+    body_arg="$body_file"
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path" || return 1
+    [ -n "$body_arg" ] && printf 'body: %s\n' "$(cat "$body_arg")"
+    return 0
+  fi
+
+  api_post "$path" "$body_arg" || return 1
+  emit_response
+}
+
+_eas_attach_credential() {
+  local app="${APP:-}"
+  local identifier_id=""
+  local credential_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --identifier-id) require_value "$1" "$2"; identifier_id="$2"; shift 2 ;;
+      --identifier-id=*) identifier_id=${1#*=}; shift ;;
+      --credential-id) require_value "$1" "$2"; credential_id="$2"; shift 2 ;;
+      --credential-id=*) credential_id=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl eas attach-credential [--app APP] --identifier-id ID --credential-id ID\n'
+        return 0
+        ;;
+      *) die "unknown eas attach-credential option: $1" ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$identifier_id" ] || die "--identifier-id is required"
+  [ -n "$credential_id" ] || die "--credential-id is required"
+
+  local path="apps/$APP/expo/identifiers/$identifier_id/credentials/$credential_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _eas_dry_run_plan POST "$path"
+    return 0
+  fi
+
+  api_post "$path" "" || return 1
+  emit_response
+}
+
+
 # "pipelines" subcommands: list, get, create, run, inputs, update, delete.
 
 pipelines_usage() {
@@ -4272,7 +5311,7 @@ _pipelines_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  local fmt='{"type":"table","fields":["id","name","repository_full_name","workflow_name","enabled"],"headers":["id","name","repository","workflow","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4315,7 +5354,7 @@ _pipelines_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","enabled":"enabled","profile_type":"profile_type","reporting_mode":"reporting_mode","repository":"repository_full_name","workflow":"workflow_name","workflow_path":"workflow_path","default_ref":"default_ref","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4492,6 +5531,8 @@ _pipelines_run() {
   local integration_id=""
   local pipeline_id=""
   local inputs=""
+  local ref=""
+  local request_uuid=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -4500,12 +5541,18 @@ _pipelines_run() {
       --integration-id=*) integration_id=${1#*=}; shift ;;
       --inputs) require_value "$1" "$2"; inputs="$2"; shift 2 ;;
       --inputs=*) inputs=${1#*=}; shift ;;
+      --ref) require_value "$1" "$2"; ref="$2"; shift 2 ;;
+      --ref=*) ref=${1#*=}; shift ;;
+      --request-uuid) require_value "$1" "$2"; request_uuid="$2"; shift 2 ;;
+      --request-uuid=*) request_uuid=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]\n'
+        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON] [--ref REF] [--request-uuid UUID]\n'
+        printf '\nThe run is idempotent on --request-uuid; one is generated when omitted.\n'
+        printf '--ref overrides the pipeline default ref. Prints the created build record.\n'
         return 0
         ;;
       -*) die "unknown pipelines run option: $1" ;;
@@ -4520,12 +5567,27 @@ _pipelines_run() {
 
   local path="integrations/$integration_id/pipelines/$pipeline_id/runs"
 
-  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  if [ -n "$inputs" ]; then
-    "$JQ_BIN" -n --argjson i "$inputs" '{inputs: $i}' >"$body_file"
-  else
-    printf '{}' >"$body_file"
+  # request_uuid is required by the API and makes a retried CI step reuse the same
+  # build instead of dispatching a second one.
+  if [ -z "$request_uuid" ]; then
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
+
+  require_jq
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg uuid "$request_uuid")
+  local jq_expr='{request_uuid: $uuid'
+  if [ -n "$ref" ]; then
+    jq_args+=(--arg ref "$ref")
+    jq_expr="$jq_expr, ref: \$ref"
+  fi
+  if [ -n "$inputs" ]; then
+    jq_args+=(--argjson inputs "$inputs")
+    jq_expr="$jq_expr, inputs: \$inputs"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" \
+    || { rm -f -- "$body_file"; die "--inputs must be valid JSON"; }
 
   if [ "$DRY_RUN" -eq 1 ]; then
     local url
@@ -4534,14 +5596,16 @@ _pipelines_run() {
     printf 'dry-run: no request sent\n'
     printf 'method: POST\n'
     printf 'url: %s\n' "$url"
-    [ -n "$inputs" ] && printf 'inputs: %s\n' "$inputs"
+    printf 'body: %s\n' "$(cat "$body_file")"
     rm -f -- "$body_file"
     return 0
   fi
 
   api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  printf 'Pipeline run triggered\n'
+  # The response is the build record the dispatch created, and callers need its id.
+  local fmt='{"type":"resource","fields":{"build_id":"id","status":"status","reporting_mode":"reporting_mode","dispatch_status":"dispatch_status","external_run_url":"external_run_url","request_uuid":"request_uuid","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
 _pipelines_inputs() {
@@ -4654,7 +5718,7 @@ _webhooks_list() {
   fi
 
   api_get "webhooks" || return 1
-  local fmt='{"type":"table","fields":["id","url","events","created_at"],"headers":["id","url","events","created_at"]}'
+  local fmt='{"type":"table","fields":["id","url","subscribed_events // [] | join(\", \")","enabled"],"headers":["id","url","events","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4691,7 +5755,7 @@ _webhooks_get() {
   fi
 
   api_get "webhooks/$webhook_id" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"events","active":"active","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","secret_hint":"secret_hint","consecutive_failures":"consecutive_failures","last_delivered_at":"last_delivered_at","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4751,7 +5815,7 @@ _webhooks_create() {
 
   api_post "webhooks" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","active":"active","created_at":"created_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","created_at":"created_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4959,7 +6023,7 @@ _webhooks_deliveries() {
   fi
 
   api_get "webhooks/$webhook_id/deliveries" || return 1
-  local fmt='{"type":"table","fields":["id","event","status_code","delivered_at"],"headers":["id","event","status","delivered_at"]}'
+  local fmt='{"type":"table","fields":["id","event_type","status","response_status","attempt_count","delivered_at"],"headers":["id","event","status","http","attempts","delivered_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
