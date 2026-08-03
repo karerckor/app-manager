@@ -10,6 +10,10 @@ import CodeBlock from '../../components/CodeBlock.astro';
     It is distributed as a single Bash 3.2-compatible executable, making it suitable for
     CI runners, minimal build images, and local automation without a language-specific SDK.
   </p>
+  <p>
+    The CLI is currently pre-1.0 (<code>0.2.0</code>). Pin the source commit in reproducible
+    pipelines and expect the command surface to evolve alongside API v1.
+  </p>
 
   <h2>Requirements</h2>
   <table>
@@ -19,7 +23,8 @@ import CodeBlock from '../../components/CodeBlock.astro';
     <tbody>
       <tr><td>Bash 3.2+</td><td>All commands</td></tr>
       <tr><td><code>curl</code></td><td>API requests</td></tr>
-      <tr><td><code>jq</code></td><td><code>--json</code> output, <code>stream</code>, and subcommand formatted output</td></tr>
+      <tr><td><code>jq</code></td><td><code>--json</code> output, <code>stream</code>, and formatted subcommand output</td></tr>
+      <tr><td><code>mktemp</code>, <code>tee</code>, <code>dd</code></td><td><code>stream</code> and secure temporary files</td></tr>
     </tbody>
   </table>
 
@@ -40,6 +45,10 @@ appmctl --version`} />
 export PATH="$PWD/.appmctl-bin:$PATH"`} />
 
   <h3>Pin to a specific commit</h3>
+  <p>
+    The installer downloads from <code>main</code> unless <code>APPMCTL_REF</code> is set, which is why
+    production CI should always pin a full commit SHA and verify the checksum.
+  </p>
   <CodeBlock lang="bash" code={`APPMCTL_REF='FULL_GIT_COMMIT_SHA'
 
 curl -fsSL \\
@@ -66,7 +75,8 @@ export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
       <tr><td><code>APP_MANAGER_API_KEY</code></td><td>—</td><td>Yes</td><td>Bearer API key</td></tr>
       <tr><td><code>APP_MANAGER_TEAM</code></td><td><code>--team</code></td><td>Yes</td><td>Team slug</td></tr>
       <tr><td><code>APP_MANAGER_INSTANCE_URL</code></td><td><code>--instance-url</code></td><td>No</td><td>Server URL (default: <code>http://localhost:8000</code>)</td></tr>
-      <tr><td><code>APP_MANAGER_APP</code></td><td><code>--app</code></td><td>No</td><td>Default app slug for scoped commands</td></tr>
+      <tr><td><code>APP_MANAGER_APP</code></td><td><code>--app</code></td><td>No</td><td>Default app slug for app-scoped commands</td></tr>
+      <tr><td><code>APP_MANAGER_POLLING_INTERVAL</code></td><td>—</td><td>No</td><td>Poll interval in seconds for <code>builds wait</code>, <code>builds when-running</code>, and <code>stream --track</code> (default: <code>10</code>)</td></tr>
     </tbody>
   </table>
   <p>
@@ -75,28 +85,79 @@ export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
   </p>
 
   <h2>Global options</h2>
+  <p>Global options go before the resource name: <code>appmctl --json builds list</code>.</p>
   <table>
     <thead>
       <tr><th>Option</th><th>Description</th></tr>
     </thead>
     <tbody>
-      <tr><td><code>--json</code></td><td>Pretty-print JSON responses with <code>jq</code></td></tr>
-      <tr><td><code>--dry-run</code></td><td>Print the request plan without sending it</td></tr>
-      <tr><td><code>-o, --output FILE</code></td><td>Write response to a file instead of stdout</td></tr>
-      <tr><td><code>--force</code></td><td>Allow <code>--output</code> to overwrite an existing file</td></tr>
+      <tr><td><code>--json</code></td><td>Pretty-print and validate a JSON response with <code>jq</code></td></tr>
+      <tr><td><code>--dry-run</code></td><td>Print the request plan without calling the API</td></tr>
+      <tr><td><code>-o, --output FILE</code></td><td>Save the response instead of writing it to stdout</td></tr>
+      <tr><td><code>--force</code></td><td>Allow <code>--output</code> to replace an existing file</td></tr>
       <tr><td><code>--team TEAM</code></td><td>Override <code>APP_MANAGER_TEAM</code></td></tr>
       <tr><td><code>--instance-url URL</code></td><td>Override <code>APP_MANAGER_INSTANCE_URL</code></td></tr>
       <tr><td><code>--app APP</code></td><td>Override <code>APP_MANAGER_APP</code></td></tr>
+      <tr><td><code>-h, --help</code></td><td>Show help</td></tr>
+      <tr><td><code>--version</code></td><td>Show the CLI version</td></tr>
     </tbody>
   </table>
+  <p>
+    Most options are also accepted after the action, so <code>appmctl builds list --json</code> works too.
+    The parent directory of <code>--output</code> must already exist, and existing files are protected
+    unless <code>--force</code> is explicit.
+  </p>
 
   <h2>Commands</h2>
   <p>
     All subcommands support <code>--help</code> for detailed usage and
     <code>--dry-run</code> to preview the request without sending it.
   </p>
+  <table>
+    <thead>
+      <tr><th>Resource</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>builds</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>cancel</code>, <code>patch</code>, <code>wait</code>, <code>when-running</code></td></tr>
+      <tr><td><code>logs</code></td><td><code>get</code>, <code>post</code></td></tr>
+      <tr><td><code>artifacts</code></td><td><code>list</code>, <code>get</code>, <code>upload</code>, <code>delete</code></td></tr>
+      <tr><td><code>files</code></td><td><code>list</code>, <code>show</code>, <code>get</code>, <code>upload</code>, <code>update</code>, <code>delete</code></td></tr>
+      <tr><td><code>assets</code></td><td><code>list</code>, <code>show</code>, <code>download</code>, <code>upload</code>, <code>delete</code></td></tr>
+      <tr><td><code>apps</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code></td></tr>
+      <tr><td><code>credentials</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>download</code>, <code>upload</code>, <code>types</code></td></tr>
+      <tr><td><code>integrations</code></td><td><code>list</code>, <code>get</code>, <code>repos</code>, <code>workflows</code>, <code>refs</code></td></tr>
+      <tr><td><code>pipelines</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>run</code>, <code>inputs</code></td></tr>
+      <tr><td><code>webhooks</code></td><td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>test</code>, <code>rotate</code>, <code>deliveries</code>, <code>redeliver</code></td></tr>
+      <tr><td><code>request</code></td><td>Generic access to any team endpoint (legacy)</td></tr>
+      <tr><td><code>stream</code></td><td>Run a command and upload its output to a build log (legacy)</td></tr>
+    </tbody>
+  </table>
 
   <h3><code>appmctl builds</code></h3>
+  <CodeBlock lang="bash" code={`appmctl builds list [--app APP] [--status STATUS] [--page N]
+appmctl builds get [--app APP] BUILD_ID
+appmctl builds create [--app APP] --profile TYPE [options]
+appmctl builds cancel [--app APP] BUILD_ID
+appmctl builds patch [--app APP] BUILD_ID [--status STATUS] [--tag NAME[:#HEX]]
+appmctl builds wait [--app APP] BUILD_ID [--timeout SECONDS]
+appmctl builds when-running [--app APP] BUILD_ID [--timeout SECONDS] -- COMMAND [ARG ...]`} />
+
+  <p><code>create</code> options:</p>
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--profile TYPE</code></td><td>Build profile, e.g. <code>production</code>, <code>staging</code>, <code>appstore</code> (required)</td></tr>
+      <tr><td><code>--request-uuid UUID</code></td><td>Idempotency key for CI retries; generated automatically when omitted</td></tr>
+      <tr><td><code>--context JSON</code></td><td>Inline JSON context/metadata</td></tr>
+      <tr><td><code>--reporting-mode MODE</code></td><td><code>manual</code> (default) or <code>eas</code></td></tr>
+      <tr><td><code>--expo-build-id ID</code></td><td>Expo/EAS build ID; required when <code>--reporting-mode eas</code></td></tr>
+      <tr><td><code>--app-identifier-id UUID</code></td><td>Target app identifier</td></tr>
+      <tr><td><code>--tag NAME[:#HEX]</code></td><td>Attach a tag; repeatable</td></tr>
+    </tbody>
+  </table>
+
   <CodeBlock lang="bash" code={`# List builds for an app
 appmctl builds list --app customer-app --status running
 
@@ -106,20 +167,91 @@ appmctl builds get bld-abc123
 # Create a manual build
 appmctl builds create --app customer-app --profile production
 
-# Cancel a build
-appmctl builds cancel bld-abc123
+# Create a build with an idempotency key and colored tags
+appmctl builds create --profile production \\
+  --request-uuid "$(uuidgen)" \\
+  --context '{"runner":"github"}' \\
+  --tag ios:#3b82f6 --tag 1.0.0:#f59e0b
 
-# Update build status (manual builds with force-status)
-appmctl builds patch bld-abc123 --status completed`} />
+# Register an EAS build
+appmctl builds create --profile production \\
+  --reporting-mode eas --expo-build-id abc-123
+
+# Cancel a build
+appmctl builds cancel bld-abc123`} />
+
+  <p>
+    <code>patch</code> updates a build's status, its tags, or both — at least one of
+    <code>--status</code> or <code>--tag</code> is required. Status transitions apply to manually
+    reported builds only; tags can be set on any build. <code>--tag</code> replaces the whole tag set.
+  </p>
+  <CodeBlock lang="bash" code={`# Report a terminal status (manual builds)
+appmctl builds patch bld-abc123 --status completed
+
+# Replace the tag set (any build)
+appmctl builds patch bld-abc123 --tag ios:#3b82f6 --tag 1.0.0`} />
+
+  <h4>Waiting on builds</h4>
+  <p>
+    <code>wait</code> polls until the build reaches a terminal state and exits with a status that
+    reflects the outcome, so a CI job can gate on it directly. Polling happens every
+    <code>APP_MANAGER_POLLING_INTERVAL</code> seconds.
+  </p>
+  <CodeBlock lang="bash" code={`# Block until the build finishes, at most one hour
+appmctl builds wait bld-abc123 --timeout 3600`} />
+  <table>
+    <thead>
+      <tr><th>Exit code</th><th><code>builds wait</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>0</code></td><td>Build completed successfully</td></tr>
+      <tr><td><code>1</code></td><td>Build failed</td></tr>
+      <tr><td><code>130</code></td><td>Build was cancelled</td></tr>
+      <tr><td><code>124</code></td><td>Timeout exceeded (only when <code>--timeout</code> is given; otherwise it waits indefinitely)</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    <code>when-running</code> checks the build once and runs the command only if the build is
+    currently <code>pending</code>, <code>running</code>, or <code>cancel_requested</code>. While the
+    command runs it keeps polling and terminates the command if the build reaches a terminal state.
+  </p>
+  <CodeBlock lang="bash" code={`# Skip the step entirely if the build is no longer active
+appmctl builds when-running bld-abc123 -- make deploy`} />
+  <table>
+    <thead>
+      <tr><th>Exit code</th><th><code>builds when-running</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td>command's own status</td><td>The command ran to completion — its exit status is passed through</td></tr>
+      <tr><td><code>130</code></td><td>The build was cancelled while the command was running; the command was terminated</td></tr>
+      <tr><td><code>1</code></td><td>The build was already terminal, or its status could not be read</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <code>when-running</code> accepts <code>--timeout</code> but currently ignores it: it does not
+    wait for a pending build to become active, so the flag has no effect on behavior. Use
+    <code>builds wait</code> when you need a bounded wait.
+  </p>
 
   <h3><code>appmctl logs</code></h3>
+  <CodeBlock lang="bash" code={`appmctl logs get [--app APP] --build-id ID
+appmctl logs post [--app APP] --build-id ID --content TEXT`} />
   <CodeBlock lang="bash" code={`# Fetch build logs
 appmctl logs get --build-id bld-abc123
 
 # Append log content
 appmctl logs post --build-id bld-abc123 --content "compile: finished\\n"`} />
+  <p>
+    For long-running commands prefer <code>appmctl stream</code>, which uploads output while the
+    command runs instead of posting it after the fact.
+  </p>
 
   <h3><code>appmctl artifacts</code></h3>
+  <CodeBlock lang="bash" code={`appmctl artifacts list [--app APP] --build-id ID
+appmctl artifacts get [--app APP] --build-id ID ARTIFACT_ID [-o FILE]
+appmctl artifacts upload [--app APP] --build-id ID --name NAME [--metadata JSON] --file FILE
+appmctl artifacts delete [--app APP] --build-id ID ARTIFACT_ID`} />
   <CodeBlock lang="bash" code={`# List artifacts for a build
 appmctl artifacts list --build-id bld-abc123
 
@@ -135,7 +267,79 @@ appmctl artifacts upload --build-id bld-abc123 \\
 # Delete an artifact
 appmctl artifacts delete --build-id bld-abc123 art-001`} />
 
+  <h3><code>appmctl files</code></h3>
+  <p>
+    Files are the app's general-purpose media library: mapping files, provisioning notes,
+    release checklists, and anything else attached to an app rather than to a single build.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl files list [--app APP] [--per-page N]
+appmctl files show [--app APP] --name NAME
+appmctl files get [--app APP] --name NAME [-o FILE]
+appmctl files upload [--app APP] --file FILE [--metadata JSON]
+appmctl files update [--app APP] --name NAME --metadata JSON
+appmctl files delete [--app APP] --name NAME`} />
+  <p>
+    Files are addressed by name, not by id. <code>show</code> returns metadata,
+    <code>get</code> downloads the content. Names are percent-encoded for you but must not
+    contain slashes — use <code>appmctl request</code> for names outside the ASCII range.
+    <code>--metadata</code> takes a JSON object, or the literal <code>null</code> to clear it.
+  </p>
+  <CodeBlock lang="bash" code={`# List files attached to an app
+appmctl files list --app customer-app
+
+# Attach a file with metadata
+appmctl files upload --file ./mapping.txt --metadata '{"channel":"beta"}'
+
+# Inspect metadata without downloading the content
+appmctl files show --name mapping.txt
+
+# Download the content
+appmctl files get --name mapping.txt -o ./mapping.txt
+
+# Replace metadata, then clear it
+appmctl files update --name mapping.txt --metadata '{"channel":"stable"}'
+appmctl files update --name mapping.txt --metadata null
+
+# Remove the file
+appmctl files delete --name mapping.txt`} />
+
+  <h3><code>appmctl assets</code></h3>
+  <p>
+    Assets are the app icon and splash screen. Each app has at most one of each, so
+    <code>upload</code> replaces the existing asset.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl assets list [--app APP]
+appmctl assets show [--app APP] --type icon|splashscreen [-o FILE]
+appmctl assets download [--app APP] --type icon|splashscreen [--variant VARIANT] [-o FILE]
+appmctl assets upload [--app APP] --type icon|splashscreen --file FILE
+appmctl assets delete [--app APP] --type icon|splashscreen`} />
+  <p>
+    Besides the original file, the platform generates per-platform variants
+    (<code>ios-icon-40</code>, <code>android-icon-mdpi</code>, and so on). <code>list</code> prints
+    the download URL for the original plus every variant that has actually been generated, and
+    <code>download --variant</code> fetches one of them (default: <code>original</code>).
+    <code>show</code> streams the original inline for previewing.
+  </p>
+  <CodeBlock lang="bash" code={`# Discover which variants exist
+appmctl --json assets list --app customer-app
+
+# Upload or replace an icon and a splash screen
+appmctl assets upload --type icon --file ./icon.png
+appmctl assets upload --type splashscreen --file ./splash.png
+
+# Download the original and a generated variant
+appmctl assets download --type icon -o icon.png
+appmctl assets download --type icon --variant ios-icon-40 -o icon-40.png
+
+# Delete an asset
+appmctl assets delete --type splashscreen`} />
+
   <h3><code>appmctl apps</code></h3>
+  <CodeBlock lang="bash" code={`appmctl apps list
+appmctl apps get SLUG
+appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]
+appmctl apps update SLUG [--name NAME] [--description DESC] [--metadata JSON]
+appmctl apps delete SLUG`} />
   <CodeBlock lang="bash" code={`# List team apps
 appmctl apps list
 
@@ -152,59 +356,114 @@ appmctl apps update customer-app --name "Updated Name"
 appmctl apps delete customer-app`} />
 
   <h3><code>appmctl credentials</code></h3>
-  <CodeBlock lang="bash" code={`# List credentials for an app
+  <CodeBlock lang="bash" code={`appmctl credentials list [--app APP]
+appmctl credentials get [--app APP] CREDENTIAL_ID
+appmctl credentials create [--app APP] --type TYPE --profile PROFILE [--data-file FILE|-] [--file FILE]
+appmctl credentials update [--app APP] CREDENTIAL_ID --data-file FILE|-
+appmctl credentials delete [--app APP] CREDENTIAL_ID
+appmctl credentials download [--app APP] CREDENTIAL_ID [-o FILE]
+appmctl credentials upload [--app APP] CREDENTIAL_ID --file FILE
+appmctl credentials types`} />
+  <p>
+    Pass credential data through <code>--data-file</code>, either from a file or from stdin with
+    <code>-</code>. The inline <code>--data JSON</code> form still exists but is deprecated: process
+    arguments are visible to other users and are often captured in CI logs.
+  </p>
+  <CodeBlock lang="bash" code={`# List credentials and the available types
 appmctl credentials list --app customer-app
-
-# List available credential types
 appmctl credentials types
 
-# Create a credential
-appmctl credentials create --app customer-app \\
-  --type android_keystore --profile production \\
-  --data '{"keystore_password":"secret"}'
+# Create a credential, reading secret data from stdin
+printf '%s' '{"keystore_password":"secret"}' | \\
+  appmctl credentials create --app customer-app \\
+    --type android_keystore --profile production \\
+    --data-file - --file ./release.jks
 
-# Download a credential file
-appmctl credentials download --app customer-app cred-001 -o keystore.jks`} />
+# Rotate the secret payload of an existing credential
+appmctl credentials update cred-001 --data-file ./new-data.json
+
+# Download and replace the attached file
+appmctl credentials download cred-001 -o keystore.jks
+appmctl credentials upload cred-001 --file ./keystore.jks
+
+# Delete a credential
+appmctl credentials delete cred-001`} />
 
   <h3><code>appmctl integrations</code></h3>
+  <CodeBlock lang="bash" code={`appmctl integrations list
+appmctl integrations get INTEGRATION_ID
+appmctl integrations repos --integration-id ID
+appmctl integrations workflows --integration-id ID
+appmctl integrations refs --integration-id ID`} />
   <CodeBlock lang="bash" code={`# List integrations
 appmctl integrations list
 
-# List repositories for an integration
-appmctl integrations repos --integration-id int-001
+# Inspect one integration
+appmctl integrations get int-001
 
-# List workflows
-appmctl integrations workflows --integration-id int-001`} />
+# Discover repositories, workflows, and branches/tags
+appmctl integrations repos --integration-id int-001
+appmctl integrations workflows --integration-id int-001
+appmctl integrations refs --integration-id int-001`} />
 
   <h3><code>appmctl pipelines</code></h3>
-  <CodeBlock lang="bash" code={`# List pipelines for an integration
+  <CodeBlock lang="bash" code={`appmctl pipelines list --integration-id ID
+appmctl pipelines get --integration-id ID PIPELINE_ID
+appmctl pipelines create --integration-id ID --name NAME [--config JSON]
+appmctl pipelines update --integration-id ID PIPELINE_ID [--name NAME] [--config JSON]
+appmctl pipelines delete --integration-id ID PIPELINE_ID
+appmctl pipelines run --integration-id ID PIPELINE_ID [--inputs JSON]
+appmctl pipelines inputs --integration-id ID PIPELINE_ID`} />
+  <CodeBlock lang="bash" code={`# List and inspect pipelines
 appmctl pipelines list --integration-id int-001
+appmctl pipelines get --integration-id int-001 pipe-001
 
-# Trigger a pipeline run
-appmctl pipelines run --integration-id int-001 pipe-001
+# Create and update a pipeline
+appmctl pipelines create --integration-id int-001 \\
+  --name "Android release" \\
+  --config '{"workflow":"release.yml","ref":"main"}'
+appmctl pipelines update --integration-id int-001 pipe-001 --name "Android nightly"
 
-# Get required inputs for a pipeline
-appmctl pipelines inputs --integration-id int-001 pipe-001`} />
+# Check which inputs a run requires, then trigger it
+appmctl pipelines inputs --integration-id int-001 pipe-001
+appmctl pipelines run --integration-id int-001 pipe-001 \\
+  --inputs '{"profile":"production"}'
+
+# Delete a pipeline
+appmctl pipelines delete --integration-id int-001 pipe-001`} />
 
   <h3><code>appmctl webhooks</code></h3>
-  <CodeBlock lang="bash" code={`# List webhook endpoints
-appmctl webhooks list
-
-# Create a webhook
+  <CodeBlock lang="bash" code={`appmctl webhooks list
+appmctl webhooks get WEBHOOK_ID
+appmctl webhooks create --url URL [--events JSON] [--app SLUG]
+appmctl webhooks update WEBHOOK_ID [--url URL] [--events JSON]
+appmctl webhooks delete WEBHOOK_ID
+appmctl webhooks test WEBHOOK_ID
+appmctl webhooks rotate WEBHOOK_ID
+appmctl webhooks deliveries WEBHOOK_ID
+appmctl webhooks redeliver --webhook-id ID DELIVERY_ID`} />
+  <CodeBlock lang="bash" code={`# Create an endpoint, optionally scoped to one app
 appmctl webhooks create --url https://example.com/hook \\
-  --events '["build.completed","build.failed"]'
+  --events '["build.completed","build.failed"]' \\
+  --app customer-app
 
-# Send a test delivery
+# Change the URL or the subscribed events
+appmctl webhooks update wh-001 --events '["build.completed"]'
+
+# Send a test delivery and rotate the HMAC signing secret
 appmctl webhooks test wh-001
-
-# Rotate the HMAC signing secret
 appmctl webhooks rotate wh-001
 
-# List deliveries
-appmctl webhooks deliveries wh-001`} />
+# Inspect deliveries and retry one
+appmctl webhooks deliveries wh-001
+appmctl webhooks redeliver --webhook-id wh-001 del-001`} />
+  <p>
+    See the <a href="/guides/webhooks">Webhooks guide</a> for the payload format and
+    signature verification.
+  </p>
 
   <h3><code>appmctl request</code> (legacy)</h3>
-  <p>Generic access to any API endpoint. Useful for endpoints not yet covered by dedicated subcommands.</p>
+  <p>Generic access to any team endpoint. Useful for endpoints not yet covered by dedicated subcommands.</p>
   <CodeBlock lang="bash" code={`# List apps with pretty JSON
 appmctl --json request GET apps
 
@@ -212,12 +471,40 @@ appmctl --json request GET apps
 appmctl request POST apps \\
   --data '{"name":"Customer App"}' --json
 
+# Read a request body from a file or stdin
+appmctl request POST apps --data-file ./app.json
+printf '%s' '{"name":"Customer App"}' | appmctl request POST apps --data-file -
+
 # Upload a multipart file
 appmctl request POST apps/customer-app/assets/icon \\
-  --file file=icon.png --json`} />
+  --file file=icon.png --json
+
+# Download a binary response
+appmctl request GET apps/customer-app/assets/icon --output icon.png`} />
+  <p>
+    Only one body kind can be selected, but multipart text and file fields can be mixed and
+    repeated. Prefer <code>--data-file</code> over <code>--data</code> for anything sensitive.
+  </p>
 
   <h3><code>appmctl stream</code> (legacy)</h3>
-  <p>Run a command locally while uploading its combined stdout/stderr to a manual build log.</p>
+  <p>
+    Runs a command without <code>eval</code>, mirrors its combined stdout/stderr locally, and
+    uploads the output to a manual build log while the command is running.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl stream --app APP --build-id ID [options] -- COMMAND [ARG ...]`} />
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--build-id ID</code></td><td>Existing manual build UUID (required)</td></tr>
+      <tr><td><code>--step NAME</code></td><td>Add visible start/finish separators to the log</td></tr>
+      <tr><td><code>--chunk-bytes BYTES</code></td><td>Upload chunk size, 1..262144 (default: <code>65536</code>)</td></tr>
+      <tr><td><code>--manage-status</code></td><td>Set <code>running</code> before the command and <code>completed</code>/<code>failed</code> after</td></tr>
+      <tr><td><code>--track</code></td><td>Poll build status and abort if the build is cancelled</td></tr>
+      <tr><td><code>--command</code></td><td>Treat all remaining arguments as the command</td></tr>
+    </tbody>
+  </table>
   <CodeBlock lang="bash" code={`# Stream a build step
 appmctl stream \\
   --app customer-app \\
@@ -229,6 +516,10 @@ appmctl stream \\
 appmctl stream --build-id BUILD_ID --step Install -- pnpm install
 appmctl stream --build-id BUILD_ID --step Test -- pnpm test
 appmctl stream --build-id BUILD_ID --step Build -- pnpm build`} />
+  <p>
+    The CLI exits with the command's status. Use <code>sh -c</code> explicitly for pipes,
+    redirects, variable expansion, or other shell syntax.
+  </p>
 
   <h2>CI/CD examples</h2>
 
@@ -243,11 +534,11 @@ appmctl stream --build-id BUILD_ID --step Build -- pnpm build`} />
 
 - name: Build and stream logs
   env:
-    APP_MANAGER_API_KEY: $\&#123;&#123; secrets.APP_MANAGER_API_KEY &#125;&#125;
+    APP_MANAGER_API_KEY: $&#123;&#123; secrets.APP_MANAGER_API_KEY &#125;&#125;
     APP_MANAGER_TEAM: mobile-team
     APP_MANAGER_APP: customer-app
-    APP_MANAGER_INSTANCE_URL: $\&#123;&#123; vars.APP_MANAGER_INSTANCE_URL &#125;&#125;
-    APP_MANAGER_BUILD_ID: $\&#123;&#123; inputs.app_manager_build_id &#125;&#125;
+    APP_MANAGER_INSTANCE_URL: $&#123;&#123; vars.APP_MANAGER_INSTANCE_URL &#125;&#125;
+    APP_MANAGER_BUILD_ID: $&#123;&#123; inputs.app_manager_build_id &#125;&#125;
   run: |
     appmctl stream \\
       --build-id "$APP_MANAGER_BUILD_ID" \\
@@ -269,7 +560,8 @@ BUILD_ID=$(
   appmctl --json builds create \\
     --app "$APP_MANAGER_APP" \\
     --profile production \\
-    --context '{"runner":"ci"}' |
+    --context '{"runner":"ci"}' \\
+    --tag ci |
     jq -er '.data.id'
 )
 export BUILD_ID
@@ -282,13 +574,69 @@ appmctl stream --build-id "$BUILD_ID" --step Build -- pnpm build
 appmctl artifacts upload \\
   --build-id "$BUILD_ID" \\
   --name app-release.aab \\
-  --file build/app-release.aab`} />
+  --file build/app-release.aab
+
+# 4. Attach the mapping file to the app's media library
+appmctl files upload \\
+  --file build/mapping.txt \\
+  --metadata '{"build_id":"'"$BUILD_ID"'"}'`} />
+
+  <h3>Gating a job on another build</h3>
+  <CodeBlock lang="bash" code={`# Block until the upstream build finishes; a non-zero exit fails the job
+appmctl builds wait "$UPSTREAM_BUILD_ID" --timeout 3600
+
+# Or skip expensive work when the build is no longer active
+appmctl builds when-running "$BUILD_ID" -- ./scripts/upload-to-store.sh`} />
+
+  <h2>Exit status and errors</h2>
+  <ul>
+    <li>Successful operations exit <code>0</code>.</li>
+    <li>
+      Commands exit non-zero for local validation errors, <code>curl</code> failures, non-2xx HTTP
+      responses, invalid JSON requested through <code>--json</code>, or output errors.
+    </li>
+    <li><code>stream</code> returns the wrapped command's status whenever the command fails. If the command succeeds but log upload, capture, or a managed status update fails, it exits <code>1</code>.</li>
+    <li><code>builds wait</code> and <code>builds when-running</code> use the dedicated exit codes listed above.</li>
+    <li><code>--dry-run</code> validates configuration and arguments but neither sends a request nor executes a wrapped command.</li>
+  </ul>
+  <p>
+    For unsuccessful HTTP responses the body is printed to stderr when available, followed by the
+    status. Typical meanings:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Common cause</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>401</code></td><td>Invalid or revoked API key</td></tr>
+      <tr><td><code>403</code></td><td>Missing API scope or team permission</td></tr>
+      <tr><td><code>404</code></td><td>Wrong team/app/build path, or a cross-team resource</td></tr>
+      <tr><td><code>409</code></td><td>Manual writes attempted on an automatic build, or a conflicting terminal state</td></tr>
+      <tr><td><code>422</code></td><td>API validation failure</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The client does not retry normal requests. Use an outer CI retry only when the operation is safe
+    or explicitly idempotent — build creation is idempotent when the same <code>--request-uuid</code>
+    is reused.
+  </p>
+
+  <h2>Current boundaries</h2>
+  <ul>
+    <li><code>stream</code> works only with builds in <code>manual</code> reporting mode. Automatic provider builds reject manual status and log writes.</li>
+    <li>Output is combined stdout/stderr; separate streams and terminal control sequences are not preserved.</li>
+    <li>The API accepts at most 256 KiB per log chunk and 5 MB per complete build log. The CLI does not truncate automatically when the server limit is reached.</li>
+    <li>A response is treated as bytes unless <code>--json</code> is selected; content type does not change output behavior.</li>
+    <li>There is no config file or credential store. Configuration is deliberately explicit through environment variables and flags.</li>
+    <li><code>request</code> remains available for endpoints not yet covered by dedicated subcommands.</li>
+  </ul>
 
   <h2>Security</h2>
   <ul>
     <li>The API key is accepted only through <code>APP_MANAGER_API_KEY</code>, never as a CLI argument</li>
-    <li>Authorization headers are written to mode-<code>0600</code> files in a mode-<code>0700</code> temporary directory</li>
+    <li>Authorization headers and inline request bodies are written to mode-<code>0600</code> files in a mode-<code>0700</code> temporary directory before being passed to <code>curl</code></li>
     <li>Dry-run output redacts all sensitive headers</li>
+    <li>Temporary state is removed on normal exit; treat build runners as sensitive because wrapped commands and downloaded responses may contain secrets</li>
     <li>Use HTTPS outside local development and pin installer revisions in production CI</li>
   </ul>
 </DocsLayout>
