@@ -172,7 +172,7 @@
 
     $: allTags = (() => {
         const acc = [];
-        const push = (list) => (list || []).forEach((t) => acc.push(Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]));
+        const push = (list) => (list || []).forEach((t) => acc.push(Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]));
         push(app.tags);
         (identifier.services || []).forEach((credential) => push(credential.tags));
         (identifier.build_targets || []).forEach((target) => (target.credentials || []).forEach((credential) => push(credential.tags)));
