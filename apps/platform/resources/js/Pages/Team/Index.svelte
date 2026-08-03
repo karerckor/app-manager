@@ -189,6 +189,7 @@
                                     <label class="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-sunken px-3.5 py-2.5 text-xs">
                                         <input
                                             type="checkbox"
+                                            class="h-4 w-4 rounded border-border-control text-brand focus:ring-brand"
                                             value={mode.value}
                                             checked={(storageModesForm.allowed_credential_storage_modes ?? storageModes.instance.map((m) => m.value)).includes(mode.value)}
                                             on:change={(event) => toggleStorageMode(mode.value, event.currentTarget.checked)}
