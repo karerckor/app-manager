@@ -36,7 +36,11 @@ class CredentialPresenterTest extends TestCase
         $this->assertSame('unverified', $presented['vault']['verification']['status']);
         $this->assertNull($presented['file']);
         $this->assertNull($presented['reveal_url'], 'A payload of non-secret fields must not offer a reveal.');
-        // Expo media condition is covered by CredentialPresenterTest::test_file_upload_guards_expo_export_eligibility
+        // Not asserting expo.available here: with no $expoProject argument it is
+        // false for that reason alone, never reaching the media condition. That an
+        // external credential can hold no media is established by
+        // CredentialExternalStorageTest::test_manager_creates_an_external_credential_with_a_vault_reference
+        // and CredentialExternalStorageApiTest::test_uploading_a_file_to_an_external_credential_is_not_found.
     }
 
     public function test_local_credential_with_a_password_still_offers_a_reveal_url(): void
