@@ -3893,6 +3893,10 @@ Cover, in this order:
 
 `CREDENTIAL_STORAGE_MODES` and `CREDENTIALS_API_PROFILE`, each with its default, its accepted values, and the team-level narrowing.
 
+Also document one constraint that is easy to trip over: **every value in `vault.metadata` must be a string.** Laravel's `string` rule is a strict `is_string()` check with no coercion, so a client sending `{"metadata": {"port": 5432}}` gets a 422. Quote numeric and boolean values. This applies both when creating a credential and when a pipeline reports metadata to the verification endpoint.
+
+While writing this, fix the inaccurate rationale comment above the `vault.metadata.*` rule in `app/Support/Credentials/CredentialSchema.php` — it currently claims Laravel coerces scalars, which is wrong. Replace it with: `// Strict is_string(): callers must quote numeric and boolean metadata values.`
+
 Two warnings must be explicit:
 
 - **Switching `CREDENTIALS_API_PROFILE` is a deploy, not a toggle.** Routes resolve at boot.
