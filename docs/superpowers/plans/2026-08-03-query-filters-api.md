@@ -1239,10 +1239,17 @@ Add `tags[]`, `tags_mode` and `search` to whatever reference lists v1 query para
 
 - [ ] **Step 4: Commit**
 
+Stage the specific document you edited — never `git add -A`. This branch carries
+unrelated staged and unstaged work (`BuildController.php`, the notification
+integration files, `DemoSeeder.php`, two already-staged test files), and a
+blanket `add` would commit all of it.
+
 ```bash
-git add -A
+git add <the file edited in step 3>
 git commit -m "docs(api): document the index filter parameters"
 ```
+
+If step 3 found nothing to document, skip this commit entirely.
 
 ## Self-Review Notes
 

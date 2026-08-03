@@ -475,8 +475,18 @@ Expected: PASS. If anything outside the five files above fails on a tag shape, i
 
 - [ ] **Step 7: Commit**
 
+Stage explicit paths, never `git add tests/`. This branch has unrelated
+already-staged test changes (`tests/Feature/AppIdentifierPageTest.php`,
+`tests/Feature/CredentialPresenterTest.php`); a directory-wide `add` would sweep
+them into this commit. Check with `git status --short` first and adjust the list if
+`BuildTagsApiTest.php` is absent.
+
 ```bash
-git add tests/
+git add tests/Unit/TagRulesTest.php \
+        tests/Feature/Tags/HasTagsTraitTest.php \
+        tests/Feature/Tags/TagSerializationTest.php \
+        tests/Feature/Tags/TagsEndpointTest.php \
+        tests/Feature/Api/V1/BuildTagsApiTest.php
 git commit -m "test(tags): assert the compacted tuple shape"
 ```
 
