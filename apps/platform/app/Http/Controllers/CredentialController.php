@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Credentials\SyncVaultReference;
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
+use App\Enums\VaultMetadataSource;
+use App\Enums\VaultProvider;
 use App\Enums\WebhookEventType;
 use App\Http\Requests\AttachCredentialRequest;
 use App\Http\Requests\DetachCredentialRequest;
@@ -15,10 +19,10 @@ use App\Models\AppIdentifier;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
-use App\Rules\ValidCredentialFile;
 use App\Support\Audit\CredentialAccessAuditRecorder;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialFileStorage;
+use App\Support\Credentials\CredentialRequestRules;
 use App\Support\Credentials\CredentialSchema;
 use App\Support\Credentials\CredentialUniqueness;
 use Illuminate\Http\JsonResponse;
@@ -38,6 +42,8 @@ class CredentialController extends Controller
         private readonly CredentialUniqueness $credentialUniqueness,
         private readonly ExpoAutoSyncDispatcher $expoAutoSync,
         private readonly CredentialAccessAuditRecorder $credentialAccessAudits,
+        private readonly CredentialRequestRules $credentialRules,
+        private readonly SyncVaultReference $vaultReferences,
     ) {}
 
     public function attach(
@@ -78,6 +84,8 @@ class CredentialController extends Controller
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
         $type = CredentialType::tryFrom((string) $request->input('type'));
+        $mode = $this->credentialRules->resolveMode($team, $request);
+
         $rules = [
             'app_identifier_id' => [
                 'required',
@@ -87,17 +95,15 @@ class CredentialController extends Controller
             'type' => ['required', Rule::enum(CredentialType::class)],
             'expires_at' => ['nullable', 'date'],
             'check_uniqueness' => ['sometimes', 'boolean'],
+            ...$this->credentialRules->forCreate($team, $request, $mode, $type),
         ];
 
         if ($type) {
-            $rules = [
-                ...$rules,
-                ...CredentialSchema::rules($type, true, (array) $request->input('payload', [])),
-                ...CredentialSchema::attachmentRules($type),
-            ];
+            $rules = [...$rules, ...CredentialSchema::attachmentRules($type)];
         }
 
         $data = $request->validate($rules);
+        $data['storage_mode'] = $mode->value;
         $type = CredentialType::from($data['type']);
         $identifier = AppIdentifier::findOrFail($data['app_identifier_id']);
 
@@ -120,11 +126,13 @@ class CredentialController extends Controller
             ]);
         }
 
-        $fingerprint = $this->credentialUniqueness->fingerprintUpload(
-            $type,
-            $data['payload'] ?? [],
-            $request->file('file'),
-        );
+        $fingerprint = $mode === CredentialStorageMode::External
+            ? null
+            : $this->credentialUniqueness->fingerprintUpload(
+                $type,
+                $data['payload'] ?? [],
+                $request->file('file'),
+            );
 
         $reused = DB::transaction(function () use (
             $mobileApp,
@@ -136,20 +144,36 @@ class CredentialController extends Controller
             $profileType,
             $checkUniqueness,
             $fingerprint,
+            $mode,
         ) {
             Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
 
             $credential = $checkUniqueness
-                ? $this->credentialUniqueness->findMatching($team, $type, $fingerprint)
+                ? ($mode === CredentialStorageMode::External
+                    ? $this->credentialUniqueness->findMatchingVaultReference(
+                        $team,
+                        $type,
+                        VaultProvider::from($data['vault']['provider']),
+                        $data['vault']['resource'],
+                    )
+                    : $this->credentialUniqueness->findMatching($team, $type, $fingerprint))
                 : null;
             $reused = $credential !== null;
 
             if (! $credential) {
                 $credential = $mobileApp->team->credentials()->create([
-                    ...Arr::only($data, ['name', 'type', 'expires_at']),
+                    ...Arr::only($data, ['name', 'type', 'storage_mode', 'expires_at']),
                     'payload' => $data['payload'] ?? null,
                     'fingerprint' => $fingerprint,
                 ]);
+
+                if ($mode === CredentialStorageMode::External) {
+                    $this->vaultReferences->create(
+                        $credential,
+                        $data['vault'],
+                        VaultMetadataSource::User,
+                    );
+                }
             }
 
             if ($profileType) {
@@ -163,7 +187,7 @@ class CredentialController extends Controller
                 $identifier->credentials()->syncWithoutDetaching([$credential->id]);
             }
 
-            if (! $reused && $request->hasFile('file')) {
+            if (! $reused && $mode === CredentialStorageMode::Local && $request->hasFile('file')) {
                 CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             }
 
@@ -228,6 +252,8 @@ class CredentialController extends Controller
 
     public function update(Request $request, Team $team, Credential $credential): RedirectResponse
     {
+        $this->credentialRules->assertModeIsUnchanged($credential, $request);
+
         $type = CredentialType::tryFrom((string) $request->input('type'));
 
         if ($type
@@ -238,7 +264,7 @@ class CredentialController extends Controller
             ]);
         }
 
-        if ($type === $credential->type) {
+        if ($type === $credential->type && ! $credential->isExternal()) {
             $payload = (array) $request->input('payload', []);
 
             foreach (CredentialSchema::definition($type)['fields'] as $field) {
@@ -256,15 +282,8 @@ class CredentialController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::enum(CredentialType::class)],
             'expires_at' => ['nullable', 'date'],
+            ...$this->credentialRules->forUpdate($credential, $request, $type),
         ];
-
-        if ($type) {
-            $fileRequired = $type !== $credential->type || ! $credential->getFirstMedia('file');
-            $rules = [
-                ...$rules,
-                ...CredentialSchema::rules($type, $fileRequired, (array) $request->input('payload', [])),
-            ];
-        }
 
         $data = $request->validate($rules);
         $type = CredentialType::from($data['type']);
@@ -276,13 +295,21 @@ class CredentialController extends Controller
                 'payload' => $data['payload'] ?? null,
             ]);
 
-            if ($request->hasFile('file')) {
-                CredentialFileStorage::storeUploaded($credential, $request->file('file'));
-            }
+            if ($credential->isExternal()) {
+                $this->vaultReferences->update(
+                    $credential->vaultReference,
+                    $data['vault'],
+                    VaultMetadataSource::User,
+                );
+            } else {
+                if ($request->hasFile('file')) {
+                    CredentialFileStorage::storeUploaded($credential, $request->file('file'));
+                }
 
-            $credential->forceFill([
-                'fingerprint' => $this->credentialUniqueness->fingerprintCredential($credential),
-            ])->saveQuietly();
+                $credential->forceFill([
+                    'fingerprint' => $this->credentialUniqueness->fingerprintCredential($credential),
+                ])->saveQuietly();
+            }
 
             $this->webhookEvents->record(
                 $team,
