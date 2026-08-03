@@ -5,11 +5,13 @@ namespace Tests\Feature;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Enums\VaultProvider;
 use App\Models\AppIdentifier;
 use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\Credentials\CredentialUniqueness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -223,6 +225,64 @@ class CredentialUniquenessTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('checkUniquenessByDefault', false));
+    }
+
+    public function test_matching_vault_reference_is_found_within_the_team_and_type(): void
+    {
+        $team = Team::factory()->create();
+        $existing = Credential::factory()
+            ->external(VaultProvider::AwsSecretsManager, 'arn:aws:secretsmanager:eu:1:secret:ios')
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+
+        $match = app(CredentialUniqueness::class)->findMatchingVaultReference(
+            $team,
+            CredentialType::ApnsKey,
+            VaultProvider::AwsSecretsManager,
+            'arn:aws:secretsmanager:eu:1:secret:ios',
+        );
+
+        $this->assertNotNull($match);
+        $this->assertSame($existing->id, $match->id);
+    }
+
+    public function test_vault_reference_does_not_match_across_teams_types_or_providers(): void
+    {
+        $team = Team::factory()->create();
+        $other = Team::factory()->create();
+        $resource = 'arn:aws:secretsmanager:eu:1:secret:ios';
+
+        Credential::factory()
+            ->external(VaultProvider::AwsSecretsManager, $resource)
+            ->create(['team_id' => $other->id, 'type' => CredentialType::ApnsKey]);
+        Credential::factory()
+            ->external(VaultProvider::AwsSecretsManager, $resource)
+            ->create(['team_id' => $team->id, 'type' => CredentialType::AppleApiKey]);
+        Credential::factory()
+            ->external(VaultProvider::HashicorpVault, $resource)
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+
+        $this->assertNull(app(CredentialUniqueness::class)->findMatchingVaultReference(
+            $team,
+            CredentialType::ApnsKey,
+            VaultProvider::AwsSecretsManager,
+            $resource,
+        ));
+    }
+
+    public function test_local_credentials_are_never_returned_as_vault_matches(): void
+    {
+        $team = Team::factory()->create();
+        Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::ApnsKey,
+        ]);
+
+        $this->assertNull(app(CredentialUniqueness::class)->findMatchingVaultReference(
+            $team,
+            CredentialType::ApnsKey,
+            VaultProvider::AwsSecretsManager,
+            'arn:aws:secretsmanager:eu:1:secret:ios',
+        ));
     }
 
     private function application(): array

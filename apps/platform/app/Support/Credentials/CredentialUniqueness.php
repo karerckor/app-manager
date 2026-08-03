@@ -2,9 +2,12 @@
 
 namespace App\Support\Credentials;
 
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
+use App\Enums\VaultProvider;
 use App\Models\Credential;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use RuntimeException;
 use Throwable;
@@ -76,6 +79,22 @@ class CredentialUniqueness
         }
 
         return null;
+    }
+
+    public function findMatchingVaultReference(
+        Team $team,
+        CredentialType $type,
+        VaultProvider $provider,
+        string $resource,
+    ): ?Credential {
+        return $team->credentials()
+            ->where('type', $type->value)
+            ->where('storage_mode', CredentialStorageMode::External->value)
+            ->whereHas('vaultReference', fn (Builder $query) => $query
+                ->where('provider', $provider->value)
+                ->where('resource', $resource))
+            ->oldest()
+            ->first();
     }
 
     public function fingerprintCredential(Credential $credential): ?string
