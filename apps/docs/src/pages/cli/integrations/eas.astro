@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI EAS integration" activeNav="/guides/cli/integrations/eas">
+<DocsLayout title="CLI EAS integration" activeNav="/cli/integrations/eas">
   <h1>EAS</h1>
   <p>
     <code>appmctl eas</code> covers the Expo integration. The API splits it across two scopes,
@@ -141,7 +141,7 @@ appmctl eas link --integration-id int-002 --mode existing
     <tbody>
       <tr><td><code>synced</code></td><td>Present on both sides</td></tr>
       <tr><td><code>app_manager_only</code></td><td>Here but not on Expo; <code>sync-identifiers</code> pushes it up</td></tr>
-      <tr><td><code>expo_only</code></td><td>On Expo but not here; create it with <a href="/guides/cli/identifiers"><code>appmctl identifiers create</code></a></td></tr>
+      <tr><td><code>expo_only</code></td><td>On Expo but not here; create it with <a href="/cli/identifiers"><code>appmctl identifiers create</code></a></td></tr>
     </tbody>
   </table>
   <CodeBlock lang="bash" code={`appmctl eas identifiers

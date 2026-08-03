@@ -4,7 +4,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
 import CommandOutput from '../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI (appmctl)" activeNav="/guides/cli">
+<DocsLayout title="CLI (appmctl)" activeNav="/cli">
   <h1>CLI — <code>appmctl</code></h1>
   <p>
     <code>appmctl</code> is a dependency-light command-line client for the App Manager API.
@@ -19,9 +19,9 @@ import CommandOutput from '../../components/CommandOutput.astro';
 
   <h2>Start here</h2>
   <ul>
-    <li><a href="/guides/cli/installation">Installation</a> — installer, custom directories, pinning a commit</li>
-    <li><a href="/guides/cli/configuration">Configuration</a> — environment variables, global options, API key scopes</li>
-    <li><a href="/guides/cli/examples">Examples</a> — end-to-end CI recipes</li>
+    <li><a href="/cli/installation">Installation</a> — installer, custom directories, pinning a commit</li>
+    <li><a href="/cli/configuration">Configuration</a> — environment variables, global options, API key scopes</li>
+    <li><a href="/cli/examples">Examples</a> — end-to-end CI recipes</li>
   </ul>
 
   <h2>A first command</h2>
@@ -40,62 +40,62 @@ import CommandOutput from '../../components/CommandOutput.astro';
       <tr>
         <td><code>apps</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code></td>
-        <td><a href="/guides/cli/applications">Applications</a></td>
+        <td><a href="/cli/applications">Applications</a></td>
       </tr>
       <tr>
         <td><code>assets</code></td>
         <td><code>list</code>, <code>show</code>, <code>download</code>, <code>upload</code>, <code>delete</code></td>
-        <td><a href="/guides/cli/applications">Applications</a></td>
+        <td><a href="/cli/applications">Applications</a></td>
       </tr>
       <tr>
         <td><code>identifiers</code></td>
         <td><code>list</code>, <code>show</code>, <code>create</code>, <code>update</code>, <code>delete</code></td>
-        <td><a href="/guides/cli/identifiers">Identifiers</a></td>
+        <td><a href="/cli/identifiers">Identifiers</a></td>
       </tr>
       <tr>
         <td><code>credentials</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>download</code>, <code>upload</code>, <code>types</code></td>
-        <td><a href="/guides/cli/credentials">Credentials</a></td>
+        <td><a href="/cli/credentials">Credentials</a></td>
       </tr>
       <tr>
         <td><code>files</code></td>
         <td><code>list</code>, <code>show</code>, <code>get</code>, <code>upload</code>, <code>update</code>, <code>delete</code></td>
-        <td><a href="/guides/cli/files">Files</a></td>
+        <td><a href="/cli/files">Files</a></td>
       </tr>
       <tr>
         <td><code>builds</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>cancel</code>, <code>patch</code>, <code>wait</code>, <code>when-running</code></td>
-        <td><a href="/guides/cli/builds">Builds</a></td>
+        <td><a href="/cli/builds">Builds</a></td>
       </tr>
       <tr>
         <td><code>logs</code>, <code>artifacts</code></td>
         <td><code>get</code>, <code>post</code> / <code>list</code>, <code>get</code>, <code>upload</code>, <code>delete</code></td>
-        <td><a href="/guides/cli/builds">Builds</a></td>
+        <td><a href="/cli/builds">Builds</a></td>
       </tr>
       <tr>
         <td><code>integrations</code></td>
         <td><code>list</code>, <code>get</code>, <code>repos</code>, <code>workflows</code>, <code>refs</code></td>
-        <td><a href="/guides/cli/integrations">Integrations</a></td>
+        <td><a href="/cli/integrations">Integrations</a></td>
       </tr>
       <tr>
         <td><code>eas</code></td>
         <td>12 actions across the Expo account and the project link</td>
-        <td><a href="/guides/cli/integrations/eas">EAS</a></td>
+        <td><a href="/cli/integrations/eas">EAS</a></td>
       </tr>
       <tr>
         <td><code>pipelines</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>run</code>, <code>inputs</code></td>
-        <td><a href="/guides/cli/integrations/pipelines">Pipelines</a></td>
+        <td><a href="/cli/integrations/pipelines">Pipelines</a></td>
       </tr>
       <tr>
         <td><code>webhooks</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>test</code>, <code>rotate</code>, <code>deliveries</code>, <code>redeliver</code></td>
-        <td><a href="/guides/cli/integrations/webhooks">Webhooks</a></td>
+        <td><a href="/cli/integrations/webhooks">Webhooks</a></td>
       </tr>
       <tr>
         <td><code>request</code>, <code>stream</code></td>
         <td>Generic endpoint access, and log streaming for manual builds</td>
-        <td><a href="/guides/cli/configuration">Configuration</a></td>
+        <td><a href="/cli/configuration">Configuration</a></td>
       </tr>
     </tbody>
   </table>
@@ -164,7 +164,7 @@ appmctl --json builds get 019fc789-47b5-7034-9291-4cd3c57b75d5 | jq -r '.data.st
     <li>A response is treated as bytes unless <code>--json</code> is passed; content type does not change output behavior.</li>
     <li>There is no config file or credential store. Configuration is explicit through environment variables and flags.</li>
     <li><code>builds list --status</code> is accepted but has no effect: the API's build index takes no status filter.</li>
-    <li><code>builds when-running --timeout</code> is accepted but has no effect; see <a href="/guides/cli/builds">Builds</a>.</li>
-    <li>Notification destinations have no API, so no CLI command covers them; see <a href="/guides/cli/integrations/notifications">Notifications</a>.</li>
+    <li><code>builds when-running --timeout</code> is accepted but has no effect; see <a href="/cli/builds">Builds</a>.</li>
+    <li>Notification destinations have no API, so no CLI command covers them; see <a href="/cli/integrations/notifications">Notifications</a>.</li>
   </ul>
 </DocsLayout>

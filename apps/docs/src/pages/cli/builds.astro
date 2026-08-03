@@ -1,10 +1,10 @@
 ---
-import DocsLayout from '../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../components/CodeBlock.astro';
-import CommandOutput from '../../../components/CommandOutput.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI builds" activeNav="/guides/cli/builds">
+<DocsLayout title="CLI builds" activeNav="/cli/builds">
   <h1>Builds</h1>
   <p>
     A build record is the platform's account of one build attempt: its profile, status, tags,
@@ -13,9 +13,9 @@ import CommandOutput from '../../../components/CommandOutput.astro';
     their own:
   </p>
   <ul>
-    <li><a href="/guides/cli/builds/manual-builds">Manual builds</a> — your CI runs the build and reports status and logs</li>
-    <li><a href="/guides/cli/builds/automated-builds">Automated builds</a> — a pipeline provider drives the build and reports for you</li>
-    <li><a href="/guides/cli/builds/eas-builds">EAS builds</a> — Expo runs the build and the record mirrors it</li>
+    <li><a href="/cli/builds/manual-builds">Manual builds</a> — your CI runs the build and reports status and logs</li>
+    <li><a href="/cli/builds/automated-builds">Automated builds</a> — a pipeline provider drives the build and reports for you</li>
+    <li><a href="/cli/builds/eas-builds">EAS builds</a> — Expo runs the build and the record mirrors it</li>
   </ul>
 
   <h2>Commands</h2>
@@ -78,7 +78,7 @@ appmctl builds patch 019fc789-47b5-7034-9291-4cd3c57b75d5 --tag nightly`} />
   <p>
     <code>patch</code> requires at least one of <code>--status</code> or <code>--tag</code>.
     Status transitions are limited to manually reported builds; see
-    <a href="/guides/cli/builds/manual-builds">Manual builds</a>.
+    <a href="/cli/builds/manual-builds">Manual builds</a>.
   </p>
 
   <h3>Cancel</h3>
@@ -166,7 +166,7 @@ appmctl artifacts delete [--app APP] --build-id ID ARTIFACT_ID`} />
 appmctl artifacts get --build-id "$BUILD_ID" 019fc789-47c3-7280-a953-5d12a8a9b884 -o app.aab`} />
   <p>
     Artifacts are scoped to a build and disappear with it. Anything that should outlive the
-    build belongs in <a href="/guides/cli/files">files</a>.
+    build belongs in <a href="/cli/files">files</a>.
   </p>
 
   <h2>Scopes</h2>

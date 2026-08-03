@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../components/CodeBlock.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI installation" activeNav="/guides/cli/installation">
+<DocsLayout title="CLI installation" activeNav="/cli/installation">
   <h1>Installation</h1>
   <p>
     <code>appmctl</code> is one Bash script. Installing it means putting that script on
@@ -123,7 +123,7 @@ for t in libs/cli/tests/test_*.sh; do bash "$t"; done`} />
 appmctl --help         # resource list and global options
 appmctl builds --help  # actions for one resource`} />
   <p>
-    Next: <a href="/guides/cli/configuration">Configuration</a> covers the environment
+    Next: <a href="/cli/configuration">Configuration</a> covers the environment
     variables and the API key scopes each command needs.
   </p>
 </DocsLayout>

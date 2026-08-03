@@ -1,10 +1,10 @@
 ---
-import DocsLayout from '../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../components/CodeBlock.astro';
-import CommandOutput from '../../../components/CommandOutput.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI identifiers" activeNav="/guides/cli/identifiers">
+<DocsLayout title="CLI identifiers" activeNav="/cli/identifiers">
   <h1>Identifiers</h1>
   <p>
     An identifier is what an app is called on one platform: the iOS bundle ID, the Android
@@ -105,7 +105,7 @@ appmctl identifiers create --platform web --identifier customer.acme.example \\
     When an app is linked to an Expo project, <code>appmctl eas identifiers</code> shows the
     same identifiers alongside their sync state on Expo, and
     <code>eas sync-identifiers</code> pushes local ones upward. See
-    <a href="/guides/cli/integrations/eas">EAS</a>.
+    <a href="/cli/integrations/eas">EAS</a>.
   </p>
 
   <h2>Scopes</h2>

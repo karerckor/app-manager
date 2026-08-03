@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI notifications" activeNav="/guides/cli/integrations/notifications">
+<DocsLayout title="CLI notifications" activeNav="/cli/integrations/notifications">
   <h1>Notifications</h1>
   <p>
     Notification destinations send build events to a chat channel — Slack, Discord, Telegram —
@@ -35,7 +35,7 @@ appmctl request GET integrations/notifications
   <h2>Use webhooks for automation</h2>
   <p>
     Everything a notification destination reacts to is also available as a
-    <a href="/guides/cli/integrations/webhooks">webhook</a> event, and webhooks are fully
+    <a href="/cli/integrations/webhooks">webhook</a> event, and webhooks are fully
     manageable from the CLI. If you need notifications under version control or created by a
     script, send the events to your own receiver and post to chat from there:
   </p>

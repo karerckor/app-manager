@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI automated builds" activeNav="/guides/cli/builds/automated-builds">
+<DocsLayout title="CLI automated builds" activeNav="/cli/builds/automated-builds">
   <h1>Automated builds</h1>
   <p>
     An automated build is one the platform dispatched to a CI provider. Triggering a pipeline
@@ -31,7 +31,7 @@ appmctl pipelines run --integration-id int-002 pipe-001 \\
 # created_at:        2026-08-03`} />
   <p>
     The response is the build record the dispatch created, so the run already tells you what to
-    watch. See <a href="/guides/cli/integrations/pipelines">Pipelines</a> for the full command.
+    watch. See <a href="/cli/integrations/pipelines">Pipelines</a> for the full command.
   </p>
 
   <h2>What you cannot do</h2>
@@ -54,7 +54,7 @@ appmctl pipelines run --integration-id int-002 pipe-001 \\
   </table>
   <p>
     If you find yourself wanting to write status to one of these builds, the build you want is
-    a <a href="/guides/cli/builds/manual-builds">manual build</a>.
+    a <a href="/cli/builds/manual-builds">manual build</a>.
   </p>
 
   <h2>Watching a dispatched build</h2>

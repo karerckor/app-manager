@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI manual builds" activeNav="/guides/cli/builds/manual-builds">
+<DocsLayout title="CLI manual builds" activeNav="/cli/builds/manual-builds">
   <h1>Manual builds</h1>
   <p>
     A manual build is one where your CI does the work and reports back. The platform stores
@@ -138,7 +138,7 @@ appmctl builds patch "$BUILD_ID" --status completed --tag 1.4.0:#f59e0b`} />
     <code>stream</code>, <code>logs post</code>, and status transitions all reject builds that
     a provider reports, with <code>409</code>. Those records mirror an external system, and
     letting two writers disagree about the same build would make the record untrustworthy. See
-    <a href="/guides/cli/builds/automated-builds">Automated builds</a>.
+    <a href="/cli/builds/automated-builds">Automated builds</a>.
   </p>
 
   <h2>Scopes</h2>

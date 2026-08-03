@@ -1,10 +1,10 @@
 ---
-import DocsLayout from '../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../components/CodeBlock.astro';
-import CommandOutput from '../../../components/CommandOutput.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI integrations" activeNav="/guides/cli/integrations">
+<DocsLayout title="CLI integrations" activeNav="/cli/integrations">
   <h1>Integrations</h1>
   <p>
     An integration is a connection to an external system: a CI provider, an Expo account, a
@@ -12,10 +12,10 @@ import CommandOutput from '../../../components/CommandOutput.astro';
     one, so listing integrations is usually the first step in a script that touches CI.
   </p>
   <ul>
-    <li><a href="/guides/cli/integrations/eas">EAS</a> — Expo accounts and project links</li>
-    <li><a href="/guides/cli/integrations/pipelines">Pipelines</a> — CI workflows the platform can trigger</li>
-    <li><a href="/guides/cli/integrations/webhooks">Webhooks</a> — outbound HTTP notifications</li>
-    <li><a href="/guides/cli/integrations/notifications">Notifications</a> — chat destinations, web UI only for now</li>
+    <li><a href="/cli/integrations/eas">EAS</a> — Expo accounts and project links</li>
+    <li><a href="/cli/integrations/pipelines">Pipelines</a> — CI workflows the platform can trigger</li>
+    <li><a href="/cli/integrations/webhooks">Webhooks</a> — outbound HTTP notifications</li>
+    <li><a href="/cli/integrations/notifications">Notifications</a> — chat destinations, web UI only for now</li>
   </ul>
 
   <h2>Commands</h2>
@@ -91,7 +91,7 @@ appmctl pipelines create --integration-id "$INT" \\
   <h2>Creating integrations</h2>
   <p>
     Only Expo accounts can be connected from the CLI, with
-    <a href="/guides/cli/integrations/eas"><code>appmctl eas connect</code></a>. GitHub and
+    <a href="/cli/integrations/eas"><code>appmctl eas connect</code></a>. GitHub and
     GitLab integrations are created through OAuth in the web UI, because the flow needs a
     browser. Once they exist, the CLI can read and use them.
   </p>

@@ -56,7 +56,7 @@ import Screenshot from '../../../components/Screenshot.astro';
   </p>
   <p>
     Unlike GitHub and GitLab, this connection is <em>not</em> browser-only: it is a token, so
-    <a href="/guides/cli/integrations/eas"><code>appmctl eas connect</code></a> does the same job from
+    <a href="/cli/integrations/eas"><code>appmctl eas connect</code></a> does the same job from
     a script.
   </p>
 
@@ -142,7 +142,7 @@ import Screenshot from '../../../components/Screenshot.astro';
   <p>
     An EAS build record mirrors an Expo build: you register it with the Expo build id, and the platform
     tracks its status. Manual status and log writes are refused, because Expo owns both — see
-    <a href="/guides/cli/builds/eas-builds">EAS builds</a>.
+    <a href="/cli/builds/eas-builds">EAS builds</a>.
   </p>
   <p>
     How quickly a mirrored record advances depends on sync. Without automatic sync it moves when
@@ -151,7 +151,7 @@ import Screenshot from '../../../components/Screenshot.astro';
 
   <h2>Doing the same from the CLI</h2>
   <p>
-    <a href="/guides/cli/integrations/eas"><code>appmctl eas</code></a> covers all of it: connect,
+    <a href="/cli/integrations/eas"><code>appmctl eas</code></a> covers all of it: connect,
     projects, import, link, status, sync, auto-sync, identifiers, sync-identifiers, provision, attach,
     disconnect. Actions that exist in both scopes take the scope from the flag —
     <code>--integration-id</code> for the account, <code>--app</code> for the project link.

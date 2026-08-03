@@ -1,15 +1,15 @@
 ---
-import DocsLayout from '../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../components/CodeBlock.astro';
-import CommandOutput from '../../../components/CommandOutput.astro';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI files" activeNav="/guides/cli/files">
+<DocsLayout title="CLI files" activeNav="/cli/files">
   <h1>Files</h1>
   <p>
     Files are an app's general-purpose media library: mapping files, release checklists,
     provisioning notes, anything that belongs to the app rather than to one build. Build
-    outputs belong in <a href="/guides/cli/builds">artifacts</a> instead, which are scoped to
+    outputs belong in <a href="/cli/builds">artifacts</a> instead, which are scoped to
     the build that produced them.
   </p>
 
@@ -98,7 +98,7 @@ appmctl files upload --file build/mapping.txt \\
   <p>
     Those are not files. They live in their own collections with generated per-platform
     variants and have a separate command — see
-    <a href="/guides/cli/applications">Applications</a>.
+    <a href="/cli/applications">Applications</a>.
   </p>
 
   <h2>Scopes</h2>

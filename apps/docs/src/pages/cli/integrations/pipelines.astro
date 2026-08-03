@@ -1,10 +1,10 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
-import CommandOutput from '../../../../components/CommandOutput.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import CommandOutput from '../../../components/CommandOutput.astro';
 ---
 
-<DocsLayout title="CLI pipelines" activeNav="/guides/cli/integrations/pipelines">
+<DocsLayout title="CLI pipelines" activeNav="/cli/integrations/pipelines">
   <h1>Pipelines</h1>
   <p>
     A pipeline is a saved pointer to one CI workflow: which integration, which repository, which
@@ -23,7 +23,7 @@ appmctl pipelines run    --integration-id ID PIPELINE_ID [--inputs JSON] [--ref 
   <p>
     Every action needs <code>--integration-id</code>, because pipelines are scoped to the
     integration that dispatches them. Find it with
-    <a href="/guides/cli/integrations"><code>appmctl integrations list</code></a>.
+    <a href="/cli/integrations"><code>appmctl integrations list</code></a>.
   </p>
 
   <h3>List</h3>
@@ -54,7 +54,7 @@ appmctl pipelines run    --integration-id ID PIPELINE_ID [--inputs JSON] [--ref 
   <h3>Create and update</h3>
   <p>
     <code>--config</code> carries the provider-side wiring. The repository and workflow ids come
-    from the <a href="/guides/cli/integrations">discovery commands</a>, since they are the
+    from the <a href="/cli/integrations">discovery commands</a>, since they are the
     provider's identifiers rather than anything this platform invents:
   </p>
   <CodeBlock lang="bash" code={`appmctl pipelines create --integration-id "$INT" \\
@@ -126,7 +126,7 @@ appmctl builds wait "$BUILD_ID" --timeout 3600`} />
   <p>
     The build it creates reports in <code>automatic</code> mode, which means the provider owns
     its status and logs. Writing status or logs to it from the CLI is refused with
-    <code>409</code> — see <a href="/guides/cli/builds/automated-builds">Automated builds</a>
+    <code>409</code> — see <a href="/cli/builds/automated-builds">Automated builds</a>
     for what stays available.
   </p>
   <p>

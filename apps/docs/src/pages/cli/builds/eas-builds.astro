@@ -1,9 +1,9 @@
 ---
-import DocsLayout from '../../../../layouts/DocsLayout.astro';
-import CodeBlock from '../../../../components/CodeBlock.astro';
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
 ---
 
-<DocsLayout title="CLI EAS builds" activeNav="/guides/cli/builds/eas-builds">
+<DocsLayout title="CLI EAS builds" activeNav="/cli/builds/eas-builds">
   <h1>EAS builds</h1>
   <p>
     An EAS build is one that Expo runs. The build record on this side mirrors it: you register
@@ -74,7 +74,7 @@ appmctl builds wait "$BUILD_ID" --timeout 5400   # EAS queues can be long`} />
   <p>
     How quickly the mirrored status moves depends on how often the platform syncs with Expo.
     Automatic sync has to be enabled on the linked project for the record to advance on its own
-    — see <a href="/guides/cli/integrations/eas">EAS</a> for <code>eas auto-sync</code> and
+    — see <a href="/cli/integrations/eas">EAS</a> for <code>eas auto-sync</code> and
     <code>eas sync</code>.
   </p>
 
@@ -102,7 +102,7 @@ appmctl artifacts upload --build-id "$BUILD_ID" \\
     EAS builds sign with credentials Expo holds. To keep those in step with this platform, use
     <code>eas sync-identifiers</code> to push identifiers up, and <code>eas provision</code> or
     <code>eas attach-credential</code> to hand signing material to Expo. All of that is on the
-    <a href="/guides/cli/integrations/eas">EAS</a> page.
+    <a href="/cli/integrations/eas">EAS</a> page.
   </p>
 
   <h2>Scopes</h2>
