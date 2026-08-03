@@ -17,6 +17,7 @@ enum WebhookEventType: string
     case CredentialExpiringIn7Days = 'credential.expiring_7_days';
     case CredentialExpiringIn1Day = 'credential.expiring_1_day';
     case CredentialExpired = 'credential.expired';
+    case CredentialVerificationFailed = 'credential.verification_failed';
     case BuildCreated = 'build.created';
     case BuildStarted = 'build.started';
     case BuildCancelRequested = 'build.cancel_requested';
@@ -45,5 +46,10 @@ enum WebhookEventType: string
             self::values(),
             fn (string $event) => $event !== self::WebhookTest->value,
         ));
+    }
+
+    public function isCredentialEvent(): bool
+    {
+        return str_starts_with($this->value, 'credential.');
     }
 }

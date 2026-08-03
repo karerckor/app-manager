@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CiCdPipelineController;
 use App\Http\Controllers\Api\V1\CredentialController;
 use App\Http\Controllers\Api\V1\CredentialTypeController;
+use App\Http\Controllers\Api\V1\CredentialVerificationController;
 use App\Http\Controllers\Api\V1\ExpoCredentialController;
 use App\Http\Controllers\Api\V1\ExpoIdentifierController;
 use App\Http\Controllers\Api\V1\ExpoIntegrationController;
@@ -203,6 +204,13 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'index'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.index');
         Route::post('/apps/{mobileApp:slug}/credentials', [CredentialController::class, 'store'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.store');
         Route::get('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'show'])->middleware(['abilities:credentials:read', 'team.permission:view'])->name('apps.credentials.show');
+        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/verification', [CredentialVerificationController::class, 'store'])
+            ->middleware([
+                'abilities:credentials:verify',
+                'team.permission:manage_credentials',
+                'throttle:60,1',
+            ])
+            ->name('apps.credentials.verification.store');
         Route::post('/apps/{mobileApp:slug}/credentials/{credential}/reveal', [CredentialController::class, 'reveal'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials', 'throttle:30,1'])->name('apps.credentials.reveal');
         Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.update');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.destroy');

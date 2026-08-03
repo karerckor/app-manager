@@ -2,6 +2,7 @@
 
 namespace App\Actions\Integrations;
 
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -631,6 +632,7 @@ class ImportExpoProject
         if (! $credential) {
             $credential = $team->credentials()->create([
                 'type' => $type,
+                'storage_mode' => CredentialStorageMode::Local,
                 'name' => Str::limit($name, 255, ''),
                 'payload' => $payload,
                 'expires_at' => filled($expiresAt) ? $expiresAt : null,

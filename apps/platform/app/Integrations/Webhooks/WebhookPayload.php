@@ -44,10 +44,19 @@ class WebhookPayload
     /** @return array<string, mixed> */
     public static function credential(Credential $credential): array
     {
+        $reference = $credential->vaultReference;
+
         return [
             'id' => $credential->id,
             'name' => $credential->name,
             'type' => $credential->type->value,
+            'storage_mode' => $credential->storage_mode->value,
+            'vault' => $reference ? [
+                'provider' => $reference->provider->value,
+                'resource' => $reference->resource,
+                'verification_status' => $reference->verification_status->value,
+                'verification_error' => $reference->verification_error,
+            ] : null,
             'expires_at' => $credential->expires_at?->toISOString(),
             'created_at' => $credential->created_at?->toISOString(),
             'updated_at' => $credential->updated_at?->toISOString(),

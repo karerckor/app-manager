@@ -14,6 +14,7 @@ enum ApiKeyScope: string
     case FilesWrite = 'files:write';
     case CredentialsRead = 'credentials:read';
     case CredentialsReveal = 'credentials:reveal';
+    case CredentialsVerify = 'credentials:verify';
     case CredentialsWrite = 'credentials:write';
     case BuildsRead = 'builds:read';
     case BuildsWrite = 'builds:write';
@@ -93,6 +94,7 @@ enum ApiKeyScope: string
                     self::FilesRead->value,
                     self::CredentialsRead->value,
                     self::CredentialsReveal->value,
+                    self::CredentialsVerify->value,
                     self::BuildsWrite->value,
                     self::LogsWrite->value,
                     self::ArtifactsWrite->value,
@@ -110,7 +112,7 @@ enum ApiKeyScope: string
             self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
             self::FilesWrite, self::BuildsWrite, self::LogsWrite,
             self::ArtifactsWrite => TeamPermission::ManageApplications,
-            self::CredentialsReveal, self::CredentialsWrite => TeamPermission::ManageCredentials,
+            self::CredentialsReveal, self::CredentialsVerify, self::CredentialsWrite => TeamPermission::ManageCredentials,
             self::IntegrationsRead, self::IntegrationsWrite, self::IntegrationsProxy,
             self::PipelinesRead, self::PipelinesWrite,
             self::WebhooksRead, self::WebhooksWrite,
@@ -168,6 +170,7 @@ enum ApiKeyScope: string
             self::FilesWrite => 'Upload, update and delete files attached to an application.',
             self::CredentialsRead => 'View credential metadata.',
             self::CredentialsReveal => 'Reveal credential secrets and download credential files.',
+            self::CredentialsVerify => 'Report whether a vault reference resolved during a build.',
             self::CredentialsWrite => 'Create, rotate and delete credentials.',
             self::BuildsRead => 'View build history and build details.',
             self::BuildsWrite => 'Create, start, update and cancel builds.',

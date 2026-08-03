@@ -31,6 +31,7 @@ class ApiKeyScopeTest extends TestCase
             'files:write',
             'credentials:read',
             'credentials:reveal',
+            'credentials:verify',
             'credentials:write',
             'builds:read',
             'builds:write',
