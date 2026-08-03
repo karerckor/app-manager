@@ -63,6 +63,26 @@ class HasTagsTraitTest extends TestCase
         $this->assertSame([['ios']], $app->fresh()->tags);
     }
 
+    public function test_a_row_stored_in_the_old_padded_form_reads_back_compacted(): void
+    {
+        $app = MobileApp::factory()->create();
+        DB::table('mobile_apps')->where('id', $app->id)->update([
+            'tags' => json_encode([['legacy', null], ['kept', '#abcdef']], JSON_THROW_ON_ERROR),
+        ]);
+
+        // No migration ships with the shape change: the cast normalizes on read,
+        // so old rows compact without a backfill and rewrite on the next save.
+        $this->assertSame([['legacy'], ['kept', '#abcdef']], $app->fresh()->tags);
+
+        $app = $app->fresh();
+        $app->addTag('new')->save();
+
+        $this->assertSame(
+            [['legacy'], ['kept', '#abcdef'], ['new']],
+            json_decode(DB::table('mobile_apps')->where('id', $app->id)->value('tags'), true),
+        );
+    }
+
     public function test_add_tag_accepts_an_animation(): void
     {
         $app = MobileApp::factory()->create();
