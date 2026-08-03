@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Enums\CredentialType;
+use App\Enums\CredentialVerificationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Enums\VaultProvider;
 use App\Models\Audit;
 use App\Models\Credential;
 use App\Models\MobileApp;
@@ -429,6 +431,103 @@ class CredentialVaultTest extends TestCase
                 ->where('filters.sort', 'updated')
                 ->where('filters.status', '')
                 ->where('credentials.data.0.name', 'No expiry at all'));
+    }
+
+    public function test_missing_file_stat_and_filter_ignore_external_credentials(): void
+    {
+        [$owner, $team] = $this->team();
+        Credential::factory()->create([
+            'team_id' => $team->id,
+            'name' => 'Local without a file',
+            'type' => CredentialType::ApnsKey,
+        ]);
+        Credential::factory()
+            ->external(VaultProvider::AwsSecretsManager, 'arn:aws:secretsmanager:eu:1:secret:apns')
+            ->create(['team_id' => $team->id, 'name' => 'Vault reference', 'type' => CredentialType::ApnsKey]);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', $team))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stats.total', 2)
+                ->where('stats.missing_files', 1));
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', [$team, 'status' => 'missing_file']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('credentials.data', 1)
+                ->where('credentials.data.0.name', 'Local without a file'));
+    }
+
+    public function test_storage_filter_selects_one_mode(): void
+    {
+        [$owner, $team] = $this->team();
+        Credential::factory()->create(['team_id' => $team->id, 'name' => 'Local one']);
+        Credential::factory()
+            ->external(VaultProvider::Custom, 'somewhere')
+            ->create(['team_id' => $team->id, 'name' => 'External one']);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', [$team, 'storage' => 'external']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('credentials.data', 1)
+                ->where('credentials.data.0.name', 'External one')
+                ->where('credentials.data.0.storage_mode', 'external')
+                ->where('credentials.data.0.vault.provider', 'custom')
+                ->where('filters.storage', 'external'));
+    }
+
+    public function test_an_unknown_storage_filter_falls_back_to_all(): void
+    {
+        [$owner, $team] = $this->team();
+        Credential::factory()->create(['team_id' => $team->id]);
+        Credential::factory()->external()->create(['team_id' => $team->id]);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', [$team, 'storage' => 'nonsense']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('credentials.data', 2)
+                ->where('filters.storage', ''));
+    }
+
+    public function test_verification_failed_filter_and_stat(): void
+    {
+        [$owner, $team] = $this->team();
+        $failed = Credential::factory()
+            ->external(VaultProvider::Custom, 'broken')
+            ->create(['team_id' => $team->id, 'name' => 'Broken reference']);
+        $failed->vaultReference->update([
+            'verification_status' => CredentialVerificationStatus::Failed,
+            'verification_error' => 'AccessDenied',
+        ]);
+        Credential::factory()->external(VaultProvider::Custom, 'fine')->create(['team_id' => $team->id]);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', [$team, 'status' => 'verification_failed']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stats.verification_failed', 1)
+                ->has('credentials.data', 1)
+                ->where('credentials.data.0.name', 'Broken reference')
+                ->where('credentials.data.0.vault.verification.status', 'failed')
+                ->where('credentials.data.0.vault.verification.error', 'AccessDenied'));
+    }
+
+    public function test_the_page_exposes_the_provider_list_and_the_permitted_modes(): void
+    {
+        [$owner, $team] = $this->team();
+        config(['credentials.storage_modes' => 'local,external']);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.credentials.index', $team))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('allowedStorageModes', ['local', 'external'])
+                ->has('vaultProviders', 6)
+                ->where('vaultProviders.0.value', 'aws_secrets_manager'));
     }
 
     private function team(): array

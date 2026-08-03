@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
+use App\Enums\CredentialVerificationStatus;
 use App\Enums\Platform;
 use App\Enums\TeamPermission;
+use App\Enums\VaultProvider;
 use App\Models\Credential;
 use App\Models\Profile;
 use App\Models\Team;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
+use App\Support\Credentials\StorageModePolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,10 +29,14 @@ class CredentialVaultController extends Controller
 
         $search = trim($request->string('search')->toString());
         $type = CredentialType::tryFrom($request->string('type')->toString());
-        $statuses = ['valid', 'expiring', 'expired', 'never', 'unattached', 'missing_file'];
+        $statuses = [
+            'valid', 'expiring', 'expired', 'never',
+            'unattached', 'missing_file', 'verification_failed',
+        ];
         $status = in_array($request->string('status')->toString(), $statuses, true)
             ? $request->string('status')->toString()
             : '';
+        $storage = CredentialStorageMode::tryFrom($request->string('storage')->toString());
         $sort = in_array($request->string('sort')->toString(), ['updated', 'expiry'], true)
             ? $request->string('sort')->toString()
             : 'updated';
@@ -45,6 +53,7 @@ class CredentialVaultController extends Controller
                 'media',
                 'appIdentifiers.mobileApp',
                 'profiles.appIdentifier.mobileApp',
+                'vaultReference',
             ])
             ->when($search !== '', fn (Builder $query) => $query->where(function (Builder $query) use ($search) {
                 $pattern = "%{$search}%";
@@ -69,8 +78,13 @@ class CredentialVaultController extends Controller
                 ->whereDoesntHave('appIdentifiers')
                 ->whereDoesntHave('profiles'))
             ->when($status === 'missing_file', fn (Builder $query) => $query
+                ->where('storage_mode', CredentialStorageMode::Local->value)
                 ->whereDoesntHave('media', fn (Builder $query) => $query
                     ->where('collection_name', 'file')))
+            ->when($status === 'verification_failed', fn (Builder $query) => $query
+                ->whereHas('vaultReference', fn (Builder $query) => $query
+                    ->where('verification_status', CredentialVerificationStatus::Failed->value)))
+            ->when($storage, fn (Builder $query) => $query->where('storage_mode', $storage->value))
             ->when($appId, fn (Builder $query) => $query->where(function (Builder $query) use ($appId) {
                 $query->whereHas('appIdentifiers', fn (Builder $query) => $query->where('mobile_app_id', $appId))
                     ->orWhereHas('profiles.appIdentifier', fn (Builder $query) => $query->where('mobile_app_id', $appId));
@@ -116,10 +130,13 @@ class CredentialVaultController extends Controller
             'apps' => $apps,
             'canManage' => $canManage,
             'checkUniquenessByDefault' => $team->check_credential_uniqueness_by_default,
+            'vaultProviders' => VaultProvider::definitions(),
+            'allowedStorageModes' => app(StorageModePolicy::class)->allowedValuesFor($team),
             'filters' => [
                 'search' => $search,
                 'type' => $type?->value ?? '',
                 'status' => $status,
+                'storage' => $storage?->value ?? '',
                 'app' => $appId ?? '',
                 'sort' => $sort,
             ],
@@ -132,7 +149,12 @@ class CredentialVaultController extends Controller
                     ->where('expires_at', '<', $today)
                     ->count(),
                 'missing_files' => $team->credentials()
+                    ->where('storage_mode', CredentialStorageMode::Local->value)
                     ->whereDoesntHave('media', fn (Builder $query) => $query->where('collection_name', 'file'))
+                    ->count(),
+                'verification_failed' => $team->credentials()
+                    ->whereHas('vaultReference', fn (Builder $query) => $query
+                        ->where('verification_status', CredentialVerificationStatus::Failed->value))
                     ->count(),
                 'unattached' => $team->credentials()
                     ->whereDoesntHave('appIdentifiers')
@@ -160,6 +182,7 @@ class CredentialVaultController extends Controller
         $definition = CredentialSchema::definition($credential->type);
         $payload = $credential->payload ?? [];
         $media = $credential->getFirstMedia('file');
+        $reference = $credential->vaultReference;
         $passwordFieldsCount = collect($definition['fields'])
             ->filter(fn (array $field) => $field['input'] === 'password'
                 && array_key_exists($field['name'], $payload))
@@ -227,6 +250,20 @@ class CredentialVaultController extends Controller
                 'download_url' => $canManage
                     ? route('accounts.credentials.download', [$team, $credential])
                     : null,
+            ] : null,
+            'storage_mode' => $credential->storage_mode->value,
+            'vault' => $reference ? [
+                'provider' => $reference->provider->value,
+                'provider_label' => $reference->provider->label(),
+                'resource' => $reference->resource,
+                'metadata' => $reference->metadata,
+                'metadata_version' => $reference->metadata_version,
+                'metadata_source' => $reference->metadata_source->value,
+                'verification' => [
+                    'status' => $reference->verification_status->value,
+                    'verified_at' => $reference->verified_at,
+                    'error' => $reference->verification_error,
+                ],
             ] : null,
         ];
     }
