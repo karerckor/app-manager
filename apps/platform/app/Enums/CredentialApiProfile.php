@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use InvalidArgumentException;
+
 enum CredentialApiProfile: string
 {
     case Full = 'full';
@@ -9,7 +11,15 @@ enum CredentialApiProfile: string
 
     public static function current(): self
     {
-        return self::tryFrom((string) config('credentials.api_profile')) ?? self::Full;
+        $configured = trim((string) config('credentials.api_profile'));
+
+        if ($configured === '') {
+            return self::Full;
+        }
+
+        return self::tryFrom($configured) ?? throw new InvalidArgumentException(
+            "Unknown CREDENTIALS_API_PROFILE [{$configured}]. Expected 'full' or 'dashboard_only'."
+        );
     }
 
     /**

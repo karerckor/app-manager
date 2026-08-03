@@ -90,7 +90,7 @@ class WebhookEndpointController extends Controller
     {
         $this->ensureEnabled();
         $this->assertEndpoint($team, $webhookEndpoint);
-        $data = $request->validate($this->rules($team, updating: true));
+        $data = $request->validate($this->rules($team, updating: true, webhookEndpoint: $webhookEndpoint));
 
         DB::transaction(function () use ($webhookEndpoint, $request, $data) {
             $webhookEndpoint->update(array_filter([
@@ -168,15 +168,27 @@ class WebhookEndpointController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function rules(Team $team, bool $updating = false): array
+    private function rules(Team $team, bool $updating = false, ?WebhookEndpoint $webhookEndpoint = null): array
     {
         $required = $updating ? 'sometimes' : 'required';
+
+        // Updating must not strip an event this endpoint already subscribes
+        // to just because the profile stopped offering it — otherwise an
+        // endpoint that predates a profile switch becomes unsavable.
+        // Creation is not given this allowance: it always validates against
+        // what is subscribable right now.
+        $subscribable = $updating
+            ? array_values(array_unique(array_merge(
+                WebhookEventType::subscribableValues(),
+                $webhookEndpoint?->subscribed_events ?? [],
+            )))
+            : WebhookEventType::subscribableValues();
 
         return array_merge([
             'name' => [$required, 'string', 'max:255'],
             'url' => [$required, 'string', 'max:2048', new PublicWebhookUrl($this->urlGuard)],
             'events' => [$required, 'array', 'min:1'],
-            'events.*' => ['string', 'distinct', Rule::in(WebhookEventType::subscribableValues())],
+            'events.*' => ['string', 'distinct', Rule::in($subscribable)],
             'enabled' => ['sometimes', 'boolean'],
         ], WebhookSubscriptionFilters::rules($team));
     }
