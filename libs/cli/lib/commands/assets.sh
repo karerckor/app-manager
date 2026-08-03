@@ -85,8 +85,42 @@ _assets_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["asset","url"],"headers":["asset","url"]}'
-  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+
+  if [ "$PRETTY_JSON" -eq 1 ]; then
+    emit_response
+    return
+  fi
+
+  _assets_print_url_map "$LAST_RESPONSE_FILE"
+}
+
+# This endpoint answers with an object keyed by "<asset>.<variant>", not the array
+# of records the table formatter expects, so it gets its own printer.
+_assets_print_url_map() {
+  local json_file="$1"
+  local key
+  local value
+  local width=5
+  local dashes
+
+  require_jq
+
+  while IFS= read -r key; do
+    [ "${#key}" -gt "$width" ] && width=${#key}
+  done < <("$JQ_BIN" -r '.data // {} | keys_unsorted[]' "$json_file")
+
+  if [ "$width" -eq 5 ] && [ "$("$JQ_BIN" -r '.data // {} | length' "$json_file")" = "0" ]; then
+    printf '(no assets)\n'
+    return 0
+  fi
+
+  dashes=$(printf '%*s' "$width" '' | tr ' ' '-')
+  printf "%-${width}s  %s\n" 'asset' 'url'
+  printf '%s  %s\n' "$dashes" '---'
+
+  while IFS=$'\t' read -r key value; do
+    printf "%-${width}s  %s\n" "$key" "$value"
+  done < <("$JQ_BIN" -r '.data // {} | to_entries[] | "\(.key)\t\(.value)"' "$json_file")
 }
 
 _assets_show() {
