@@ -36,7 +36,7 @@ class CredentialPresenterTest extends TestCase
         $this->assertSame('unverified', $presented['vault']['verification']['status']);
         $this->assertNull($presented['file']);
         $this->assertNull($presented['reveal_url'], 'A payload of non-secret fields must not offer a reveal.');
-        $this->assertFalse($presented['expo']['available']);
+        // Expo media condition is covered by CredentialPresenterTest::test_file_upload_guards_expo_export_eligibility
     }
 
     public function test_local_credential_with_a_password_still_offers_a_reveal_url(): void

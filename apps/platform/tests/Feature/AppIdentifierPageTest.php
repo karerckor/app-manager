@@ -225,8 +225,25 @@ class AppIdentifierPageTest extends TestCase
         )
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertJsonCount(3, 'secrets')
-            ->assertJsonPath('secrets.0.name', 'store_password');
+            ->assertExactJson([
+                'secrets' => [
+                    [
+                        'name' => 'store_password',
+                        'label' => 'Store password',
+                        'value' => 'store-secret',
+                    ],
+                    [
+                        'name' => 'key_alias',
+                        'label' => 'Key alias',
+                        'value' => 'release',
+                    ],
+                    [
+                        'name' => 'key_password',
+                        'label' => 'Key password',
+                        'value' => 'key-secret',
+                    ],
+                ],
+            ]);
     }
 
     public function test_show_404_when_identifier_belongs_to_another_app(): void
