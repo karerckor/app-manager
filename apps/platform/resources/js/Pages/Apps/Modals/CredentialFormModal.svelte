@@ -2,20 +2,26 @@
     import { useForm } from '@inertiajs/svelte';
     import { Database, Plus, Upload } from '@lucide/svelte';
     import Select from '../../../Components/Select.svelte';
+    import VaultReferenceFields from '../../../Components/VaultReferenceFields.svelte';
 
-    export let app;
-    export let identifiers = [];
-    export let credentialTypes = [];
-    export let availableCredentials = [];
-    export let checkUniquenessByDefault = true;
-    export let reuseUrl = null;
-    export let editing = null;
-    export let open;
-    export let onClose;
-    export let onSaved;
+    let {
+        app,
+        identifiers = [],
+        credentialTypes = [],
+        availableCredentials = [],
+        checkUniquenessByDefault = true,
+        vaultProviders = [],
+        allowedStorageModes = ['local'],
+        reuseUrl = null,
+        editing = null,
+        open,
+        onClose,
+        onSaved,
+    } = $props();
 
     const payloadFor = (type) => Object.fromEntries((type?.fields ?? []).map((field) => [field.name, '']));
     const profilesFor = (type, platform) => (type?.profiles ?? []).filter((profile) => profile.platform === platform);
+    const defaultVault = () => ({ provider: vaultProviders[0]?.value ?? 'custom', resource: '', metadata: {} });
 
     const initialIdentifier = identifiers[0] ?? null;
     const initialType = credentialTypes.find((type) => type.platforms.includes(initialIdentifier?.platform)) ?? credentialTypes[0];
@@ -30,26 +36,30 @@
         payload: payloadFor(initialType),
         file: null,
         check_uniqueness: checkUniquenessByDefault,
+        storage_mode: allowedStorageModes[0],
+        vault: defaultVault(),
     });
-    let credentialTypeChanged = false;
+    let credentialTypeChanged = $state(false);
     const reuseForm = useForm({
         credential_id: '',
         profile_type: '',
     });
-    let addMode = 'existing';
+    let addMode = $state('existing');
 
-    $: selectedIdentifier = identifiers.find((identifier) => String(identifier.id) === String(credentialForm.app_identifier_id));
-    $: availableCredentialTypes = credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform));
-    $: selectedSchema = credentialTypes.find((type) => type.value === credentialForm.type);
-    $: availableProfiles = profilesFor(selectedSchema, selectedIdentifier?.platform);
-    $: selectedProfile = availableProfiles.find((profile) => profile.value === credentialForm.profile_type);
+    const selectedIdentifier = $derived(identifiers.find((identifier) => String(identifier.id) === String(credentialForm.app_identifier_id)));
+    const availableCredentialTypes = $derived(credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform)));
+    const selectedSchema = $derived(credentialTypes.find((type) => type.value === credentialForm.type));
+    const availableProfiles = $derived(profilesFor(selectedSchema, selectedIdentifier?.platform));
+    const selectedProfile = $derived(availableProfiles.find((profile) => profile.value === credentialForm.profile_type));
     const credentialFileRequired = () => !editing || credentialTypeChanged || !editing.file;
-    $: selectedVaultCredential = availableCredentials.find(
+    const selectedVaultCredential = $derived(availableCredentials.find(
         (credential) => String(credential.id) === String(reuseForm.credential_id),
-    );
-    $: selectedVaultSchema = credentialTypes.find((type) => type.value === selectedVaultCredential?.type);
-    $: availableVaultProfiles = profilesFor(selectedVaultSchema, selectedIdentifier?.platform)
-        .filter((profile) => !selectedVaultCredential?.attached_profile_types.includes(profile.value));
+    ));
+    const selectedVaultSchema = $derived(credentialTypes.find((type) => type.value === selectedVaultCredential?.type));
+    const availableVaultProfiles = $derived(profilesFor(selectedVaultSchema, selectedIdentifier?.platform)
+        .filter((profile) => !selectedVaultCredential?.attached_profile_types.includes(profile.value)));
+    const isExternal = $derived(credentialForm.storage_mode === 'external');
+    const visiblePayloadFields = $derived((selectedSchema?.fields ?? []).filter((field) => !isExternal || field.input !== 'password'));
 
     const schemaFor = (type) => credentialTypes.find((definition) => definition.value === type);
     const typeLabel = (type) => schemaFor(type)?.label ?? type.replaceAll('_', ' ');
@@ -83,6 +93,8 @@
         credentialForm.payload = payloadFor(schema);
         credentialForm.file = null;
         credentialForm.check_uniqueness = checkUniquenessByDefault;
+        credentialForm.storage_mode = allowedStorageModes[0];
+        credentialForm.vault = defaultVault();
         credentialTypeChanged = false;
         credentialForm.clearErrors();
         selectVaultCredential(availableCredentials[0]?.id ?? '');
@@ -98,22 +110,35 @@
         credentialForm.payload = { ...payloadFor(schema), ...credential.payload };
         credentialForm.file = null;
         credentialForm.check_uniqueness = checkUniquenessByDefault;
+        credentialForm.storage_mode = credential.storage_mode;
+        // The server replaces vault metadata wholesale on update, so the editor
+        // must always start from what the pipeline last discovered. Submitting
+        // a rename with an empty metadata editor would otherwise erase it.
+        credentialForm.vault = credential.vault
+            ? { provider: credential.vault.provider, resource: credential.vault.resource, metadata: { ...(credential.vault.metadata ?? {}) } }
+            : defaultVault();
         credentialTypeChanged = false;
         credentialForm.clearErrors();
     };
 
     let wasOpen = false;
-    $: if (open !== wasOpen) {
-        wasOpen = open;
+    // $effect.pre (not $effect) so the reset lands before this same open-toggle
+    // renders the modal's children — VaultReferenceFields seeds its key/value
+    // rows once, at mount, from credentialForm.vault.metadata, so the reset
+    // must happen before that mount, not after it.
+    $effect.pre(() => {
+        if (open !== wasOpen) {
+            wasOpen = open;
 
-        if (open) {
-            if (editing) {
-                openEditCredential(editing);
-            } else {
-                openCreateCredential();
+            if (open) {
+                if (editing) {
+                    openEditCredential(editing);
+                } else {
+                    openCreateCredential();
+                }
             }
         }
-    }
+    });
 
     const closeCredential = () => {
         credentialForm.clearErrors();
@@ -167,11 +192,11 @@
 </script>
 
 {#if open}
-    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeCredential()}>
-        <form class="modal max-w-2xl" on:submit|preventDefault={saveCredential}>
+    <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && closeCredential()}>
+        <form class="modal max-w-2xl" onsubmit={(event) => { event.preventDefault(); saveCredential(); }}>
             <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
                 <div><h2 class="text-lg font-bold">{editing ? 'Edit credential' : 'Add credential'}</h2><p class="mt-1 text-sm text-muted">{editing ? 'Update the shared vault record. Its attachments stay unchanged.' : 'Reuse a credential from the vault or create a new one.'}</p></div>
-                <button type="button" class="ghost -mr-2 p-2" on:click={closeCredential}>✕</button>
+                <button type="button" class="ghost -mr-2 p-2" onclick={closeCredential}>✕</button>
             </div>
             <div class="space-y-5 p-6">
                 <div class="flex items-center gap-2 rounded-md border border-border bg-surface-sunken px-4 py-3">
@@ -186,13 +211,13 @@
                             type="button"
                             class="flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold shadow-none {addMode === 'existing' ? 'bg-surface-raised text-brand shadow-sm' : 'bg-transparent text-muted hover:text-text'}"
                             aria-pressed={addMode === 'existing'}
-                            on:click={() => changeAddMode('existing')}
+                            onclick={() => changeAddMode('existing')}
                         ><Database class="h-4 w-4" strokeWidth={1.9} /> Existing from Vault</button>
                         <button
                             type="button"
                             class="flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold shadow-none {addMode === 'new' ? 'bg-surface-raised text-brand shadow-sm' : 'bg-transparent text-muted hover:text-text'}"
                             aria-pressed={addMode === 'new'}
-                            on:click={() => changeAddMode('new')}
+                            onclick={() => changeAddMode('new')}
                         ><Plus class="h-4 w-4" strokeWidth={2} /> Create new</button>
                     </div>
                 {/if}
@@ -247,10 +272,30 @@
                             <Database class="mx-auto h-6 w-6 text-faint" strokeWidth={1.7} />
                             <p class="mt-2 text-sm font-semibold text-text">No compatible credentials available</p>
                             <p class="mx-auto mt-1 max-w-sm text-xs leading-5 text-muted">The vault has no credential that can be newly attached to this {selectedIdentifier?.platform?.toUpperCase()} identifier.</p>
-                            <button type="button" class="secondary mt-4 inline-flex items-center gap-1.5 text-xs" on:click={() => changeAddMode('new')}><Plus class="h-4 w-4" /> Create a new credential</button>
+                            <button type="button" class="secondary mt-4 inline-flex items-center gap-1.5 text-xs" onclick={() => changeAddMode('new')}><Plus class="h-4 w-4" /> Create a new credential</button>
                         </div>
                     {/if}
                 {:else}
+                    {#if allowedStorageModes.length > 1 && !editing}
+                        <div class="inline-flex rounded-md border border-border p-0.5" role="radiogroup" aria-label="Storage mode">
+                            {#each allowedStorageModes as mode (mode)}
+                                <button
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={credentialForm.storage_mode === mode}
+                                    class="bg-transparent px-3 py-1.5 text-xs font-semibold shadow-none {credentialForm.storage_mode === mode ? 'rounded-sm bg-brand-soft text-brand' : 'text-muted'}"
+                                    onclick={() => (credentialForm.storage_mode = mode)}
+                                >
+                                    {mode === 'local' ? 'Store in App Manager' : 'Reference my vault'}
+                                </button>
+                            {/each}
+                        </div>
+                    {:else if editing}
+                        <p class="text-[11px] text-faint">
+                            Storage mode is fixed when a credential is created. To change it, create a new credential and move its attachments.
+                        </p>
+                    {/if}
+
                     <div class="grid gap-4 sm:grid-cols-2">
                         <label>
                             <span class="label">Credential type</span>
@@ -288,10 +333,10 @@
                         {#if credentialForm.errors.name}<span class="error">{credentialForm.errors.name}</span>{/if}
                     </label>
 
-                    {#if selectedSchema?.fields.length}
+                    {#if visiblePayloadFields.length}
                         <div class="grid gap-4 sm:grid-cols-2">
-                            {#each selectedSchema.fields as field}
-                                <label class={selectedSchema.fields.length % 2 === 1 && field === selectedSchema.fields.at(-1) ? 'sm:col-span-2' : ''}>
+                            {#each visiblePayloadFields as field (field.name)}
+                                <label class={visiblePayloadFields.length % 2 === 1 && field === visiblePayloadFields.at(-1) ? 'sm:col-span-2' : ''}>
                                     <span class="label">{field.label}</span>
                                     <input
                                         type={field.input}
@@ -308,15 +353,19 @@
                         </div>
                     {/if}
 
-                    <label class="block">
-                        <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
-                        <span class="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-control bg-surface-sunken px-4 py-4 transition hover:border-brand hover:bg-brand-soft">
-                            <span class="grid h-9 w-9 place-items-center rounded-sm bg-surface-raised text-brand shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
-                            <span class="min-w-0"><strong class="block truncate text-xs text-text">{credentialForm.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong><small class="text-[10px] text-faint">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small></span>
-                            <input type="file" class="hidden" accept={selectedSchema?.file.accept} on:change={pickCredentialFile} />
-                        </span>
-                        {#if credentialForm.errors.file}<span class="error">{credentialForm.errors.file}</span>{/if}
-                    </label>
+                    {#if isExternal}
+                        <VaultReferenceFields form={credentialForm} providers={vaultProviders} />
+                    {:else}
+                        <label class="block">
+                            <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
+                            <span class="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-control bg-surface-sunken px-4 py-4 transition hover:border-brand hover:bg-brand-soft">
+                                <span class="grid h-9 w-9 place-items-center rounded-sm bg-surface-raised text-brand shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
+                                <span class="min-w-0"><strong class="block truncate text-xs text-text">{credentialForm.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong><small class="text-[10px] text-faint">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small></span>
+                                <input type="file" class="hidden" accept={selectedSchema?.file.accept} onchange={pickCredentialFile} />
+                            </span>
+                            {#if credentialForm.errors.file}<span class="error">{credentialForm.errors.file}</span>{/if}
+                        </label>
+                    {/if}
 
                     {#if !editing}
                         <label class="flex cursor-pointer items-start justify-between gap-4 rounded-md border border-border bg-surface-sunken px-4 py-3.5">
@@ -335,7 +384,7 @@
                 {/if}
             </div>
             <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4">
-                <button type="button" class="secondary" on:click={closeCredential}>Cancel</button>
+                <button type="button" class="secondary" onclick={closeCredential}>Cancel</button>
                 <button disabled={(addMode === 'existing' && !editing ? reuseForm.processing || !availableCredentials.length : credentialForm.processing)}>
                     {addMode === 'existing' && !editing
                         ? (reuseForm.processing ? 'Reusing…' : 'Reuse credential')

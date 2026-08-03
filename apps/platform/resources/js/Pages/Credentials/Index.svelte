@@ -42,6 +42,8 @@
     export let apps = [];
     export let canManage = false;
     export let checkUniquenessByDefault = true;
+    export let vaultProviders = [];
+    export let allowedStorageModes = ['local'];
     export let filters = {};
     export let stats = { total: 0, expiring: 0, expired: 0, missing_files: 0, unattached: 0, never: 0 };
     export let tagSuggestions = [];
@@ -563,6 +565,8 @@
     {apps}
     {credentialTypes}
     {checkUniquenessByDefault}
+    {vaultProviders}
+    {allowedStorageModes}
     editing={editingCredential}
     open={showCredential}
     onClose={closeCredential}

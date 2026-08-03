@@ -6,6 +6,7 @@ use App\Enums\CredentialType;
 use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\TeamPermission;
+use App\Enums\VaultProvider;
 use App\Integrations\Expo\ExpoClient;
 use App\Integrations\Expo\ExpoCredentialExporter;
 use App\Integrations\Expo\ExpoGraphqlException;
@@ -19,6 +20,7 @@ use App\Support\Apps\ExpoAppContext;
 use App\Support\Apps\IdentifierPresenter;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
+use App\Support\Credentials\StorageModePolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -157,6 +159,8 @@ class AppIdentifierPageController extends Controller
                 ? $this->availableCredentials($team, $appIdentifier)
                 : [],
             'checkUniquenessByDefault' => $team->check_credential_uniqueness_by_default,
+            'vaultProviders' => VaultProvider::definitions(),
+            'allowedStorageModes' => app(StorageModePolicy::class)->allowedValuesFor($team),
         ]);
     }
 

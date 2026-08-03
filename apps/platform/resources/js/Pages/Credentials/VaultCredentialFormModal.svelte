@@ -2,18 +2,24 @@
     import { useForm } from '@inertiajs/svelte';
     import { ShieldCheck, Upload } from '@lucide/svelte';
     import Select from '../../Components/Select.svelte';
+    import VaultReferenceFields from '../../Components/VaultReferenceFields.svelte';
 
-    export let apps = [];
-    export let credentialTypes = [];
-    export let checkUniquenessByDefault = true;
-    export let editing = null;
-    export let open;
-    export let onClose;
-    export let onSaved;
+    let {
+        apps = [],
+        credentialTypes = [],
+        vaultProviders = [],
+        allowedStorageModes = ['local'],
+        checkUniquenessByDefault = true,
+        editing = null,
+        open,
+        onClose,
+        onSaved,
+    } = $props();
 
     const payloadFor = (type) => Object.fromEntries((type?.fields ?? []).map((field) => [field.name, '']));
     const profilesFor = (type, platform) => (type?.profiles ?? []).filter((profile) => profile.platform === platform);
     const firstConfiguredApp = () => apps.find((app) => app.identifiers.length) ?? apps[0] ?? null;
+    const defaultVault = () => ({ provider: vaultProviders[0]?.value ?? 'custom', resource: '', metadata: {} });
 
     const initialApp = firstConfiguredApp();
     const initialIdentifier = initialApp?.identifiers[0] ?? null;
@@ -28,17 +34,21 @@
         payload: payloadFor(initialType),
         file: null,
         check_uniqueness: checkUniquenessByDefault,
+        storage_mode: allowedStorageModes[0],
+        vault: defaultVault(),
     });
-    let credentialTypeChanged = false;
+    let credentialTypeChanged = $state(false);
 
-    $: selectedApp = apps.find((app) => String(app.id) === String(form.mobile_app_id));
-    $: selectedIdentifier = selectedApp?.identifiers.find((identifier) => String(identifier.id) === String(form.app_identifier_id));
-    $: availableCredentialTypes = editing
+    const selectedApp = $derived(apps.find((app) => String(app.id) === String(form.mobile_app_id)));
+    const selectedIdentifier = $derived(selectedApp?.identifiers.find((identifier) => String(identifier.id) === String(form.app_identifier_id)));
+    const availableCredentialTypes = $derived(editing
         ? credentialTypes
-        : credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform));
-    $: selectedSchema = credentialTypes.find((type) => type.value === form.type);
-    $: availableProfiles = profilesFor(selectedSchema, selectedIdentifier?.platform);
-    $: typeLocked = Boolean(editing?.attachments?.length);
+        : credentialTypes.filter((type) => type.platforms.includes(selectedIdentifier?.platform)));
+    const selectedSchema = $derived(credentialTypes.find((type) => type.value === form.type));
+    const availableProfiles = $derived(profilesFor(selectedSchema, selectedIdentifier?.platform));
+    const typeLocked = $derived(Boolean(editing?.attachments?.length));
+    const isExternal = $derived(form.storage_mode === 'external');
+    const visiblePayloadFields = $derived((selectedSchema?.fields ?? []).filter((field) => !isExternal || field.input !== 'password'));
     const credentialFileRequired = () => !editing || credentialTypeChanged || !editing.file;
 
     const resetForCreate = () => {
@@ -55,6 +65,8 @@
         form.payload = payloadFor(schema);
         form.file = null;
         form.check_uniqueness = checkUniquenessByDefault;
+        form.storage_mode = allowedStorageModes[0];
+        form.vault = defaultVault();
         credentialTypeChanged = false;
         form.clearErrors();
     };
@@ -70,15 +82,28 @@
         form.payload = { ...payloadFor(schema), ...editing.payload };
         form.file = null;
         form.check_uniqueness = checkUniquenessByDefault;
+        form.storage_mode = editing.storage_mode;
+        // The server replaces vault metadata wholesale on update, so the editor
+        // must always start from what the pipeline last discovered. Submitting
+        // a rename with an empty metadata editor would otherwise erase it.
+        form.vault = editing.vault
+            ? { provider: editing.vault.provider, resource: editing.vault.resource, metadata: { ...(editing.vault.metadata ?? {}) } }
+            : defaultVault();
         credentialTypeChanged = false;
         form.clearErrors();
     };
 
     let wasOpen = false;
-    $: if (open !== wasOpen) {
-        wasOpen = open;
-        if (open) editing ? resetForEdit() : resetForCreate();
-    }
+    // $effect.pre (not $effect) so the reset lands before this same open-toggle
+    // renders the modal's children — VaultReferenceFields seeds its key/value
+    // rows once, at mount, from form.vault.metadata, so the reset must happen
+    // before that mount, not after it.
+    $effect.pre(() => {
+        if (open !== wasOpen) {
+            wasOpen = open;
+            if (open) editing ? resetForEdit() : resetForCreate();
+        }
+    });
 
     const setType = (value, platform = selectedIdentifier?.platform) => {
         const schema = credentialTypes.find((type) => type.value === value);
@@ -143,8 +168,8 @@
 </script>
 
 {#if open}
-    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && close()}>
-        <form class="modal max-w-2xl" on:submit|preventDefault={save}>
+    <div class="modal-backdrop" role="presentation" onclick={(event) => event.target === event.currentTarget && close()}>
+        <form class="modal max-w-2xl" onsubmit={(event) => { event.preventDefault(); save(); }}>
             <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
                 <div class="flex items-start gap-3">
                     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-brand-soft text-brand">
@@ -155,7 +180,7 @@
                         <p class="mt-1 text-sm text-muted">{editing ? 'Update the credential, expiration, or secure file.' : 'Store a signing asset and attach it to an application.'}</p>
                     </div>
                 </div>
-                <button type="button" class="ghost -mr-2 p-2" on:click={close} aria-label="Close">✕</button>
+                <button type="button" class="ghost -mr-2 p-2" onclick={close} aria-label="Close">✕</button>
             </div>
 
             <div class="space-y-5 p-6">
@@ -202,6 +227,26 @@
                     </div>
                 {/if}
 
+                {#if allowedStorageModes.length > 1 && !editing}
+                    <div class="inline-flex rounded-md border border-border p-0.5" role="radiogroup" aria-label="Storage mode">
+                        {#each allowedStorageModes as mode (mode)}
+                            <button
+                                type="button"
+                                role="radio"
+                                aria-checked={form.storage_mode === mode}
+                                class="bg-transparent px-3 py-1.5 text-xs font-semibold shadow-none {form.storage_mode === mode ? 'rounded-sm bg-brand-soft text-brand' : 'text-muted'}"
+                                onclick={() => (form.storage_mode = mode)}
+                            >
+                                {mode === 'local' ? 'Store in App Manager' : 'Reference my vault'}
+                            </button>
+                        {/each}
+                    </div>
+                {:else if editing}
+                    <p class="text-[11px] text-faint">
+                        Storage mode is fixed when a credential is created. To change it, create a new credential and move its attachments.
+                    </p>
+                {/if}
+
                 <div class="grid gap-4 sm:grid-cols-2">
                     <label>
                         <span class="label">Credential type</span>
@@ -241,10 +286,10 @@
                     {#if form.errors.name}<span class="error">{form.errors.name}</span>{/if}
                 </label>
 
-                {#if selectedSchema?.fields.length}
+                {#if visiblePayloadFields.length}
                     <div class="grid gap-4 sm:grid-cols-2">
-                        {#each selectedSchema.fields as field}
-                            <label class={selectedSchema.fields.length % 2 === 1 && field === selectedSchema.fields.at(-1) ? 'sm:col-span-2' : ''}>
+                        {#each visiblePayloadFields as field (field.name)}
+                            <label class={visiblePayloadFields.length % 2 === 1 && field === visiblePayloadFields.at(-1) ? 'sm:col-span-2' : ''}>
                                 <span class="label">{field.label}</span>
                                 <input
                                     type={field.input}
@@ -261,18 +306,22 @@
                     </div>
                 {/if}
 
-                <label class="block">
-                    <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
-                    <span class="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-control bg-surface-sunken px-4 py-4 transition hover:border-brand hover:bg-brand-soft">
-                        <span class="grid h-9 w-9 place-items-center rounded-sm bg-surface-raised text-brand shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
-                        <span class="min-w-0">
-                            <strong class="block truncate text-xs text-text">{form.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong>
-                            <small class="text-[10px] text-faint">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small>
+                {#if isExternal}
+                    <VaultReferenceFields {form} providers={vaultProviders} />
+                {:else}
+                    <label class="block">
+                        <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
+                        <span class="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-control bg-surface-sunken px-4 py-4 transition hover:border-brand hover:bg-brand-soft">
+                            <span class="grid h-9 w-9 place-items-center rounded-sm bg-surface-raised text-brand shadow-sm"><Upload class="h-4.5 w-4.5" strokeWidth={1.8} /></span>
+                            <span class="min-w-0">
+                                <strong class="block truncate text-xs text-text">{form.file?.name || (editing?.file && !credentialTypeChanged ? `Keep ${editing.file.name}` : 'Choose a file')}</strong>
+                                <small class="text-[10px] text-faint">{credentialTypeChanged ? 'Changing the type requires a matching replacement file.' : selectedSchema?.file.hint || 'Credential file'}</small>
+                            </span>
+                            <input type="file" class="hidden" accept={selectedSchema?.file.accept} onchange={pickFile} />
                         </span>
-                        <input type="file" class="hidden" accept={selectedSchema?.file.accept} on:change={pickFile} />
-                    </span>
-                    {#if form.errors.file}<span class="error">{form.errors.file}</span>{/if}
-                </label>
+                        {#if form.errors.file}<span class="error">{form.errors.file}</span>{/if}
+                    </label>
+                {/if}
 
                 {#if !editing}
                     <label class="flex cursor-pointer items-start justify-between gap-4 rounded-md border border-border bg-surface-sunken px-4 py-3.5">
@@ -291,7 +340,7 @@
             </div>
 
             <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4">
-                <button type="button" class="secondary" on:click={close}>Cancel</button>
+                <button type="button" class="secondary" onclick={close}>Cancel</button>
                 <button disabled={form.processing || (!editing && !selectedIdentifier)}>{form.processing ? 'Saving…' : editing ? 'Save changes' : 'Add credential'}</button>
             </div>
         </form>

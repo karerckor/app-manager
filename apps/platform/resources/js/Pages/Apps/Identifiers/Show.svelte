@@ -21,6 +21,8 @@
     export let credentialTypes = [];
     export let availableCredentials = [];
     export let checkUniquenessByDefault = true;
+    export let vaultProviders = [];
+    export let allowedStorageModes = ['local'];
     export let identifier;
 
     let showIdentifier = false;
@@ -356,6 +358,8 @@
         {credentialTypes}
         {availableCredentials}
         {checkUniquenessByDefault}
+        {vaultProviders}
+        {allowedStorageModes}
         reuseUrl={identifier.attach_credential_url}
         editing={editingCredential}
         open={showCredential}
