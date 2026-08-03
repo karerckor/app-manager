@@ -4,6 +4,7 @@ namespace App\Support\Credentials;
 
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
+use App\Enums\VaultProvider;
 use App\Rules\ValidCredentialFile;
 use Illuminate\Validation\Rule;
 
@@ -125,14 +126,54 @@ class CredentialSchema
         ];
 
         foreach ($definition['fields'] as $field) {
-            $rules['payload.'.$field['name']] = match ($field['name']) {
-                'key_id', 'team_id' => ['required', 'string', 'size:10', 'regex:/^[A-Z0-9]+$/'],
-                'issuer_id' => ['required', 'uuid'],
-                default => ['required', 'string', 'max:2000'],
-            };
+            $rules['payload.'.$field['name']] = self::fieldRules($field['name']);
         }
 
         return $rules;
+    }
+
+    public static function externalRules(CredentialType $type): array
+    {
+        $definition = self::definition($type);
+        $visibleNames = array_column(
+            array_filter(
+                $definition['fields'],
+                fn (array $field): bool => $field['input'] !== 'password',
+            ),
+            'name',
+        );
+
+        $rules = [
+            'file' => ['prohibited'],
+            'vault' => ['required', 'array:provider,resource,metadata'],
+            'vault.provider' => ['required', Rule::enum(VaultProvider::class)],
+            'vault.resource' => ['required', 'string', 'max:2000'],
+            'vault.metadata' => ['nullable', 'array'],
+            'vault.metadata.*' => ['nullable', 'string', 'max:500'],
+            'payload' => $visibleNames
+                ? ['required', 'array:'.implode(',', $visibleNames)]
+                : ['nullable', 'array', 'max:0'],
+        ];
+
+        foreach ($definition['fields'] as $field) {
+            // A password silently accepted here would be exactly the leak that
+            // external storage exists to prevent, so it is prohibited rather
+            // than merely optional.
+            $rules['payload.'.$field['name']] = $field['input'] === 'password'
+                ? ['prohibited']
+                : self::fieldRules($field['name']);
+        }
+
+        return $rules;
+    }
+
+    private static function fieldRules(string $name): array
+    {
+        return match ($name) {
+            'key_id', 'team_id' => ['required', 'string', 'size:10', 'regex:/^[A-Z0-9]+$/'],
+            'issuer_id' => ['required', 'uuid'],
+            default => ['required', 'string', 'max:2000'],
+        };
     }
 
     public static function supportsPlatform(CredentialType $type, string $platform): bool
