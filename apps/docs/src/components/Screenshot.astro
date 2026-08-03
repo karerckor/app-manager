@@ -1,0 +1,53 @@
+---
+interface Props {
+  /** Basename of a file in public/screenshots, without the .png suffix. */
+  src: string;
+  /** Describes the screen for readers who cannot see the image. */
+  alt: string;
+  /** Optional caption rendered under the image. */
+  caption?: string;
+}
+
+const { src, alt, caption } = Astro.props;
+
+// Screenshots are recorded by scripts/capture-ui-screenshots.mjs. Resolving them
+// eagerly means a renamed or never-captured screen fails the build instead of
+// shipping a broken image.
+const screenshots = import.meta.glob('../../public/screenshots/*.png', { eager: true });
+const key = `../../public/screenshots/${src}.png`;
+
+if (screenshots[key] === undefined) {
+  throw new Error(
+    `No screenshot named "${src}". Run "pnpm capture:screenshots" in apps/docs. Available: ${Object.keys(
+      screenshots
+    )
+      .map((path) => path.replace('../../public/screenshots/', '').replace('.png', ''))
+      .join(', ')}`
+  );
+}
+---
+
+<figure class="screenshot">
+  <img src={`/screenshots/${src}.png`} alt={alt} loading="lazy" />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .screenshot {
+    margin: 0 0 24px;
+  }
+
+  .screenshot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+
+  .screenshot figcaption {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+</style>

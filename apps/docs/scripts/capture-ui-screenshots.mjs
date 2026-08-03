@@ -94,6 +94,23 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 const failures = [];
+const overlays = [];
+
+/**
+ * Remove Vite's dev error overlay if present, returning its first line so the run
+ * can report what was hidden.
+ */
+async function dismissViteOverlay(page) {
+  return page.evaluate(() => {
+    const overlay = document.querySelector('vite-error-overlay');
+    if (!overlay) {
+      return null;
+    }
+    const message = overlay.shadowRoot?.querySelector('.message')?.textContent?.trim() ?? 'unknown Vite error';
+    overlay.remove();
+    return message.split('\n')[0];
+  });
+}
 
 try {
   // --- sign in -------------------------------------------------------------
@@ -121,6 +138,16 @@ try {
 
     try {
       await page.goto(url, { waitUntil: 'networkidle' });
+
+      // Vite injects a full-screen error overlay on a dev build failure. It covers
+      // the page and prints local filesystem paths, so it must never end up in a
+      // screenshot — but it is a dev-server artifact rather than a product screen,
+      // so it is removed and reported instead of failing an unrelated capture.
+      const overlayError = await dismissViteOverlay(page);
+      if (overlayError) {
+        overlays.push({ slug: screen.slug, message: overlayError });
+      }
+
       await page.getByText(screen.wait, { exact: false }).first().waitFor({ timeout: 10000 });
       // Inertia pages animate in; settle before shooting so nothing is mid-fade.
       await page.waitForTimeout(400);
@@ -146,6 +173,14 @@ for (const failure of failures) {
 
 const written = (await readdir(OUT_DIR)).filter((f) => f.endsWith('.png'));
 console.log(`\n${written.length} screenshots in apps/docs/public/screenshots`);
+
+if (overlays.length > 0) {
+  console.warn(`\nA Vite dev error overlay was covering ${overlays.length} screen(s) and was removed:`);
+  for (const overlay of overlays) {
+    console.warn(`  ${overlay.slug}: ${overlay.message}`);
+  }
+  console.warn('Fix the dev build for screens that actually depend on the broken module.');
+}
 
 if (failures.length > 0) {
   console.error(`${failures.length} screen(s) failed to capture`);
