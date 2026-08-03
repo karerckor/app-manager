@@ -3907,14 +3907,176 @@ git commit -m "feat(cli,fastlane): show vault references and report verification
 ## Task 15: Documentation
 
 **Files:**
-- Create: `apps/docs` page — a "Bring your own vault" concept page
-- Modify: the API reference pages covering credentials
+- **Modify: `apps/docs/public/openapi.yaml`** — the machine-readable contract. This is the file every API consumer generates clients from; it currently contains **zero** mentions of BYOV. Step 1b below specifies exactly what to change.
+- Create: `apps/docs/src/pages/guides/byov.astro` — a "Bring your own vault" concept page (the guides directory holds `.astro` pages, not Markdown; read `guides/webhooks.astro` for the shape)
+- Modify: `apps/docs/src/pages/guides/cli/credentials.astro` — the CLI credentials page, for the new `verify` action and the storage columns from Task 14
+- Modify: `apps/docs/src/pages/guides/fastlane.astro` — for the new verification action from Task 14
+- Modify: `apps/platform/docs/api-v1.md` — the scope table and endpoint list
 - Modify: `README.md` and `apps/platform/README.md` configuration sections
+- Modify: `apps/platform/app/Support/Credentials/CredentialSchema.php` — one inaccurate comment (see Step 3)
+- Modify: `apps/docs/src/layouts/DocsLayout.astro` — add the new guide to the navigation, or it is unreachable
 
-- [ ] **Step 1: Find the docs structure**
+- [ ] **Step 1: Read the surrounding style**
 
-Run: `ls apps/docs && rg -l "credentials" apps/docs --glob '!node_modules'`
-Read one neighbouring concept page to match its frontmatter and heading style before writing.
+Read `apps/docs/src/pages/guides/webhooks.astro` and `apps/docs/src/pages/guides/cli/credentials.astro` before writing anything, and match their component usage and heading rhythm. Check `apps/docs/CLAUDE.md` first — it requires `astro dev --background` if you start the dev server at all.
+
+- [ ] **Step 1b: Update `apps/docs/public/openapi.yaml`**
+
+This is the largest and most mechanical part of the task, and the easiest to leave half-done. Work through all seven items.
+
+1. **`Credential` schema** (around line 2794) — add, after `file`:
+
+```yaml
+        storage_mode:
+          type: string
+          enum: [local, external]
+          description: |
+            `local` — the platform stores the secret file and encrypted payload.
+            `external` — the platform stores only a reference into your own vault.
+        vault:
+          $ref: '#/components/schemas/VaultReference'
+```
+
+2. **New `VaultReference` schema**, beside `FileMetadata`:
+
+```yaml
+    VaultReference:
+      type: object
+      nullable: true
+      description: |
+        Present only when `storage_mode` is `external`; `null` for `local`.
+        The platform never contacts the vault — your pipeline resolves `resource` itself.
+      properties:
+        provider:
+          type: string
+          enum: [aws_secrets_manager, hashicorp_vault, azure_key_vault, gcp_secret_manager, fastlane_match, custom]
+        resource:
+          type: string
+          description: ARN, vault path or URI. Stored in plaintext — it is an address, not a secret.
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: Storage metadata only (region, version id, mount). Values must be strings.
+        metadata_version:
+          type: integer
+          description: Incremented on every rewrite of `metadata`.
+        metadata_source:
+          type: string
+          enum: [user, pipeline, import]
+        verification:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [unverified, verified, failed]
+            verified_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: When a pipeline last resolved this reference — not a guarantee it is valid now.
+            error:
+              type: string
+              nullable: true
+```
+
+3. **`CreateCredential` schema** (around line 2854) — add `storage_mode` plus the vault fields. The request is `multipart/form-data`, so document the bracketed field names a client must actually send:
+
+```yaml
+        storage_mode:
+          type: string
+          enum: [local, external]
+          description: |
+            Required when the team permits more than one mode. Defaults to the team's
+            first permitted mode. Immutable after creation.
+        'vault[provider]':
+          type: string
+          enum: [aws_secrets_manager, hashicorp_vault, azure_key_vault, gcp_secret_manager, fastlane_match, custom]
+          description: Required when `storage_mode` is `external`; prohibited when `local`.
+        'vault[resource]':
+          type: string
+          maxLength: 2000
+          description: Required when `storage_mode` is `external`; prohibited when `local`.
+        'vault[metadata][<key>]':
+          type: string
+          maxLength: 500
+          description: Optional storage metadata. Values must be strings — a number returns 422.
+```
+
+Extend that schema's `description` on the `POST /apps/{app_slug}/credentials` operation to state the three external-mode rules: `file` is prohibited, payload fields whose input is a password are prohibited, and non-secret payload fields are still required.
+
+4. **`UpdateCredential` schema** (around line 2881) — add the same three `vault[...]` fields, and note that the vault block is **replaced wholesale**: a partial `vault` object returns 422 on the sub-keys you omit.
+
+5. **New path** `/apps/{app_slug}/credentials/{credential}/verification`, after the `{credential}/file` path:
+
+```yaml
+  /apps/{app_slug}/credentials/{credential}/verification:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+
+    post:
+      operationId: reportCredentialVerification
+      summary: Report vault verification
+      description: |
+        Report whether a build managed to resolve this credential's vault reference.
+        Only valid for a credential whose `storage_mode` is `external`; a `local`
+        credential returns 422.
+
+        `metadata` replaces the stored block wholesale, increments `metadata_version`
+        and sets `metadata_source` to `pipeline`. Rate limited to 60 requests per minute.
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [verified, failed]
+                error:
+                  type: string
+                  maxLength: 1000
+                  description: Required when `status` is `failed`; prohibited when `verified`.
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: The real expiry discovered while resolving. Prohibited when `status` is `failed`.
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Storage metadata. Values must be strings.
+      responses:
+        '200':
+          description: Verification recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VaultReference'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:verify]
+```
+
+6. **Two documentation bugs to fix while you are in this file.** Both predate this feature; verify each against `apps/platform/routes/api.php` before changing it, and list them in your report:
+   - `downloadCredentialFile` declares `bearerAuth: [credentials:read]`, but the route registers `abilities:credentials:reveal`. A client following the spec gets 403. Correct the spec to `credentials:reveal`.
+   - The `Credential` and `CredentialProfile` schemas declare `id: type: integer`, but every model in this codebase uses `HasUuids`. Change both to `type: string, format: uuid`.
+
+7. **Document the profile in the top-level `description`.** Add a short "Deployment profiles" section stating that when the instance runs `CREDENTIALS_API_PROFILE=dashboard_only` these six operations are **not registered at all** and return 404 — `revealCredential` (if present), `downloadCredentialFile`, `uploadCredentialFile`, `deleteCredentialFile`, `provisionExpoIdentifier`, `pushExpoCredential` — the `credentials:reveal` scope cannot be granted, `FileMetadata.url` is `null`, and no `credential.*` webhook fires. Say plainly that this is a build-time property of the instance, so a generated client cannot detect it by introspection.
+
+After editing, validate the file parses: `cd apps/docs && npx @redocly/cli lint public/openapi.yaml` (or any YAML parse check available) and paste the result into your report. A malformed openapi.yaml breaks the docs site build.
 
 - [ ] **Step 2: Write the concept page**
 
@@ -3942,16 +4104,26 @@ Two warnings must be explicit:
 
 Also list exactly what `dashboard_only` removes: the four credential file/reveal endpoints, the two Expo credential endpoints, the `credentials:reveal` scope, and all eight `credential.*` webhook events.
 
-- [ ] **Step 4: Document the endpoint**
+- [ ] **Step 4: Update the prose API reference and the CLI/fastlane guides**
 
-Add `POST /apps/{app}/credentials/{credential}/verification` to the API reference with its request body, its validation rules, its 422 for a local credential, and the `storage_mode` / `vault` keys added to every credential response.
+In `apps/platform/docs/api-v1.md`: add `credentials:verify` to the scope table, add the verification endpoint to the endpoint list, and note the `storage_mode` / `vault` keys on every credential response.
+
+In `apps/docs/src/pages/guides/cli/credentials.astro`: document the new `appmctl credentials verify` action from Task 14 with its flags, and the storage/resource columns added to `credentials list`.
+
+In `apps/docs/src/pages/guides/fastlane.astro`: document `app_manager_report_credential_verification` and the storage column added to `app_manager_list_credentials`.
+
+Add the new BYOV guide to `apps/docs/src/layouts/DocsLayout.astro`'s navigation — an unlinked page is an unwritten page.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/docs README.md apps/platform/README.md
-git commit -m "docs(credentials): document BYOV, the verification loop, and the API profiles"
+git add apps/docs/public/openapi.yaml apps/docs/src apps/platform/docs/api-v1.md \
+  apps/platform/app/Support/Credentials/CredentialSchema.php \
+  README.md apps/platform/README.md
+git commit -m "docs(credentials): document BYOV in the OpenAPI contract and the guides"
 ```
+
+Stage by explicit path as above — this checkout is shared with another developer.
 
 ---
 
