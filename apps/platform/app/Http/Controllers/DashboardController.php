@@ -35,7 +35,6 @@ class DashboardController extends Controller
         $expoFilters = $this->stringList($request->input('expo', []));
         $autoSync = $request->boolean('auto_sync');
         $appsQuery = $team->mobileApps();
-        $driver = $appsQuery->getConnection()->getDriverName();
 
         $apps = $appsQuery
             ->with('media')
@@ -104,27 +103,16 @@ class DashboardController extends Controller
                         ->whereDoesntHave('profiles.credentials', fn (Builder $credentials) => $credentials->where('type', $type)));
                 }
             })
-            ->when($search !== '', fn (Builder $query) => $query->where(function (Builder $query) use ($search, $driver) {
+            ->when($search !== '', fn (Builder $query) => $query->where(function (Builder $query) use ($search) {
                 $pattern = "%{$search}%";
 
                 $query
                     ->whereLike('name', $pattern)
                     ->orWhereLike('slug', $pattern)
-                    ->orWhereLike('description', $pattern);
-
-                if ($driver === 'pgsql') {
-                    $query->orWhereRaw(
-                        "EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE((mobile_apps.tags)::jsonb, '[]'::jsonb)) tag WHERE tag->>0 ILIKE ?)",
-                        [$pattern],
-                    );
-                } elseif ($driver === 'sqlite') {
-                    $query->orWhereRaw(
-                        "EXISTS (SELECT 1 FROM json_each(COALESCE(mobile_apps.tags, '[]')) tag WHERE json_extract(tag.value, '\$[0]') LIKE ? COLLATE NOCASE)",
-                        [$pattern],
-                    );
-                } else {
-                    $query->orWhereLike('tags', $pattern);
-                }
+                    ->orWhereLike('description', $pattern)
+                    // Laravel generates no `or` variant of a local scope, so the
+                    // tag predicate is nested instead of called as orWhereTagLike.
+                    ->orWhere(fn (Builder $inner) => $inner->whereTagLike($pattern));
             }))
             ->latest('updated_at')
             ->paginate(12)
