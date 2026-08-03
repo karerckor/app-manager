@@ -1158,7 +1158,7 @@ git commit -m "feat(credentials): detect duplicate vault references"
   - `SyncVaultReference::update(CredentialVaultReference $reference, array $vault, VaultMetadataSource $source): CredentialVaultReference`
   - `CredentialRequestRules::resolveMode(Team $team, Request $request): CredentialStorageMode`
   - `CredentialRequestRules::forCreate(Team $team, Request $request, CredentialStorageMode $mode, ?CredentialType $type): array<string, mixed>`
-  - `CredentialRequestRules::forUpdate(Credential $credential, Request $request, ?CredentialType $type): array<string, mixed>`
+  - `CredentialRequestRules::forUpdate(Credential $credential, Request $request, ?CredentialType $type, bool $partial = false): array<string, mixed>` — `$partial` is for the API's partial update: when true, payload/file/vault rules are contributed only if the request supplies one of them
   - `CredentialRequestRules::assertModeIsUnchanged(Credential $credential, Request $request): void`
 
 - [ ] **Step 1: Write the failing test**
@@ -1951,24 +1951,60 @@ Inside the transaction closure add `$mode` to `use (...)` and replace the create
 
 - [ ] **Step 5: Branch `Api\V1\CredentialController::update`**
 
-Apply the same three changes as the web controller in Task 5, Step 5, using the same shared builder:
+**The API's update is a *partial* update and must stay one.** It currently uses `'name' => ['sometimes', …]`, `'type' => ['prohibited']`, and applies payload/file rules only `if ($request->has('payload'))`. `PlatformApiTest::test_credentials_can_be_managed_with_encrypted_payload_and_file` sends a `patchJson` carrying only `name` and `expires_at` and expects 200. **Do not replace that rule array with the web controller's** — merge into it.
+
+Add the mode lock at the top:
 
 ```php
         $this->credentialRules->assertModeIsUnchanged($credential, $request);
 ```
 
+Then merge the storage rules into the existing array, passing `partial: true` so payload, file and vault rules are contributed only when the request actually supplies one of them:
+
 ```php
-        $rules = [
-            'name' => ['required', 'string', 'max:255'],
-            'type' => ['required', Rule::enum(CredentialType::class)],
-            'expires_at' => ['nullable', 'date'],
-            ...$this->credentialRules->forUpdate($credential, $request, $type),
-        ];
+            ...$this->credentialRules->forUpdate($credential, $request, $type, partial: true),
 ```
 
-and inside the transaction call `$this->vaultReferences->update($credential->vaultReference, $data['vault'], VaultMetadataSource::User)` for an external credential instead of writing a file and refreshing the fingerprint.
+Leave `'name' => ['sometimes', …]` and `'type' => ['prohibited']` exactly as they are.
+
+Inside the transaction, for an external credential call `$this->vaultReferences->update($credential->vaultReference, $data['vault'], VaultMetadataSource::User)` — but only when `$request->has('vault')`, since a partial update may not carry one — instead of writing a file and refreshing the fingerprint.
 
 If this controller has a password carry-over block like the web one, guard it with `! $credential->isExternal()` too.
+
+- [ ] **Step 5b: Close the file-endpoint hole for external credentials**
+
+Task 5 found and fixed this on the web controller; the API has the same two holes. `upload()` and `destroyFile()` have no storage-mode gate, so a client with `credentials:write` can post a `.p8` to an external credential — persisting into MediaLibrary the exact material the mode exists to keep out of the platform, and stamping a fingerprint that makes `findMatching()` start matching it.
+
+Add as the first statement of **both** `Api\V1\CredentialController::upload()` and `::destroyFile()`:
+
+```php
+        abort_if($credential->isExternal(), 404);
+```
+
+404, not 403: for an external credential the file sub-resource does not exist, which is the answer `download()` already gives.
+
+Add a test to `CredentialExternalStorageApiTest`:
+
+```php
+    public function test_uploading_a_file_to_an_external_credential_is_not_found(): void
+    {
+        [$user, $team, $app, $identifier] = $this->workspace();
+        $credential = \App\Models\Credential::factory()
+            ->external(VaultProvider::Custom, 'somewhere')
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $identifier->credentials()->attach($credential);
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+
+        $url = "/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$credential->id}/file";
+
+        $this->post($url, [
+            'file' => UploadedFile::fake()->createWithContent('key.p8', 'private-key'),
+        ], ['Accept' => 'application/json'])->assertNotFound();
+
+        $this->deleteJson($url)->assertNotFound();
+        $this->assertNull($credential->fresh()->getFirstMedia('file'));
+    }
+```
 
 - [ ] **Step 6: Run the test to verify it passes**
 
