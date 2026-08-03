@@ -4165,7 +4165,9 @@ For the new UI to be *visible* in the shot, the fixture tenant must contain exte
 2. Re-run the seeder, then `node apps/docs/scripts/capture-ui-screenshots.mjs` with the instance URL, `docs-capture@example.com` and its password supplied via the environment.
 3. **Confirm the capture landed in the fixture tenant, by name.** The skill's first rule exists because a capture run once pulled a workspace whose rows were real customer names. `acme-mobile` only — never `demo-users-team`, whose apps read like real businesses.
 4. Check the image for a dev-server error overlay, which can bake local filesystem paths into the picture.
-5. If the capture fails for any screen, the run must exit non-zero and the old image must not be left in place.
+5. If the capture fails for any screen, the run must exit non-zero and the old image must not be left in place. The script already does all three — `EXPECTED_TEAM` defaults to `acme-mobile` and throws on a mismatch, each screen declares `wait` text asserted before the shot, and a non-empty `failures` array exits 1. Verify that yourself rather than assuming it.
+
+6. **Strengthen the screen's precondition.** The `credentials-vault` entry currently waits on `'Team credentials'`, a heading that exists both before and after this feature — so a regression in Task 12 would let the capture shoot the old layout and pass. Change its `wait` to text only the new UI produces: a provider label rendered in an external row, e.g. `'AWS Secrets Manager'`. Use body text, not a control's accessible name — the skill records a case where a wait on a button timed out because its label came from `aria-label`, which text matching does not see. This only works once Step 2b's seeder change is in place, which is why it comes after it.
 
 **If you cannot run the capture** — no instance, Playwright missing, seeder fails — stop, leave the image untouched, and say so in your report. Do not describe the new UI over an old screenshot.
 
