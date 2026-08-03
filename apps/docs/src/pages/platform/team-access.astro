@@ -1,0 +1,129 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Team access" activeNav="/platform/team-access">
+  <h1>Team access</h1>
+  <p>
+    Team access controls who can reach a workspace and what they can do in it. It also holds two
+    workspace-wide settings: the display name, and whether new credential forms check for
+    duplicates.
+  </p>
+
+  <Screenshot
+    src="team-access"
+    alt="Team access screen with four members and their roles, workspace settings, and one pending invitation"
+    caption="Members, roles, workspace settings, and pending invitations on one screen."
+  />
+
+  <h2>Roles</h2>
+  <p>
+    There are four roles, and each is a fixed set of permissions rather than something you compose:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Permission</th>
+        <th>Owner</th>
+        <th>Admin</th>
+        <th>Contributor</th>
+        <th>Viewer</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>View the workspace</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Manage credentials</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+      <tr><td>Manage applications</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Manage the team</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Manage integrations</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Run pipelines</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+      <tr><td>Close the workspace</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Two consequences are easy to miss:
+  </p>
+  <ul>
+    <li>
+      <strong>Contributors can manage credentials but not applications.</strong> The role is shaped
+      for someone who maintains signing material without restructuring the workspace.
+    </li>
+    <li>
+      <strong>Closing the workspace is the owner's alone.</strong> Admins can do everything else,
+      including managing members.
+    </li>
+  </ul>
+  <p>
+    The <a href="/platform/audit-log">audit log</a> is stricter still: only owners and admins can
+    open it.
+  </p>
+
+  <h2>Inviting someone</h2>
+  <p>
+    <strong>Invite member</strong> takes an email and a role and sends an invitation that expires.
+    Pending invitations are listed on the right with their role and expiry, and can be revoked before
+    they are accepted.
+  </p>
+  <p>
+    An invitation is tied to the email it was sent to. The recipient accepts it from their own
+    account, which is why inviting someone does not require them to exist in the system first.
+  </p>
+
+  <h2>Changing a role or removing a member</h2>
+  <p>
+    Roles are edited inline from the member row — the change takes effect on their next request, not
+    at their next sign-in. Removing a member revokes their access to this workspace only; their
+    account and their other memberships are untouched.
+  </p>
+  <p>
+    The owner row has no role selector: ownership is not something another member can reassign from
+    this screen.
+  </p>
+  <p>
+    Both actions are recorded in the audit log as <code>team.member.role_changed</code> and
+    <code>team.member.removed</code>, and both are available as
+    <a href="/platform/integrations/webhooks">webhook events</a> if you mirror access changes
+    elsewhere.
+  </p>
+
+  <h2>Roles and API keys are separate gates</h2>
+  <p>
+    An <a href="/platform/api-keys">API key</a> carries its own scopes, but it also inherits the
+    limits of the member it belongs to. A key with <code>credentials:write</code> held by a viewer
+    still cannot write credentials. When a request fails with <code>403</code> and the scope looks
+    correct, the role is usually the reason.
+  </p>
+  <p>
+    This also means demoting a member quietly narrows what their keys can do — worth remembering
+    when a pipeline starts failing after a role change.
+  </p>
+
+  <h2>Workspace settings on this screen</h2>
+  <table>
+    <thead>
+      <tr><th>Setting</th><th>Effect</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Workspace name</td>
+        <td>The display name every member sees. The slug in URLs does not change with it.</td>
+      </tr>
+      <tr>
+        <td>Credential uniqueness</td>
+        <td>
+          When on, new credential forms look for an existing credential of the same type with the
+          same file and identifying fields, and warn before creating a duplicate. See
+          <a href="/platform/credentials-vault">Credentials Vault</a>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>No API for membership</h2>
+  <p>
+    Members, roles, and invitations are console-only. There is no API v1 endpoint and no CLI
+    command, so access changes are deliberately a human action rather than something a pipeline can
+    perform.
+  </p>
+</DocsLayout>

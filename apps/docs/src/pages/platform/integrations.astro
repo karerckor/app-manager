@@ -1,0 +1,110 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Integrations" activeNav="/platform/integrations">
+  <h1>Integrations</h1>
+  <p>
+    An integration is a connection to something outside the platform. All four kinds live behind the
+    tabs on this screen, and the counter on each tab tells you how many you have:
+  </p>
+  <ul>
+    <li><strong>CI/CD</strong> — GitHub and GitLab accounts, and the pipelines they expose</li>
+    <li><strong>Expo EAS</strong> — Expo accounts and project links, on <a href="/platform/integrations/eas">its own page</a></li>
+    <li><strong>Webhooks</strong> — outbound HTTP endpoints, on <a href="/platform/integrations/webhooks">its own page</a></li>
+    <li><strong>Notifications</strong> — Slack, Discord and Telegram destinations, on <a href="/platform/integrations/notifications">its own page</a></li>
+  </ul>
+
+  <Screenshot
+    src="integrations-cicd"
+    alt="Integrations screen on the CI/CD tab, showing one connected GitHub provider and cards for adding GitHub, GitLab or self-hosted GitLab"
+    caption="The CI/CD tab: what is connected, and what you can connect."
+  />
+
+  <h2>Connecting a CI/CD provider</h2>
+  <p>
+    Three options, and the difference matters:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Provider</th><th>How it connects</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>GitHub Actions</td>
+        <td>
+          OAuth, through <strong>Add account</strong>. Discovers
+          <code>workflow_dispatch</code> workflows and can run builds.
+        </td>
+      </tr>
+      <tr>
+        <td>GitLab CI/CD</td>
+        <td>OAuth against gitlab.com. Discovers projects, runs pipelines, and syncs job logs.</td>
+      </tr>
+      <tr>
+        <td>Self-hosted GitLab</td>
+        <td>Your own GitLab URL plus a personal access token, rather than OAuth.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>This step is console-only.</strong> The OAuth flow needs a browser, so there is no CLI
+    equivalent for connecting an account. Everything afterwards — reading integrations, defining
+    pipelines, triggering runs — works from the CLI and the API.
+  </p>
+  <p>
+    Stored provider credentials are encrypted, and the badge on the screen says so. A connection
+    whose token has expired keeps its row but stops working; its status stops being
+    <strong>ACTIVE</strong>, and discovery calls start failing.
+  </p>
+
+  <h2>Reading a connection</h2>
+  <p>
+    Each connected provider row shows the account or repository, its status, and two counters: how
+    many <strong>apps</strong> and how many <strong>pipelines</strong> are linked to it.
+    <strong>Manage</strong> opens the connection, where you can see and edit its pipelines, run a
+    sync, or disconnect it.
+  </p>
+  <p>
+    Disconnecting leaves build history intact — records of builds that provider dispatched remain,
+    since they describe what happened rather than what can happen next.
+  </p>
+
+  <h2>Pipelines</h2>
+  <p>
+    A pipeline is a saved pointer to one workflow: which repository, which workflow file, which ref
+    by default, and which app and profile the resulting build belongs to. Defining one is what turns
+    "we have a GitHub connection" into "we can build this app".
+  </p>
+  <p>
+    The pipeline form fills itself from the provider: it lists repositories the connection can see,
+    then workflows inside the chosen repository, then refs. Those lists are fetched live, so a
+    connection with an expired token shows empty dropdowns rather than stale options.
+  </p>
+  <p>
+    Pipelines can be renamed, edited, and run in batches from the connection screen — useful when one
+    workflow serves several apps. Details, including inputs and idempotent triggering, are on the
+    <a href="/platform/integrations/pipelines">Pipelines</a> page.
+  </p>
+
+  <h2>What a triggered build looks like</h2>
+  <p>
+    Triggering a pipeline creates a build record in <code>automatic</code> reporting mode. The
+    provider owns its status and logs from then on, and the platform mirrors what it reports —
+    which is why manual status writes on those builds are refused. See
+    <a href="/cli/builds/automated-builds">Automated builds</a>.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <ul>
+    <li>
+      <a href="/cli/integrations"><code>appmctl integrations</code></a> — list connections, and
+      discover repositories, workflows and refs
+    </li>
+    <li>
+      <a href="/cli/integrations/pipelines"><code>appmctl pipelines</code></a> — define,
+      inspect and trigger pipelines
+    </li>
+  </ul>
+</DocsLayout>

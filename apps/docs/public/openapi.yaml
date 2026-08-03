@@ -240,8 +240,12 @@ paths:
       operationId: uploadAsset
       summary: Upload or replace asset
       description: |
-        Upload a new icon or splashscreen. Use `POST` (recommended) since not all PHP SAPIs parse multipart body for `PUT`.
-        The file must be an image, max 10 MB.
+        Upload a new icon or splashscreen, replacing the current one. `PUT` is accepted as an
+        alias on the same path, but `POST` is documented here and recommended because not every
+        PHP SAPI parses a multipart body for `PUT`.
+
+        The file must be an image, max 10 MB. Per-platform variants are generated afterwards, so
+        a variant listing can briefly show fewer entries than it will a moment later.
       tags: [Assets]
       requestBody:
         required: true
@@ -267,6 +271,21 @@ paths:
                     $ref: '#/components/schemas/MobileApp'
         '422':
           $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [assets:write]
+
+    delete:
+      operationId: deleteAsset
+      summary: Delete asset
+      description: |
+        Remove the icon or splashscreen and every generated variant. Deleting an icon
+        triggers an Expo sync when the application is linked to an Expo project.
+      tags: [Assets]
+      responses:
+        '204':
+          description: Asset deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
         - bearerAuth: [assets:write]
 
@@ -1643,7 +1662,241 @@ paths:
       security:
         - bearerAuth: [pipelines:run]
 
-  /apps/{mobileApp_slug}/expo:
+  /apps/{app_slug}/builds/{build_id}/logs/archive:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    get:
+      operationId: downloadBuildLogArchive
+      summary: Download the archived build log
+      description: |
+        Download the archived log for a build whose live log has been truncated. Long logs
+        are archived once they pass the retained size, and the archive stays available after
+        the live log no longer holds the full output.
+      tags: [Logs]
+      responses:
+        '200':
+          description: Archived log
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: This build has no archived log
+      security:
+        - bearerAuth: [logs:read]
+
+  /apps/{app_slug}/builds/{build_id}/sync-eas:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+
+    post:
+      operationId: syncEasBuildStatus
+      summary: Sync an EAS build's status from Expo
+      description: |
+        Pull the current status of a build reported by Expo. Only builds in the `eas`
+        reporting mode can be synced; manual and provider-reported builds answer `409`,
+        because their status belongs to whoever reports them.
+      tags: [Builds]
+      responses:
+        '200':
+          description: Build record after the sync
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BuildRecord'
+        '409':
+          description: The build does not report through Expo
+        '502':
+          description: Expo could not be reached
+      security:
+        - bearerAuth: [builds:write]
+
+  /apps/{app_slug}/credentials/{credential_id}/reveal:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+
+    post:
+      operationId: revealCredential
+      summary: Reveal a credential's secure fields
+      description: |
+        Return the decrypted payload of a credential. This is an access event: it is written
+        to the audit log with the actor that performed it. Responses are sent with
+        `Cache-Control: no-store`, and the endpoint is rate limited to 30 requests per
+        minute.
+
+        Requires the `credentials:reveal` scope, which is deliberately separate from
+        `credentials:read` — listing that a credential exists and reading its secrets are
+        different acts.
+      tags: [Credentials]
+      responses:
+        '200':
+          description: Decrypted payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      payload:
+                        type: object
+                        description: Secure fields, decrypted
+                        additionalProperties: true
+        '403':
+          description: Missing the credentials:reveal scope or the manage_credentials permission
+        '429':
+          description: Rate limit exceeded
+      security:
+        - bearerAuth: [credentials:reveal]
+
+  /apps/{app_slug}/credentials/{credential_id}/verification:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+
+    post:
+      operationId: recordCredentialVerification
+      summary: Record a verification result for an external credential
+      description: |
+        Report whether an externally stored credential reference resolves. Pipelines that
+        resolve secrets from an external vault use this to record the outcome, so a broken
+        reference is visible before a release rather than during one.
+
+        `error` is required when the status is `failed` and rejected when it is `verified`.
+        `expires_at` is rejected for a failed verification, since a reference that did not
+        resolve has no expiry to report.
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [verified, failed]
+                error:
+                  type: string
+                  maxLength: 1000
+                  description: Required when status is `failed`
+                expires_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Rejected when status is `failed`
+                metadata:
+                  type: object
+                  nullable: true
+                  additionalProperties:
+                    type: string
+                    maxLength: 500
+      responses:
+        '200':
+          description: Verification recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      resource:
+                        type: string
+                      metadata:
+                        type: object
+                        additionalProperties: true
+                      metadata_version:
+                        type: integer
+                      metadata_source:
+                        type: string
+                      verification:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [verified, failed]
+                          verified_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          error:
+                            type: string
+                            nullable: true
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [credentials:verify]
+
+  /apps/{app_slug}/expo/automatic-sync:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
+    patch:
+      operationId: updateExpoAutomaticSync
+      summary: Enable or disable automatic Expo sync
+      description: |
+        Turn automatic sync on or off for the linked Expo project. Enabling is refused with
+        `422` when the project no longer exists on Expo or the account's token is broken,
+        rather than accepting a setting that cannot work.
+      tags: [Expo Integration]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Automatic sync state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      automatic_sync:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          status:
+                            type: string
+                          error:
+                            type: string
+                            nullable: true
+                          last_pushed_at:
+                            type: string
+                            format: date-time
+                            nullable: true
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [apps:write, credentials:write, integrations:write]
+
+  /apps/{app_slug}/expo:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
 
@@ -1777,7 +2030,7 @@ paths:
       security:
         - bearerAuth: [apps:write, integrations:write]
 
-  /apps/{mobileApp_slug}/expo/sync:
+  /apps/{app_slug}/expo/sync:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
 
@@ -1813,7 +2066,7 @@ paths:
       security:
         - bearerAuth: [apps:write, credentials:write, integrations:write]
 
-  /apps/{mobileApp_slug}/expo/identifiers:
+  /apps/{app_slug}/expo/identifiers:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
 
@@ -1842,10 +2095,16 @@ paths:
       security:
         - bearerAuth: [identifiers:read, integrations:read]
 
+  /apps/{app_slug}/expo/identifiers/sync:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+
     post:
       operationId: syncExpoIdentifiers
       summary: Sync Expo identifiers
-      description: Import Expo-only identifiers and create remote identifiers for local ones.
+      description: |
+        Push local iOS and Android identifiers to Expo and report what changed. Web
+        identifiers are ignored, since they have no meaning on Expo.
       tags: [Expo Integration]
       responses:
         '200':
@@ -1857,17 +2116,21 @@ paths:
                 properties:
                   data:
                     type: object
-                  meta:
-                    type: object
                     properties:
-                      imported:
-                        type: integer
                       created:
                         type: integer
+                      updated:
+                        type: integer
+                      unchanged:
+                        type: integer
+        '404':
+          description: The application has no linked Expo project
+        '502':
+          $ref: '#/components/responses/NotFound'
       security:
         - bearerAuth: [identifiers:write, integrations:write]
 
-  /apps/{mobileApp_slug}/expo/identifiers/{identifier_id}/provision:
+  /apps/{app_slug}/expo/identifiers/{identifier_id}/provision:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
       - name: identifier_id
@@ -1921,7 +2184,7 @@ paths:
       security:
         - bearerAuth: [identifiers:write, credentials:write, integrations:write]
 
-  /apps/{mobileApp_slug}/expo/identifiers/{identifier_id}/credentials/{credential_id}:
+  /apps/{app_slug}/expo/identifiers/{identifier_id}/credentials/{credential_id}:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
       - name: identifier_id

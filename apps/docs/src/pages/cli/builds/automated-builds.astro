@@ -1,0 +1,129 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI automated builds" activeNav="/cli/builds/automated-builds">
+  <h1>Automated builds</h1>
+  <p>
+    An automated build is one the platform dispatched to a CI provider. Triggering a pipeline
+    creates the build record, the provider runs the workflow, and the platform keeps the record
+    in step with what the provider reports. Your job is to read these builds, not to write to
+    them.
+  </p>
+
+  <h2>Triggering one</h2>
+  <p>
+    Automated builds start from a pipeline, not from <code>builds create</code>. Check which
+    inputs a pipeline needs, then run it:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl pipelines inputs --integration-id int-002 pipe-001
+
+appmctl pipelines run --integration-id int-002 pipe-001 \\
+  --ref main --inputs '{"profile":"production"}'
+
+# build_id:          bld-004
+# status:            pending
+# reporting_mode:    automatic
+# dispatch_status:   dispatched
+# external_run_url:  https://github.com/acme/customer-app/actions/runs/1234567
+# request_uuid:      33333333-4444-4555-8666-777777777777
+# created_at:        2026-08-03`} />
+  <p>
+    The response is the build record the dispatch created, so the run already tells you what to
+    watch. See <a href="/cli/integrations/pipelines">Pipelines</a> for the full command.
+  </p>
+
+  <h2>What you cannot do</h2>
+  <p>
+    Manual writes are refused with <code>409</code>. The record mirrors the provider, and two
+    writers disagreeing about one build would make its history meaningless:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>builds patch --status ...</code></td><td><code>409</code> — the provider owns the status</td></tr>
+      <tr><td><code>logs post</code></td><td><code>409</code> — the log comes from the provider</td></tr>
+      <tr><td><code>stream</code></td><td><code>409</code> — manual reporting mode only</td></tr>
+      <tr><td><code>builds patch --tag ...</code></td><td>Allowed — tags are platform-side metadata</td></tr>
+      <tr><td><code>artifacts upload</code></td><td>Allowed — artifacts are attached to the record, not reported by the provider</td></tr>
+      <tr><td><code>builds cancel</code></td><td>Allowed — requests cancellation through the provider</td></tr>
+    </tbody>
+  </table>
+  <p>
+    If you find yourself wanting to write status to one of these builds, the build you want is
+    a <a href="/cli/builds/manual-builds">manual build</a>.
+  </p>
+
+  <h2>Watching a dispatched build</h2>
+  <p>
+    <code>wait</code> is the whole point of these builds from a scripting angle: dispatch, then
+    block until the provider is done, and let the exit code decide what happens next.
+  </p>
+  <CodeBlock lang="bash" code={`BUILD_ID=$(
+  appmctl --json pipelines run --integration-id int-002 pipe-001 --ref main |
+    jq -er '.data.id'
+)
+
+# 0 completed, 1 failed, 130 cancelled, 124 timed out
+appmctl builds wait "$BUILD_ID" --timeout 3600`} />
+  <p>
+    Pass <code>--request-uuid</code> derived from the CI job id to make the dispatch idempotent,
+    so a retried job attaches to the same build instead of starting a second one.
+  </p>
+
+  <h2>Cancellation</h2>
+  <p>
+    <code>cancel</code> asks the provider to stop. The record moves to
+    <code>cancel_requested</code> and only reaches <code>cancelled</code> once the provider
+    acknowledges, so a status read straight after cancelling will usually still show the
+    intermediate state:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl builds cancel "$BUILD_ID"
+appmctl builds get "$BUILD_ID"   # status: cancel_requested`} />
+
+  <h2>Reading the outcome</h2>
+  <p>
+    <code>dispatch_status</code> and <code>external_run_url</code> are what distinguish these
+    builds from manual ones: the first says whether the platform managed to hand the job over,
+    the second links to the provider's own run page:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --json builds get "$BUILD_ID" |
+  jq '.data | {status, reporting_mode, dispatch_status, external_run_url}'
+
+# {
+#   "status": "failed",
+#   "reporting_mode": "automatic",
+#   "dispatch_status": "dispatched",
+#   "external_run_url": "https://github.com/acme/customer-app/actions/runs/1234567"
+# }`} />
+  <p>
+    A build that failed to dispatch never ran at all — that is a platform or credentials
+    problem, not a build failure, and the provider has no run page for it.
+  </p>
+
+  <h2>Logs and artifacts</h2>
+  <p>
+    Logs arrive from the provider, so read them the same way as any other build. Artifacts are
+    usually uploaded by the workflow itself using a CI-scoped key:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --json logs get --build-id "$BUILD_ID" | jq -r '.data.content'
+appmctl artifacts list --build-id "$BUILD_ID"`} />
+
+  <h2>Tagging from outside</h2>
+  <p>
+    Tags are the one write that always works, which makes them the way to annotate provider
+    builds from your own tooling — a release marker, a ticket number, a channel:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl builds patch "$BUILD_ID" --tag release:#22c55e --tag JIRA-4821`} />
+  <p>Remember that <code>--tag</code> replaces the whole set rather than adding to it.</p>
+
+  <h2>Scopes</h2>
+  <p>
+    <code>pipelines:run</code> to dispatch, <code>builds:read</code> to watch,
+    <code>logs:read</code> and <code>artifacts:read</code> to inspect the results.
+    <code>builds:write</code> is needed only for tags and cancellation.
+  </p>
+</DocsLayout>

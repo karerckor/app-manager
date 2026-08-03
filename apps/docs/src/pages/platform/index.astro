@@ -1,0 +1,148 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Platform (Web UI)" activeNav="/platform">
+  <h1>Platform</h1>
+  <p>
+    The web console is where you set a team up: applications and their identifiers, signing
+    material, CI/CD connections, and who on the team can touch what. Once that exists, day-to-day
+    automation usually happens through the <a href="/cli">CLI</a> or the
+    <a href="/api-reference">API</a> — but a few things live only here, and this section says
+    which.
+  </p>
+  <p>
+    Every screenshot on these pages is captured from a running instance by
+    <code>apps/docs/scripts/capture-ui-screenshots.mjs</code>, so what you see is the current
+    interface rather than a drawing of it.
+  </p>
+
+  <Screenshot
+    src="applications"
+    alt="The Applications screen listing four applications with their tags, identifier counts and last update"
+    caption="Applications is the landing screen for a workspace."
+  />
+
+  <h2>How the console is organised</h2>
+  <p>
+    Everything is scoped to a <strong>workspace</strong> — the switcher at the top of the sidebar.
+    A workspace is a team: its own applications, credentials, integrations, API keys, and audit
+    trail. Nothing is shared between workspaces, and an API key belongs to exactly one.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Sidebar entry</th><th>What it holds</th><th>Page</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Applications</td>
+        <td>Apps, per-platform identifiers, files and assets, build history</td>
+        <td><a href="/platform/applications">Applications</a></td>
+      </tr>
+      <tr>
+        <td>Credentials Vault</td>
+        <td>Keystores, certificates, service accounts, and their expiry state</td>
+        <td><a href="/platform/credentials-vault">Credentials Vault</a></td>
+      </tr>
+      <tr>
+        <td>API keys</td>
+        <td>Team-bound keys for CI and integrations, with per-scope grants</td>
+        <td><a href="/platform/api-keys">API keys</a></td>
+      </tr>
+      <tr>
+        <td>Audit log</td>
+        <td>Who changed what, from which source, with before and after values</td>
+        <td><a href="/platform/audit-log">Audit log</a></td>
+      </tr>
+      <tr>
+        <td>Integrations</td>
+        <td>CI/CD providers, Expo accounts, webhook endpoints, chat notifications</td>
+        <td><a href="/platform/integrations">Integrations</a></td>
+      </tr>
+      <tr>
+        <td>Team access</td>
+        <td>Members, roles, and pending invitations</td>
+        <td><a href="/platform/team-access">Team access</a></td>
+      </tr>
+      <tr>
+        <td>Push notifications</td>
+        <td>A tool for sending a test push to a device</td>
+        <td><a href="/platform/push-notifications">Push notifications</a></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Concepts worth knowing first</h2>
+  <p>
+    Four ideas explain most of the interface, and getting them straight avoids a lot of confusion
+    later.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Concept</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Application</strong></td>
+        <td>A product. It holds no platform detail of its own — that lives on its identifiers.</td>
+      </tr>
+      <tr>
+        <td><strong>Identifier</strong></td>
+        <td>
+          What the app is called on one platform: an iOS bundle ID, an Android package name, a web
+          domain. Build profiles and credentials attach here, not to the app.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Build</strong></td>
+        <td>
+          One build attempt, with a <em>reporting mode</em> that decides who owns its status:
+          your runner (manual), a CI provider (automatic), or Expo (EAS).
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Integration</strong></td>
+        <td>
+          A connection to something outside: GitHub, GitLab, Expo, an HTTP endpoint, a chat
+          channel. Pipelines, webhooks, and notification destinations all hang off one.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What only the console can do</h2>
+  <p>
+    Most screens have an API and CLI equivalent, but a few actions exist here alone. Knowing which
+    saves you looking for a command that was never written:
+  </p>
+  <ul>
+    <li>
+      <strong>Connecting GitHub or GitLab.</strong> The flow is OAuth and needs a browser. Once
+      connected, the CLI can read and use the integration.
+    </li>
+    <li>
+      <strong>Notification destinations.</strong> Slack, Discord, and Telegram routing has no API
+      at all — see <a href="/platform/integrations/notifications">Notifications</a>.
+    </li>
+    <li>
+      <strong>Team membership and roles.</strong> Invitations and role changes are console-only.
+    </li>
+    <li>
+      <strong>Revealing a stored secret.</strong> Secure fields can be read in the vault UI; the
+      API exposes them only under an explicit scope.
+    </li>
+  </ul>
+
+  <h2>Where to start</h2>
+  <p>
+    If you are setting a workspace up for the first time, this order avoids rework: create the
+    <a href="/platform/applications">application and its identifiers</a>, add
+    <a href="/platform/credentials-vault">signing material</a>, connect a
+    <a href="/platform/integrations">CI/CD provider</a> and define a pipeline, then issue a
+    scoped <a href="/platform/api-keys">API key</a> for the pipeline to report with.
+  </p>
+  <p>
+    Installing the platform itself is a separate topic and is not covered here.
+  </p>
+</DocsLayout>

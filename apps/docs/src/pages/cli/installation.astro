@@ -1,0 +1,129 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI installation" activeNav="/cli/installation">
+  <h1>Installation</h1>
+  <p>
+    <code>appmctl</code> is one Bash script. Installing it means putting that script on
+    <code>PATH</code>; there is no package to build and no runtime to provision.
+  </p>
+
+  <h2>Requirements</h2>
+  <table>
+    <thead>
+      <tr><th>Tool</th><th>Required for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Bash 3.2+</td><td>All commands. macOS system Bash is supported.</td></tr>
+      <tr><td><code>curl</code></td><td>Every API request</td></tr>
+      <tr><td><code>jq</code></td><td><code>--json</code>, formatted output, and <code>stream</code></td></tr>
+      <tr><td><code>mktemp</code>, <code>tee</code>, <code>dd</code></td><td><code>stream</code> and secure temporary files</td></tr>
+      <tr><td><code>sha256sum</code> or <code>shasum</code></td><td>Checksum verification during install</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Without <code>jq</code> the CLI still performs requests, but any command that formats a
+    response fails with <code>jq is required for this operation</code>.
+  </p>
+
+  <h2>The installer requires a checksum</h2>
+  <p>
+    <strong><code>APPMCTL_SHA256</code> is mandatory.</strong> The installer refuses to run
+    without it, because piping a remote script into <code>bash</code> with no verification
+    is exactly how a compromised upstream reaches your runners:
+  </p>
+  <CodeBlock lang="text" code={`appmctl installer: APPMCTL_SHA256 is required (set APPMCTL_ALLOW_UNVERIFIED=1 only for an explicitly trusted development source)`} />
+  <p>
+    So a real install is a two-step operation: read the checksum for the revision you
+    intend to install, then install that exact revision.
+  </p>
+
+  <h3>Install a pinned revision</h3>
+  <CodeBlock lang="bash" code={`APPMCTL_REF='FULL_GIT_COMMIT_SHA'
+BASE="https://raw.githubusercontent.com/karerckor/app-manager/$&#123;APPMCTL_REF&#125;"
+
+# 1. Compute the checksum of the executable at that revision.
+EXPECTED=$(curl -fsSL "$BASE/libs/cli/bin/appmctl" | shasum -a 256 | awk '{print $1}')
+echo "$EXPECTED"
+
+# 2. Install it, with the checksum enforced.
+curl -fsSL "$BASE/libs/cli/install.sh" | \\
+  APPMCTL_REF="$APPMCTL_REF" \\
+  APPMCTL_SHA256="$EXPECTED" \\
+  bash
+
+export PATH="$HOME/.local/bin:$PATH"
+appmctl --version`} />
+  <p>
+    In a pipeline, record the expected checksum in the repository or in a CI variable rather
+    than recomputing it — recomputing from the same URL you are about to install proves the
+    download was not corrupted in transit, but it cannot tell you the upstream file changed.
+    A stored value does.
+  </p>
+
+  <h3>Install to a specific directory</h3>
+  <p>
+    CI runners usually want the executable inside the workspace or a temp directory that is
+    cleaned between jobs:
+  </p>
+  <CodeBlock lang="bash" code={`curl -fsSL "$BASE/libs/cli/install.sh" | \\
+  APPMCTL_REF="$APPMCTL_REF" \\
+  APPMCTL_SHA256="$EXPECTED" \\
+  APPMCTL_INSTALL_DIR="$PWD/.appmctl-bin" \\
+  bash
+
+export PATH="$PWD/.appmctl-bin:$PATH"`} />
+
+  <h3>Unverified install, local development only</h3>
+  <p>
+    <code>APPMCTL_ALLOW_UNVERIFIED=1</code> skips the checksum requirement. Use it when you
+    are installing from a source you already control, never in CI:
+  </p>
+  <CodeBlock lang="bash" code={`curl -fsSL \\
+  https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | \\
+  APPMCTL_ALLOW_UNVERIFIED=1 bash`} />
+
+  <h2>Installer variables</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>APPMCTL_SHA256</code></td><td>—</td><td>Expected SHA-256, 64 hex characters. Required unless explicitly waived.</td></tr>
+      <tr><td><code>APPMCTL_ALLOW_UNVERIFIED</code></td><td><code>0</code></td><td>Set to <code>1</code> to install without a checksum</td></tr>
+      <tr><td><code>APPMCTL_INSTALL_DIR</code></td><td><code>$HOME/.local/bin</code></td><td>Target directory; created if missing</td></tr>
+      <tr><td><code>APPMCTL_REF</code></td><td><code>main</code></td><td>Git ref to download from</td></tr>
+      <tr><td><code>APPMCTL_REPOSITORY</code></td><td><code>karerckor/app-manager</code></td><td>Source repository</td></tr>
+      <tr><td><code>APPMCTL_DOWNLOAD_URL</code></td><td>derived</td><td>Full URL to the executable, overriding ref and repository</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The download is staged into a mode-<code>0600</code> temporary file inside the install
+    directory and only moved into place after the checksum matches, so a failed or tampered
+    download never lands on <code>PATH</code>.
+  </p>
+
+  <h2>Run from a checkout</h2>
+  <p>The committed executable runs as-is, so a clone needs no build step:</p>
+  <CodeBlock lang="bash" code={`libs/cli/bin/appmctl --help`} />
+  <p>
+    If you change anything under <code>libs/cli/lib/</code>, rebuild the single-file
+    executable — the modules are bundled into <code>bin/appmctl</code>, and the tests run
+    against the bundle, not the sources:
+  </p>
+  <CodeBlock lang="bash" code={`bash libs/cli/build.sh > libs/cli/bin/appmctl
+chmod +x libs/cli/bin/appmctl
+
+for t in libs/cli/tests/test_*.sh; do bash "$t"; done`} />
+
+  <h2>Verify the install</h2>
+  <CodeBlock lang="bash" code={`appmctl --version      # appmctl 0.2.0
+appmctl --help         # resource list and global options
+appmctl builds --help  # actions for one resource`} />
+  <p>
+    Next: <a href="/cli/configuration">Configuration</a> covers the environment
+    variables and the API key scopes each command needs.
+  </p>
+</DocsLayout>

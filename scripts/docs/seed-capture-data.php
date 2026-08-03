@@ -26,15 +26,24 @@ use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Enums\TeamRole;
+use App\Enums\WebhookDeliveryStatus;
 use App\Models\Artifact;
+use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
 use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
+use App\Models\NotificationDestination;
 use App\Models\Team;
+use App\Models\TeamInvitation;
 use App\Models\User;
+use App\Models\WebhookDelivery;
 use App\Models\WebhookEndpoint;
+use App\Models\WebhookEvent;
 use App\Support\Apps\AppFileLibrary;
+use App\Support\Audit\ActorContext;
+use App\Support\Audit\ActorContextManager;
 
 $out = static function (string $line): void {
     fwrite(STDOUT, $line.PHP_EOL);
@@ -350,9 +359,247 @@ WebhookEndpoint::firstOrCreate(
         'secret' => 'whsec_docscapture0000000000',
         // secret_hint is varchar(8); keep the ellipsis form inside that budget.
         'secret_hint' => 'whse…000',
-        'subscribed_events' => ['build.completed', 'build.failed', 'artifact.created'],
+        'subscribed_events' => ['build.created', 'build.completed', 'artifact.created'],
     ],
 );
+$webhookEndpoint = WebhookEndpoint::where('team_id', $team->id)->firstOrFail();
 $out('webhooks: '.WebhookEndpoint::where('team_id', $team->id)->count());
+
+// ---------------------------------------------------------------------------
+// Everything below exists so the web UI screenshots have something to show. A
+// screen documented against an empty table teaches nothing, and the seeded team
+// starts with one app, one member, and no history at all.
+// ---------------------------------------------------------------------------
+
+// --- more applications, so the catalog has rows ----------------------------
+
+$extraApps = [
+    [
+        'slug' => 'delivery-driver',
+        'name' => 'Delivery Driver',
+        'description' => 'Courier companion app.',
+        'identifiers' => [
+            [Platform::Android, 'com.acme.driver', 'Delivery Driver (Android)', '2.1.0', 2100],
+            [Platform::Ios, 'com.acme.driver', 'Delivery Driver (iOS)', '2.1.0', null],
+        ],
+    ],
+    [
+        'slug' => 'store-kiosk',
+        'name' => 'Store Kiosk',
+        'description' => 'In-store self-service terminal.',
+        'identifiers' => [
+            [Platform::Android, 'com.acme.kiosk', 'Store Kiosk', '0.9.3', 93],
+        ],
+    ],
+    [
+        'slug' => 'partner-portal',
+        'name' => 'Partner Portal',
+        'description' => 'Web portal for partners.',
+        'identifiers' => [
+            [Platform::Web, 'partners.acme.example', 'Partner Portal', '3.0.0', null],
+        ],
+    ],
+];
+
+foreach ($extraApps as $spec) {
+    $extra = MobileApp::firstOrCreate(
+        ['team_id' => $team->id, 'slug' => $spec['slug']],
+        ['name' => $spec['name'], 'description' => $spec['description']],
+    );
+
+    foreach ($spec['identifiers'] as [$platform, $identifier, $name, $version, $versionCode]) {
+        $attributes = ['name' => $name, 'version' => $version];
+        if ($versionCode !== null) {
+            $attributes['version_code'] = $versionCode;
+        }
+        $extra->appIdentifiers()->firstOrCreate(
+            ['platform' => $platform, 'identifier' => $identifier],
+            $attributes,
+        );
+    }
+}
+$out('apps: '.MobileApp::where('team_id', $team->id)->count());
+
+// --- a second app with build history --------------------------------------
+
+$driver = MobileApp::where('team_id', $team->id)->where('slug', 'delivery-driver')->firstOrFail();
+$driverAndroid = $driver->appIdentifiers()->where('platform', Platform::Android)->firstOrFail();
+
+foreach ([
+    ['20000000-0000-4000-8000-000000000001', BuildStatus::Completed, [['android', '#3ddc84'], ['2.1.0', '#f59e0b']], 2880, 2874],
+    ['20000000-0000-4000-8000-000000000002', BuildStatus::Completed, [['android', '#3ddc84'], ['hotfix', '#ef4444']], 600, 596],
+    ['20000000-0000-4000-8000-000000000003', BuildStatus::Cancelled, [['android', '#3ddc84']], 120, 118],
+] as [$uuid, $status, $tags, $started, $finished]) {
+    $driver->buildRecords()->firstOrCreate(
+        ['request_uuid' => $uuid],
+        [
+            'team_id' => $team->id,
+            'app_identifier_id' => $driverAndroid->id,
+            'requested_by_user_id' => $user->id,
+            'profile_type' => ProfileType::Production,
+            'status' => $status,
+            'reporting_mode' => BuildReportingMode::Automatic,
+            'context_snapshot' => ['runner' => 'github-actions', 'commit' => 'e5f6a7b'],
+            'tags' => $tags,
+            'log_output' => "[1/3] Restoring dependencies...\n[2/3] Compiling sources...\n[3/3] Done.",
+            'started_at' => now()->subMinutes($started),
+            'finished_at' => now()->subMinutes($finished),
+        ],
+    );
+}
+$out('builds: '.BuildRecord::where('team_id', $team->id)->count());
+
+// --- team members and a pending invitation --------------------------------
+
+foreach ([
+    ['maria@acme.example', 'Maria Lopez', TeamRole::Admin],
+    ['sam@acme.example', 'Sam Okafor', TeamRole::Contributor],
+    ['ravi@acme.example', 'Ravi Patel', TeamRole::Viewer],
+] as [$email, $name, $role]) {
+    $member = User::firstOrCreate(
+        ['email' => $email],
+        ['name' => $name, 'password' => 'DocsCapture123!'],
+    );
+
+    if (! $team->users()->whereKey($member->id)->exists()) {
+        $team->users()->attach($member->id, ['role' => $role->value]);
+    }
+}
+$out('members: '.$team->users()->count());
+
+TeamInvitation::firstOrCreate(
+    ['team_id' => $team->id, 'email' => 'nina@acme.example'],
+    [
+        'invited_by' => $user->id,
+        'role' => TeamRole::Contributor->value,
+        'token' => hash('sha256', 'docs-capture-invitation'),
+        'expires_at' => now()->addDays(6),
+    ],
+);
+$out('invitations: '.TeamInvitation::where('team_id', $team->id)->whereNull('accepted_at')->count());
+
+// --- API keys with visibly different scope sets ---------------------------
+//
+// Tokens are stored hashed, so these are unusable as credentials. The point is
+// that the API keys screen shows more than one row, with scopes that differ.
+
+foreach ([
+    ['CI build reporter', ['builds:read', 'builds:write', 'logs:write', 'artifacts:write']],
+    ['Release monitor (read-only)', ['apps:read', 'builds:read', 'webhooks:read', 'deliveries:read']],
+    ['Fastlane runner', ['builds:read', 'builds:write', 'credentials:read', 'credentials:reveal', 'logs:write', 'artifacts:write']],
+] as [$name, $abilities]) {
+    $user->tokens()->updateOrCreate(
+        ['name' => $name],
+        [
+            'team_id' => $team->id,
+            'token' => hash('sha256', 'docs-capture-'.$name),
+            'abilities' => $abilities,
+            'last_used_at' => now()->subHours(random_int(2, 40)),
+        ],
+    );
+}
+$out('api keys: '.$team->apiKeys()->count());
+
+// --- notification destinations --------------------------------------------
+
+foreach ([
+    ['Slack', IntegrationProvider::Slack, '#mobile-releases', ['webhook_url' => 'https://hooks.slack.example/services/T000/B000/docs']],
+    ['Discord', IntegrationProvider::Discord, '#builds', ['webhook_url' => 'https://discord.example/api/webhooks/000/docs']],
+] as [$label, $provider, $destination, $credentials]) {
+    $notificationIntegration = Integration::firstOrCreate(
+        [
+            'team_id' => $team->id,
+            'kind' => IntegrationKind::Notification,
+            'provider' => $provider,
+            'name' => $label.' notifications',
+        ],
+        [
+            'status' => IntegrationStatus::Active,
+            'created_by_user_id' => $user->id,
+            'updated_by_user_id' => $user->id,
+        ],
+    );
+
+    NotificationDestination::firstOrCreate(
+        ['integration_id' => $notificationIntegration->id],
+        [
+            'team_id' => $team->id,
+            'destination' => $destination,
+            'credentials' => $credentials,
+            'subscribed_events' => ['build.created', 'build.completed'],
+            // templates is not-null: one message body per subscribed event.
+            // Note the event catalog has no "build.failed": a finished build reports
+            // through build.completed and carries its own status.
+            // Placeholders are double-braced and dotted; see NotificationTemplateRenderer.
+            'templates' => [
+                'build.created' => '🚀 {{app.name}} {{build.profile}} build queued by {{build.requested_by}}',
+                'build.completed' => '{{build.status_icon}} {{app.name}} {{build.profile}} build {{build.status}} in {{build.duration}} — {{build.url}}',
+            ],
+            'last_delivered_at' => now()->subMinutes(35),
+        ],
+    );
+}
+$out('notification destinations: '.NotificationDestination::where('team_id', $team->id)->count());
+
+// --- webhook deliveries, including a failure ------------------------------
+//
+// The delivery view is only worth documenting when it has a failed attempt to
+// show: that is the screen someone opens when a receiver is broken.
+
+foreach ([
+    ['build.completed', WebhookDeliveryStatus::Delivered, 200, 1, 142, null, 30],
+    ['artifact.created', WebhookDeliveryStatus::Delivered, 200, 1, 96, null, 28],
+    ['build.created', WebhookDeliveryStatus::Exhausted, 500, 5, 2041, 'HTTP 500: upstream receiver returned an error page', 15],
+] as [$eventType, $status, $responseStatus, $attempts, $duration, $error, $minutesAgo]) {
+    $event = WebhookEvent::firstOrCreate(
+        [
+            'team_id' => $team->id,
+            'event_type' => $eventType,
+            'aggregate_type' => 'build',
+            'aggregate_id' => $completedBuild?->id ?? $app->id,
+        ],
+        [
+            'schema_version' => 1,
+            'payload' => ['data' => ['id' => $completedBuild?->id, 'status' => 'completed']],
+            'occurred_at' => now()->subMinutes($minutesAgo + 1),
+        ],
+    );
+
+    WebhookDelivery::firstOrCreate(
+        ['webhook_event_id' => $event->id, 'webhook_endpoint_id' => $webhookEndpoint->id],
+        [
+            'team_id' => $team->id,
+            'status' => $status,
+            'attempt_count' => $attempts,
+            'payload_snapshot' => $event->payload,
+            'response_status' => $responseStatus,
+            'duration_ms' => $duration,
+            'last_error' => $error,
+            'signature_version' => 'v1',
+            'delivered_at' => $status === WebhookDeliveryStatus::Delivered
+                ? now()->subMinutes($minutesAgo)
+                : null,
+        ],
+    );
+}
+$out('webhook deliveries: '.WebhookDelivery::where('team_id', $team->id)->count());
+
+// --- audit log entries ----------------------------------------------------
+//
+// Audits are written by the auditing package, which resolves the actor from
+// ActorContextManager. Running the mutations as the docs user therefore produces
+// properly attributed entries instead of anonymous "system" rows.
+
+$actorContext = app(ActorContextManager::class);
+
+$actorContext->runAs(
+    ActorContext::forUser($user, 'web', null, '203.0.113.24', 'Mozilla/5.0 (Macintosh) Docs/1.0'),
+    function () use ($app, $driver, $android): void {
+        $app->update(['description' => 'Consumer-facing mobile client.']);
+        $driver->update(['description' => 'Courier companion app.']);
+        $android->update(['version' => '1.4.0']);
+    },
+);
+$out('audit entries: '.\App\Models\Audit::count());
 
 $out('done');

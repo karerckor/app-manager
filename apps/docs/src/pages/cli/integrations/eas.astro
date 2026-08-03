@@ -1,0 +1,226 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI EAS integration" activeNav="/cli/integrations/eas">
+  <h1>EAS</h1>
+  <p>
+    <code>appmctl eas</code> covers the Expo integration. The API splits it across two scopes,
+    and so does the command: the <strong>Expo account</strong> hangs off an integration, and the
+    <strong>project link</strong> hangs off an app.
+  </p>
+  <p>
+    Two actions exist in both scopes. Rather than inventing separate names, they take the scope
+    from the flag you pass — <code>--integration-id</code> for the account,
+    <code>--app</code> for the project link — and refuse to run when handed both:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl eas sync --integration-id int-002   # re-sync the account and its project list
+appmctl eas sync --app customer-app        # re-sync one linked project
+
+appmctl eas sync --app customer-app --integration-id int-002
+# appmctl: pass either --app or --integration-id, not both`} />
+
+  <h2>Account actions</h2>
+  <CodeBlock lang="bash" code={`appmctl eas connect  --token TOKEN [--account NAME]
+appmctl eas projects --integration-id ID
+appmctl eas import   --integration-id ID --project-id UUID
+appmctl eas sync       --integration-id ID
+appmctl eas disconnect --integration-id ID`} />
+
+  <h3>Connect an account</h3>
+  <p>
+    An Expo access token is all that is needed. Pass the token through a variable so it does not
+    land in shell history, and <code>--account</code> only when the token can see more than one
+    account:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl eas connect --token "$EXPO_TOKEN" --account acme
+
+# id:          int-002
+# provider:    expo
+# account:     acme
+# status:      active
+# created_at:  2026-08-03T10:15:00+00:00`} />
+  <p>The token is withheld from dry-run output, the same as credential payloads:</p>
+  <CodeBlock lang="bash" code={`appmctl --dry-run eas connect --token "$EXPO_TOKEN"
+
+# dry-run: no request sent
+# method: POST
+# url: https://manager.example.com/api/v1/acme-mobile/integrations/expo
+# body: expo credentials (58 bytes; redacted)`} />
+
+  <h3>List and import projects</h3>
+  <p>
+    <code>projects</code> lists what the account can see, with <code>on_expo</code> showing
+    whether the project still exists upstream. <code>import</code> creates an App Manager app
+    from one of them:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl eas projects --integration-id int-002
+
+# id              project                  expo_id                               on_expo  last_synced
+# --------------  -----------------------  ------------------------------------  -------  -----------
+# expo-proj-001   @acme/customer-app       11111111-2222-3333-4444-555555555555  true     2026-08-02T18:20:00+00:00
+# expo-proj-002   @acme/internal-tools     66666666-7777-8888-9999-000000000000  false
+
+appmctl eas import --integration-id int-002 --project-id expo-proj-001`} />
+
+  <h3>Sync and disconnect</h3>
+  <CodeBlock lang="bash" code={`appmctl eas sync --integration-id int-002
+appmctl eas disconnect --integration-id int-002
+# Expo account disconnected from integration int-002`} />
+  <p>
+    Disconnecting the account removes the stored token and leaves every linked project without a
+    working connection. To unlink one app instead, use <code>disconnect --app</code>.
+  </p>
+
+  <h2>Project actions</h2>
+  <CodeBlock lang="bash" code={`appmctl eas status            [--app APP]
+appmctl eas link              [--app APP] --integration-id ID --mode create|existing [--project-id UUID]
+appmctl eas auto-sync         [--app APP] --enabled true|false
+appmctl eas identifiers       [--app APP]
+appmctl eas sync-identifiers  [--app APP]
+appmctl eas provision         [--app APP] --identifier-id ID [--credential-ids ID,ID]
+appmctl eas attach-credential [--app APP] --identifier-id ID --credential-id ID
+appmctl eas sync       --app APP
+appmctl eas disconnect --app APP`} />
+
+  <h3>Link an app to a project</h3>
+  <p>
+    <code>--mode create</code> makes a new Expo project for the app.
+    <code>--mode existing</code> links to one that already exists and requires
+    <code>--project-id</code>, which the CLI checks before sending:
+  </p>
+  <CodeBlock lang="bash" code={`# New Expo project
+appmctl eas link --integration-id int-002 --mode create
+
+# Existing project
+appmctl eas link --integration-id int-002 --mode existing \\
+  --project-id 11111111-2222-3333-4444-555555555555
+
+appmctl eas link --integration-id int-002 --mode existing
+# appmctl: --project-id is required when --mode is existing`} />
+
+  <h3>Status</h3>
+  <CodeBlock lang="bash" code={`appmctl eas status
+
+# project:           @acme/customer-app
+# slug:              customer-app
+# account:           acme
+# expo_project_id:   11111111-2222-3333-4444-555555555555
+# exists_on_expo:    true
+# automatic_sync:    true
+# auto_sync_status:  idle
+# last_synced_at:    2026-08-02T18:20:00+00:00`} />
+  <p>
+    Add <code>--json</code> for the full payload, which also carries recent Expo builds and
+    submissions under <code>remote</code>.
+  </p>
+
+  <h3>Automatic sync</h3>
+  <p>
+    With automatic sync on, the platform keeps the linked project and its mirrored EAS builds up
+    to date without being asked. It cannot be enabled while the project is missing upstream or
+    the account's token is broken — the API answers <code>422</code> telling you to reconnect:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl eas auto-sync --enabled true
+
+# enabled:         true
+# status:          idle
+# error:
+# last_pushed_at:  2026-08-02T18:20:00+00:00`} />
+
+  <h3>Identifiers</h3>
+  <p>
+    <code>identifiers</code> compares what this platform holds against what Expo holds, per
+    platform. <code>sync_status</code> is the column that matters:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Value</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>synced</code></td><td>Present on both sides</td></tr>
+      <tr><td><code>app_manager_only</code></td><td>Here but not on Expo; <code>sync-identifiers</code> pushes it up</td></tr>
+      <tr><td><code>expo_only</code></td><td>On Expo but not here; create it with <a href="/cli/identifiers"><code>appmctl identifiers create</code></a></td></tr>
+    </tbody>
+  </table>
+  <CodeBlock lang="bash" code={`appmctl eas identifiers
+
+# local_id    platform  identifier         name                    sync_status
+# ----------  --------  -----------------  ----------------------  ----------------
+# ident-001   ios       com.acme.customer  Customer App (iOS)      synced
+# ident-002   android   com.acme.customer  Customer App (Android)  app_manager_only
+
+appmctl eas sync-identifiers
+# {"data":{"created":1,"updated":0,"unchanged":1}}`} />
+  <p>
+    Only iOS and Android identifiers take part; web identifiers have no meaning on Expo.
+  </p>
+
+  <h3>Credentials</h3>
+  <p>
+    <code>provision</code> asks Expo to produce whatever signing material the identifier is
+    missing. <code>attach-credential</code> pushes one credential you already hold here up to
+    Expo instead:
+  </p>
+  <CodeBlock lang="bash" code={`# Let Expo generate what is missing
+appmctl eas provision --identifier-id ident-001
+
+# Restrict provisioning to specific stored credentials
+appmctl eas provision --identifier-id ident-001 --credential-ids cred-001,cred-002
+
+# Push one credential up
+appmctl eas attach-credential --identifier-id ident-001 --credential-id cred-001`} />
+  <p>
+    These need both <code>identifiers:write</code> and <code>credentials:write</code>, since they
+    move signing material between two systems.
+  </p>
+
+  <h2>The GraphQL and REST proxies</h2>
+  <p>
+    The platform can proxy straight to Expo's APIs. There is no wrapper for it, on purpose: the
+    payloads pass through unchanged, so a wrapper would add nothing but a place for the shape to
+    drift. Use <code>appmctl request</code>:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl request POST integrations/int-002/expo/graphql \\
+  --data '{"query":"{ me { username } }"}' --json
+
+appmctl --json request GET integrations/int-002/expo/proxy/v2/projects`} />
+  <p>Both need the <code>integrations:proxy</code> scope.</p>
+
+  <h2>A first-time setup, end to end</h2>
+  <CodeBlock lang="bash" code={`# 1. Connect the account
+INT=$(appmctl --json eas connect --token "$EXPO_TOKEN" --account acme | jq -er '.data.id')
+
+# 2. Link the app to an existing Expo project
+appmctl --json eas projects --integration-id "$INT" |
+  jq -r '.data[] | select(.exists_on_expo) | "\\(.external_id)  \\(.full_name)"'
+
+appmctl eas link --integration-id "$INT" --mode existing \\
+  --project-id 11111111-2222-3333-4444-555555555555
+
+# 3. Get identifiers and credentials onto Expo
+appmctl eas sync-identifiers
+appmctl eas provision --identifier-id "$(appmctl --json identifiers list | jq -er '.data[0].id')"
+
+# 4. Keep it current
+appmctl eas auto-sync --enabled true
+appmctl eas status`} />
+
+  <h2>Scopes</h2>
+  <table>
+    <thead>
+      <tr><th>Action</th><th>Scopes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>status</code>, <code>projects</code>, <code>identifiers</code></td><td><code>integrations:read</code>, plus <code>identifiers:read</code> for identifiers</td></tr>
+      <tr><td><code>connect</code>, <code>sync</code>, <code>disconnect</code>, <code>auto-sync</code>, <code>link</code>, <code>import</code></td><td><code>integrations:write</code>, plus <code>apps:write</code> and <code>credentials:write</code> for the app-scoped ones</td></tr>
+      <tr><td><code>sync-identifiers</code></td><td><code>identifiers:write</code>, <code>integrations:write</code></td></tr>
+      <tr><td><code>provision</code>, <code>attach-credential</code></td><td><code>credentials:write</code>, <code>integrations:write</code>, and <code>identifiers:write</code> for provisioning</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Every action also requires the <code>manage_integrations</code> team permission, and the
+    credential ones additionally <code>manage_credentials</code>.
+  </p>
+</DocsLayout>

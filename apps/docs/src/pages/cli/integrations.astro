@@ -1,0 +1,106 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI integrations" activeNav="/cli/integrations">
+  <h1>Integrations</h1>
+  <p>
+    An integration is a connection to an external system: a CI provider, an Expo account, a
+    webhook target, a notification channel. Almost everything else in this section hangs off
+    one, so listing integrations is usually the first step in a script that touches CI.
+  </p>
+  <ul>
+    <li><a href="/cli/integrations/eas">EAS</a> — Expo accounts and project links</li>
+    <li><a href="/cli/integrations/pipelines">Pipelines</a> — CI workflows the platform can trigger</li>
+    <li><a href="/cli/integrations/webhooks">Webhooks</a> — outbound HTTP notifications</li>
+    <li><a href="/cli/integrations/notifications">Notifications</a> — chat destinations, web UI only for now</li>
+  </ul>
+
+  <h2>Commands</h2>
+  <CodeBlock lang="bash" code={`appmctl integrations list
+appmctl integrations get INTEGRATION_ID
+appmctl integrations repos     --integration-id ID
+appmctl integrations workflows --integration-id ID
+appmctl integrations refs      --integration-id ID`} />
+
+  <h3>List</h3>
+  <CommandOutput command="appmctl integrations list" capture="integrations-list" />
+  <p>
+    The <code>provider</code> column is what you branch on in scripts: <code>github</code> and
+    <code>gitlab</code> carry pipelines, <code>expo</code> carries project links,
+    <code>http</code> is a webhook target, and <code>slack</code>, <code>discord</code>, and
+    <code>telegram</code> are notification channels.
+  </p>
+  <CodeBlock lang="bash" code={`# The id of the first GitHub integration
+appmctl --json integrations list |
+  jq -r '.data[] | select(.provider == "github") | .id' | head -1`} />
+
+  <h3>Show one integration</h3>
+  <CodeBlock lang="bash" code={`appmctl integrations get 019fc794-fba5-727d-85c3-69ebbf55b807
+
+# id:          019fc794-fba5-727d-85c3-69ebbf55b807
+# provider:    github
+# name:        acme/customer-app
+# created_at:  2026-08-03T12:24:17.000000Z
+# updated_at:  2026-08-03T12:24:17.000000Z`} />
+
+  <h2>Discovery commands call the provider</h2>
+  <p>
+    <code>repos</code>, <code>workflows</code>, and <code>refs</code> are not reads of local
+    state — they ask the provider in real time, using the integration's stored credentials.
+    That has three consequences worth knowing before you script them:
+  </p>
+  <ul>
+    <li>They fail when the integration is disconnected or its token has expired, even though <code>integrations list</code> still shows the row.</li>
+    <li>They are subject to the provider's rate limits, so cache the result instead of calling them in a loop.</li>
+    <li>They are slower than every other read in the CLI.</li>
+  </ul>
+  <CodeBlock lang="bash" code={`# Repositories the integration can see
+appmctl integrations repos --integration-id 019fc794-fba5-727d-85c3-69ebbf55b807
+
+# Workflows in the connected repository
+appmctl integrations workflows --integration-id 019fc794-fba5-727d-85c3-69ebbf55b807
+
+# Branches and tags, for choosing a ref to build
+appmctl integrations refs --integration-id 019fc794-fba5-727d-85c3-69ebbf55b807`} />
+  <p>
+    These three are the only commands in this guide with no captured output on this page: they
+    require live provider credentials, which the documentation data deliberately does not carry.
+    Run them against your own instance to see the shape.
+  </p>
+
+  <h3>Wiring up a pipeline</h3>
+  <p>
+    The discovery commands exist to fill in a pipeline definition. The order is repository,
+    then workflow, then ref:
+  </p>
+  <CodeBlock lang="bash" code={`INT=019fc794-fba5-727d-85c3-69ebbf55b807
+
+appmctl --json integrations repos --integration-id "$INT" |
+  jq -r '.data[] | "\\(.id)  \\(.name)"'
+
+appmctl --json integrations workflows --integration-id "$INT" |
+  jq -r '.data[] | "\\(.id)  \\(.name)  \\(.path)"'
+
+appmctl pipelines create --integration-id "$INT" \\
+  --name 'Android release' \\
+  --config '{"repository_id":"R_kgDOJdocs1","workflow_id":"98765432","default_ref":"main"}'`} />
+
+  <h2>Creating integrations</h2>
+  <p>
+    Only Expo accounts can be connected from the CLI, with
+    <a href="/cli/integrations/eas"><code>appmctl eas connect</code></a>. GitHub and
+    GitLab integrations are created through OAuth in the web UI, because the flow needs a
+    browser. Once they exist, the CLI can read and use them.
+  </p>
+
+  <h2>Scopes</h2>
+  <p>
+    <code>integrations:read</code> for every command on this page, plus the
+    <code>manage_integrations</code> team permission for the discovery calls, since they use the
+    integration's credentials. <code>integrations:write</code> is needed to create or change one,
+    and <code>integrations:proxy</code> only for the Expo GraphQL and REST proxies.
+  </p>
+</DocsLayout>

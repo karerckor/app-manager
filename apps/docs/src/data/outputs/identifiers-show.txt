@@ -2,7 +2,7 @@ id:            019fc789-479a-71b2-800a-1b8c4aed6fc7
 platform:      android
 identifier:    com.acme.customer
 name:          Customer App (Android)
-version:       1.4.0
-version_code:  1408
+version:       1.4.1
+version_code:  1409
 created_at:    2026-08-03T12:11:30.000000Z
-updated_at:    2026-08-03T12:11:30.000000Z
+updated_at:    2026-08-03T13:48:36.000000Z

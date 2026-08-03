@@ -1,0 +1,111 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI applications" activeNav="/cli/applications">
+  <h1>Applications</h1>
+  <p>
+    An application is the container everything else hangs off: identifiers, credentials,
+    builds, files, and its icon and splash screen. Apps are addressed by slug, and the slug
+    appears in every app-scoped URL.
+  </p>
+
+  <h2><code>appmctl apps</code></h2>
+  <CodeBlock lang="bash" code={`appmctl apps list
+appmctl apps get SLUG
+appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]
+appmctl apps update SLUG [--name NAME] [--description DESC] [--metadata JSON]
+appmctl apps delete SLUG`} />
+
+  <h3>List</h3>
+  <CommandOutput command="appmctl apps list" capture="apps-list" />
+
+  <h3>Show one app</h3>
+  <CommandOutput command="appmctl apps get customer-app" capture="apps-get" />
+  <p>
+    Add <code>--json</code> to see everything the API returns, including metadata and the
+    asset URLs:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --json apps get customer-app | jq '.data | {slug, name, metadata}'`} />
+
+  <h3>Create, update, delete</h3>
+  <p>
+    <code>--slug</code> is optional on create; the API derives one from the name when it is
+    omitted. <code>update</code> requires at least one field, and rejects a call that would
+    change nothing.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl apps create --name "Customer App" --slug customer-app \\
+  --description "Consumer-facing mobile client." \\
+  --metadata '{"owner":"mobile-team"}'
+
+appmctl apps update customer-app --description "Consumer client, iOS and Android."
+
+appmctl apps delete customer-app`} />
+  <p>
+    Deleting an app removes its identifiers, credentials links, builds, files, and assets.
+    Preview the request first if you are unsure which app a slug refers to:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --dry-run apps delete customer-app
+
+# dry-run: no request sent
+# method: DELETE
+# url: https://manager.example.com/api/v1/acme-mobile/apps/customer-app`} />
+
+  <h2><code>appmctl assets</code></h2>
+  <p>
+    Assets are the app icon and the splash screen. An app holds at most one of each, so
+    <code>upload</code> replaces whatever is there. Beyond the original file, the platform
+    generates per-platform variants — iOS icon sizes, Android density buckets, splash
+    resolutions — and each variant is downloadable on its own.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl assets list [--app APP]
+appmctl assets show [--app APP] --type icon|splashscreen [-o FILE]
+appmctl assets download [--app APP] --type icon|splashscreen [--variant VARIANT] [-o FILE]
+appmctl assets upload [--app APP] --type icon|splashscreen --file FILE
+appmctl assets delete [--app APP] --type icon|splashscreen`} />
+
+  <h3>Discover what exists</h3>
+  <p>
+    <code>list</code> prints the download URL for each original plus every variant that has
+    actually been generated. A variant missing from this list has not been produced yet, and
+    downloading it answers <code>404</code>:
+  </p>
+  <CommandOutput command="appmctl assets list" capture="assets-list" />
+
+  <h3>Download</h3>
+  <p>
+    <code>--variant</code> defaults to <code>original</code>. Use the variant name exactly as
+    <code>list</code> prints it, without the asset prefix — <code>icon.ios-icon-40</code> in
+    the list is <code>--type icon --variant ios-icon-40</code> here:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl assets download --type icon -o icon.png
+appmctl assets download --type icon --variant ios-icon-40 -o icon-40.png
+appmctl assets download --type splashscreen --variant android-splash-port-xhdpi -o splash.png`} />
+  <p>
+    <code>show</code> streams the original inline rather than as an attachment, which is
+    handy for a quick preview.
+  </p>
+
+  <h3>Upload and delete</h3>
+  <p>
+    Uploads must be images and are capped at 10 MB. Replacing an icon triggers an Expo sync
+    when the app is linked to an Expo project:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl assets upload --type icon --file ./icon-1024.png
+appmctl assets upload --type splashscreen --file ./splash.png
+
+appmctl assets delete --type splashscreen`} />
+  <p>
+    Variants are regenerated after an upload, so <code>list</code> can briefly show fewer
+    entries than it will a moment later.
+  </p>
+
+  <h2>Scopes</h2>
+  <p>
+    <code>apps:read</code> and <code>assets:read</code> for the read commands;
+    <code>apps:write</code> and <code>assets:write</code> for the writes. Asset writes also
+    need the <code>manage_applications</code> team permission.
+  </p>
+</DocsLayout>

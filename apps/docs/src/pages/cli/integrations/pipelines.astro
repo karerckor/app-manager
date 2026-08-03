@@ -1,0 +1,153 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import CommandOutput from '../../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI pipelines" activeNav="/cli/integrations/pipelines">
+  <h1>Pipelines</h1>
+  <p>
+    A pipeline is a saved pointer to one CI workflow: which integration, which repository, which
+    workflow file, which ref by default. Triggering it dispatches the workflow at the provider
+    and creates a build record on this side, so the run shows up in the app's build history.
+  </p>
+
+  <h2>Commands</h2>
+  <CodeBlock lang="bash" code={`appmctl pipelines list   --integration-id ID
+appmctl pipelines get    --integration-id ID PIPELINE_ID
+appmctl pipelines create --integration-id ID --name NAME [--config JSON]
+appmctl pipelines update --integration-id ID PIPELINE_ID [--name NAME] [--config JSON]
+appmctl pipelines delete --integration-id ID PIPELINE_ID
+appmctl pipelines inputs --integration-id ID PIPELINE_ID
+appmctl pipelines run    --integration-id ID PIPELINE_ID [--inputs JSON] [--ref REF] [--request-uuid UUID]`} />
+  <p>
+    Every action needs <code>--integration-id</code>, because pipelines are scoped to the
+    integration that dispatches them. Find it with
+    <a href="/cli/integrations"><code>appmctl integrations list</code></a>.
+  </p>
+
+  <h3>List</h3>
+  <CommandOutput
+    command="appmctl pipelines list --integration-id 019fc794-fba5-727d-85c3-69ebbf55b807"
+    capture="pipelines-list"
+  />
+  <p>
+    <code>enabled</code> is worth checking before debugging a trigger that appears to do nothing:
+    a disabled pipeline is refused rather than dispatched.
+  </p>
+
+  <h3>Show one pipeline</h3>
+  <CodeBlock lang="bash" code={`appmctl pipelines get --integration-id "$INT" 019fc795-326e-716d-801b-607117f050f6
+
+# id:               019fc795-326e-716d-801b-607117f050f6
+# name:             Android release
+# enabled:          true
+# profile_type:     production
+# reporting_mode:   automatic
+# repository:       acme/customer-app
+# workflow:         Release
+# workflow_path:    .github/workflows/release.yml
+# default_ref:      main
+# created_at:       2026-08-03T12:24:31.000000Z
+# updated_at:       2026-08-03T12:24:31.000000Z`} />
+
+  <h3>Create and update</h3>
+  <p>
+    <code>--config</code> carries the provider-side wiring. The repository and workflow ids come
+    from the <a href="/cli/integrations">discovery commands</a>, since they are the
+    provider's identifiers rather than anything this platform invents:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl pipelines create --integration-id "$INT" \\
+  --name 'Android release' \\
+  --config '{
+    "repository_id": "R_kgDOJdocs1",
+    "repository_full_name": "acme/customer-app",
+    "workflow_id": "98765432",
+    "workflow_path": ".github/workflows/release.yml",
+    "default_ref": "main",
+    "profile_type": "production"
+  }'
+
+appmctl pipelines update --integration-id "$INT" pipe-001 --config '{"default_ref":"release/1.4"}'
+appmctl pipelines delete --integration-id "$INT" pipe-001`} />
+
+  <h2>Inputs</h2>
+  <p>
+    A workflow usually declares inputs. <code>inputs</code> reports what this one expects, which
+    saves guessing at names that the provider would reject:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl pipelines inputs --integration-id "$INT" pipe-001
+
+# name     type    required
+# -------  ------  --------
+# branch   string  true
+# profile  string  false`} />
+
+  <h2>Triggering a run</h2>
+  <p>
+    <code>run</code> dispatches the workflow and prints the build record the platform created,
+    so the id you need for <code>builds wait</code> comes straight out of the trigger:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl pipelines run --integration-id "$INT" pipe-001 \\
+  --ref main --inputs '{"profile":"production"}'
+
+# build_id:          bld-004
+# status:            pending
+# reporting_mode:    automatic
+# dispatch_status:   dispatched
+# external_run_url:  https://github.com/acme/customer-app/actions/runs/1234567
+# request_uuid:      33333333-4444-4555-8666-777777777777
+# created_at:        2026-08-03`} />
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--ref REF</code></td><td>Branch or tag to build, overriding the pipeline's <code>default_ref</code></td></tr>
+      <tr><td><code>--inputs JSON</code></td><td>Workflow inputs, at most 25 keys</td></tr>
+      <tr><td><code>--request-uuid UUID</code></td><td>Idempotency key; generated when omitted</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>Reuse the idempotency key on retries.</strong> A CI step that reruns after a network
+    blip will otherwise dispatch a second workflow. Deriving it from the CI job id makes the
+    retry attach to the same build:
+  </p>
+  <CodeBlock lang="bash" code={`BUILD_ID=$(
+  appmctl --json pipelines run --integration-id "$INT" pipe-001 \\
+    --ref "$GITHUB_REF_NAME" \\
+    --request-uuid "$(uuidgen)" |
+    jq -er '.data.id'
+)
+
+appmctl builds wait "$BUILD_ID" --timeout 3600`} />
+
+  <h2>What the run produces</h2>
+  <p>
+    The build it creates reports in <code>automatic</code> mode, which means the provider owns
+    its status and logs. Writing status or logs to it from the CLI is refused with
+    <code>409</code> — see <a href="/cli/builds/automated-builds">Automated builds</a>
+    for what stays available.
+  </p>
+  <p>
+    <code>dispatch_status</code> tells you whether the handover succeeded at all. A build that
+    never dispatched has no run at the provider, and that is a credentials or configuration
+    problem rather than a failing build.
+  </p>
+
+  <h2>Scopes</h2>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Scope</th><th>Team permission</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>list</code>, <code>get</code>, <code>inputs</code></td><td><code>pipelines:read</code></td><td><code>view</code></td></tr>
+      <tr><td><code>create</code>, <code>update</code>, <code>delete</code></td><td><code>pipelines:write</code></td><td><code>manage_integrations</code></td></tr>
+      <tr><td><code>run</code></td><td><code>pipelines:run</code></td><td><code>run_pipelines</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    A key that only triggers builds needs <code>pipelines:run</code> and
+    <code>builds:read</code>, and nothing else.
+  </p>
+</DocsLayout>

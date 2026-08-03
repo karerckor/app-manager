@@ -1,0 +1,110 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI files" activeNav="/cli/files">
+  <h1>Files</h1>
+  <p>
+    Files are an app's general-purpose media library: mapping files, release checklists,
+    provisioning notes, anything that belongs to the app rather than to one build. Build
+    outputs belong in <a href="/cli/builds">artifacts</a> instead, which are scoped to
+    the build that produced them.
+  </p>
+
+  <h2>Commands</h2>
+  <CodeBlock lang="bash" code={`appmctl files list   [--app APP] [--per-page N]
+appmctl files show   [--app APP] --name NAME
+appmctl files get    [--app APP] --name NAME [-o FILE]
+appmctl files upload [--app APP] --file FILE [--metadata JSON]
+appmctl files update [--app APP] --name NAME --metadata JSON
+appmctl files delete [--app APP] --name NAME`} />
+
+  <h2>Files are addressed by name</h2>
+  <p>
+    Unlike most resources, files are referenced by file name, not by id. Names are
+    percent-encoded for you, but they must not contain slashes — that restriction is what
+    keeps a name from walking out of the app's collection:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl files get --name 'report (1).pdf'   # encoded to report%20%281%29.pdf
+appmctl files get --name '../secrets'       # rejected locally`} />
+  <p>
+    The encoder handles ASCII. For names outside that range, address the endpoint directly
+    with <code>appmctl request</code>.
+  </p>
+
+  <h3>List</h3>
+  <CommandOutput command="appmctl files list" capture="files-list" />
+
+  <h3>Metadata without downloading</h3>
+  <p>
+    <code>show</code> returns the record; <code>get</code> downloads the content. That split
+    matters in CI, where you often want to know whether a file exists and what it carries
+    before spending bandwidth on it:
+  </p>
+  <CommandOutput command="appmctl files show --name mapping-1.4.0.txt" capture="files-show" />
+
+  <h3>Download</h3>
+  <p>
+    Without <code>-o</code> the content goes to stdout, which is what you want for text and
+    definitely not what you want for a binary:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl files get --name mapping-1.4.0.txt -o ./mapping.txt
+
+# Existing files are protected; --force is explicit
+appmctl files get --name mapping-1.4.0.txt -o ./mapping.txt --force`} />
+
+  <h3>Upload</h3>
+  <p>
+    The file name comes from the uploaded file. <code>--metadata</code> takes any JSON object,
+    which is the practical way to record where a file came from:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl files upload --file ./build/mapping.txt \\
+  --metadata '{"build":"1.4.0","channel":"internal"}'`} />
+  <p>
+    Uploading a name that already exists does not overwrite the existing file; the API
+    de-duplicates by giving the new upload a distinct name. Delete the old one first if you
+    mean to replace it.
+  </p>
+
+  <h3>Update and clear metadata</h3>
+  <p>
+    <code>update</code> replaces the whole metadata object rather than merging into it. The
+    literal <code>null</code> clears it:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl files update --name mapping-1.4.0.txt --metadata '{"build":"1.4.0","channel":"stable"}'
+appmctl files update --name mapping-1.4.0.txt --metadata null`} />
+  <p>
+    Metadata renders as compact JSON on one line in the default output, and is blank for a
+    file that carries none.
+  </p>
+
+  <h3>Delete</h3>
+  <CodeBlock lang="bash" code={`appmctl files delete --name mapping-1.4.0.txt`} />
+
+  <h2>Attaching a mapping file after a build</h2>
+  <p>
+    The common pipeline shape: upload the artifact against the build, and the symbol mapping
+    against the app, where it stays findable after the build ages out.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl artifacts upload --build-id "$BUILD_ID" \\
+  --name app-release.aab --file build/app-release.aab
+
+appmctl files upload --file build/mapping.txt \\
+  --metadata '{"build_id":"'"$BUILD_ID"'","version":"1.4.0"}'`} />
+
+  <h2>Icons and splash screens</h2>
+  <p>
+    Those are not files. They live in their own collections with generated per-platform
+    variants and have a separate command — see
+    <a href="/cli/applications">Applications</a>.
+  </p>
+
+  <h2>Scopes</h2>
+  <p>
+    <code>files:read</code> for <code>list</code>, <code>show</code>, and <code>get</code>;
+    <code>files:write</code> plus the <code>manage_applications</code> team permission for
+    <code>upload</code>, <code>update</code>, and <code>delete</code>.
+  </p>
+</DocsLayout>

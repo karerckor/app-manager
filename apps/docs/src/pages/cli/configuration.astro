@@ -1,0 +1,163 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI configuration" activeNav="/cli/configuration">
+  <h1>Configuration</h1>
+  <p>
+    There is no configuration file and no credential store. Everything comes from
+    environment variables and flags, so what a command will do is always visible in the
+    environment that runs it.
+  </p>
+
+  <h2>Environment</h2>
+  <CodeBlock lang="bash" code={`export APP_MANAGER_API_KEY='1|plain-text-api-key'
+export APP_MANAGER_TEAM='acme-mobile'
+export APP_MANAGER_APP='customer-app'                          # optional default app
+export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Flag</th><th>Required</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>APP_MANAGER_API_KEY</code></td><td>—</td><td>Yes</td><td>Bearer API key</td></tr>
+      <tr><td><code>APP_MANAGER_TEAM</code></td><td><code>--team</code></td><td>Yes</td><td>Team slug, present in every API URL</td></tr>
+      <tr><td><code>APP_MANAGER_INSTANCE_URL</code></td><td><code>--instance-url</code></td><td>No</td><td>Server URL; defaults to <code>http://localhost:8000</code></td></tr>
+      <tr><td><code>APP_MANAGER_APP</code></td><td><code>--app</code></td><td>No</td><td>Default app for app-scoped commands</td></tr>
+      <tr><td><code>APP_MANAGER_POLLING_INTERVAL</code></td><td>—</td><td>No</td><td>Poll interval in seconds for <code>builds wait</code>, <code>builds when-running</code>, and <code>stream --track</code>; defaults to <code>10</code></td></tr>
+      <tr><td><code>APP_MANAGER_CURL_BIN</code></td><td>—</td><td>No</td><td>Alternate <code>curl</code> executable</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <code>APP_MANAGER_INSTANCE_URL</code> accepts either the instance root or its exact
+    <code>/api/v1</code> URL. Query strings and fragments are rejected.
+  </p>
+
+  <h2>The API key is environment-only</h2>
+  <p>
+    There is no <code>--api-key</code> flag, by design. Process arguments are readable by
+    other users on the machine and are routinely captured in CI logs, so the key is accepted
+    only through the environment. It never appears in <code>--dry-run</code> output:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --dry-run request GET apps
+
+# dry-run: no request sent
+# method: GET
+# url: https://manager.example.com/api/v1/acme-mobile/apps
+# headers:
+#   Authorization: Bearer [REDACTED]
+#   Accept: application/json`} />
+
+  <h2>Global options</h2>
+  <p>Global options go before the resource name, though most are also accepted after the action.</p>
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--json</code></td><td>Pretty-print and validate the JSON response with <code>jq</code></td></tr>
+      <tr><td><code>--dry-run</code></td><td>Print the request plan without calling the API</td></tr>
+      <tr><td><code>-o, --output FILE</code></td><td>Write the response to a file instead of stdout</td></tr>
+      <tr><td><code>--force</code></td><td>Allow <code>--output</code> to replace an existing file</td></tr>
+      <tr><td><code>--team TEAM</code></td><td>Override <code>APP_MANAGER_TEAM</code></td></tr>
+      <tr><td><code>--instance-url URL</code></td><td>Override <code>APP_MANAGER_INSTANCE_URL</code></td></tr>
+      <tr><td><code>--app APP</code></td><td>Override <code>APP_MANAGER_APP</code></td></tr>
+      <tr><td><code>-h, --help</code></td><td>Show help for the CLI, a resource, or an action</td></tr>
+      <tr><td><code>--version</code></td><td>Print the CLI version</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The parent directory of <code>--output</code> must already exist, and an existing file is
+    never overwritten without <code>--force</code>.
+  </p>
+
+  <h2>API key scopes</h2>
+  <p>
+    Each command needs the scope of the resource it touches, and reads and writes are
+    separate. Grant a CI key only what its pipeline uses — a key that only reports build
+    status has no business reading credentials.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Commands</th><th>Scopes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>apps</code></td><td><code>apps:read</code>, <code>apps:write</code></td></tr>
+      <tr><td><code>identifiers</code></td><td><code>identifiers:read</code>, <code>identifiers:write</code></td></tr>
+      <tr><td><code>assets</code></td><td><code>assets:read</code>, <code>assets:write</code></td></tr>
+      <tr><td><code>files</code></td><td><code>files:read</code>, <code>files:write</code></td></tr>
+      <tr><td><code>credentials</code></td><td><code>credentials:read</code>, <code>credentials:write</code>, <code>credentials:reveal</code> for <code>download</code></td></tr>
+      <tr><td><code>builds</code></td><td><code>builds:read</code>, <code>builds:write</code></td></tr>
+      <tr><td><code>logs</code>, <code>stream</code></td><td><code>logs:read</code>, <code>logs:write</code></td></tr>
+      <tr><td><code>artifacts</code></td><td><code>artifacts:read</code>, <code>artifacts:write</code></td></tr>
+      <tr><td><code>integrations</code>, <code>eas</code></td><td><code>integrations:read</code>, <code>integrations:write</code>, <code>integrations:proxy</code> for the Expo proxies</td></tr>
+      <tr><td><code>pipelines</code></td><td><code>pipelines:read</code>, <code>pipelines:write</code>, <code>pipelines:run</code> to trigger</td></tr>
+      <tr><td><code>webhooks</code></td><td><code>webhooks:read</code>, <code>webhooks:write</code>, <code>deliveries:read</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    A missing scope answers <code>403</code>. Team permissions apply on top of scopes: a key
+    cannot exceed what its team role allows. See
+    <a href="/guides/authentication">Authentication</a> for how keys are issued.
+  </p>
+
+  <h2>Generic requests</h2>
+  <p>
+    <code>appmctl request</code> reaches any endpoint under the team, which is how you use
+    parts of the API that have no dedicated command yet:
+  </p>
+  <CodeBlock lang="bash" code={`# Any path, relative to /api/v1/{team}/
+appmctl --json request GET apps
+
+# Inline JSON body
+appmctl request POST apps --data '{"name":"Customer App"}' --json
+
+# Body from a file, or from stdin with "-"
+appmctl request POST apps --data-file ./app.json
+printf '%s' '{"name":"Customer App"}' | appmctl request POST apps --data-file -
+
+# Multipart upload; text and file fields can be mixed and repeated
+appmctl request POST apps/customer-app/assets/icon --file file=icon.png --json
+
+# Binary response to a file
+appmctl request GET apps/customer-app/assets/icon --output icon.png`} />
+  <p>
+    Only one body kind may be selected per request. Prefer <code>--data-file</code> over
+    <code>--data</code> for anything sensitive, for the same reason the API key has no flag.
+  </p>
+
+  <h2>Streaming command output</h2>
+  <p>
+    <code>appmctl stream</code> runs a command, mirrors its combined output locally, and
+    uploads it to a manual build log while the command runs. It never uses
+    <code>eval</code>, so use <code>sh -c</code> explicitly if you need pipes or redirects.
+  </p>
+  <CodeBlock lang="bash" code={`appmctl stream --app APP --build-id ID [options] -- COMMAND [ARG ...]`} />
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--build-id ID</code></td><td>Existing manual build UUID (required)</td></tr>
+      <tr><td><code>--step NAME</code></td><td>Add start and finish separators to the log</td></tr>
+      <tr><td><code>--chunk-bytes BYTES</code></td><td>Upload chunk size, 1..262144 (default <code>65536</code>)</td></tr>
+      <tr><td><code>--manage-status</code></td><td>Set <code>running</code> before the command, then <code>completed</code> or <code>failed</code></td></tr>
+      <tr><td><code>--track</code></td><td>Poll build status and abort the command if the build is cancelled</td></tr>
+      <tr><td><code>--command</code></td><td>Treat all remaining arguments as the command</td></tr>
+    </tbody>
+  </table>
+  <p>
+    See <a href="/cli/builds/manual-builds">Manual builds</a> for the full lifecycle
+    this fits into.
+  </p>
+
+  <h2>Security model</h2>
+  <ul>
+    <li>The API key is accepted only through <code>APP_MANAGER_API_KEY</code>.</li>
+    <li>Authorization headers and inline request bodies are written to mode-<code>0600</code> files inside a mode-<code>0700</code> temporary directory before being handed to <code>curl</code>, so they never appear in the process list.</li>
+    <li><code>--dry-run</code> redacts sensitive headers and credential bodies.</li>
+    <li>Temporary state is removed on normal exit. Treat build runners as sensitive anyway: wrapped commands and downloaded responses may contain secrets.</li>
+    <li>Use HTTPS outside local development, and pin the installer revision in production CI.</li>
+  </ul>
+</DocsLayout>

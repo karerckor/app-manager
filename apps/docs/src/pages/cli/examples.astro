@@ -1,0 +1,206 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI examples" activeNav="/cli/examples">
+  <h1>Examples</h1>
+  <p>
+    Complete recipes, in the shape they take on a real runner. Each one assumes the CLI is
+    installed and <code>APP_MANAGER_API_KEY</code> and <code>APP_MANAGER_TEAM</code> are
+    exported.
+  </p>
+
+  <h2>GitHub Actions</h2>
+  <CodeBlock lang="yaml" code={`- name: Install App Manager CLI
+  shell: bash
+  env:
+    APPMCTL_REF: $&#123;&#123; vars.APPMCTL_REF &#125;&#125;
+    APPMCTL_SHA256: $&#123;&#123; vars.APPMCTL_SHA256 &#125;&#125;
+  run: |
+    curl -fsSL \\
+      "https://raw.githubusercontent.com/karerckor/app-manager/$&#123;APPMCTL_REF&#125;/libs/cli/install.sh" | \\
+      APPMCTL_INSTALL_DIR="$RUNNER_TEMP/appmctl-bin" bash
+    echo "$RUNNER_TEMP/appmctl-bin" >> "$GITHUB_PATH"
+
+- name: Build and stream logs
+  env:
+    APP_MANAGER_API_KEY: $&#123;&#123; secrets.APP_MANAGER_API_KEY &#125;&#125;
+    APP_MANAGER_TEAM: acme-mobile
+    APP_MANAGER_APP: customer-app
+    APP_MANAGER_INSTANCE_URL: $&#123;&#123; vars.APP_MANAGER_INSTANCE_URL &#125;&#125;
+  run: |
+    set -euo pipefail
+
+    BUILD_ID=$(
+      appmctl --json builds create \\
+        --profile production \\
+        --request-uuid "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \\
+        --context "{\\"runner\\":\\"github-actions\\",\\"commit\\":\\"$GITHUB_SHA\\"}" \\
+        --tag "$GITHUB_REF_NAME" |
+        jq -er '.data.id'
+    )
+    echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+
+    trap 'appmctl builds patch "$BUILD_ID" --status failed || true' ERR
+
+    appmctl stream --build-id "$BUILD_ID" --manage-status --track --step Install -- pnpm install
+    appmctl stream --build-id "$BUILD_ID" --track --step Build -- pnpm build
+
+    appmctl artifacts upload --build-id "$BUILD_ID" \\
+      --name app-release.aab --file build/app-release.aab
+
+    appmctl builds patch "$BUILD_ID" --status completed`} />
+  <p>
+    <code>$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT</code> as the idempotency key is deliberate: a
+    re-run of the same attempt reuses the build, while a genuine re-run attempt creates a new
+    one. Note that <code>--request-uuid</code> must be a UUID, so if your instance rejects this
+    value, hash it into one first.
+  </p>
+
+  <h2>GitLab CI</h2>
+  <CodeBlock lang="yaml" code={`variables:
+  APP_MANAGER_TEAM: acme-mobile
+  APP_MANAGER_APP: customer-app
+
+before_script:
+  - curl -fsSL "https://raw.githubusercontent.com/karerckor/app-manager/$APPMCTL_REF/libs/cli/install.sh" |
+      APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
+  - export PATH="$CI_PROJECT_DIR/.appmctl-bin:$PATH"
+
+build:
+  script:
+    - set -euo pipefail
+    - BUILD_ID=$(appmctl --json builds create --profile production --request-uuid "$(uuidgen)" | jq -er '.data.id')
+    - appmctl stream --build-id "$BUILD_ID" --manage-status --track --step Build -- pnpm build
+    - appmctl artifacts upload --build-id "$BUILD_ID" --name app-release.aab --file build/app-release.aab`} />
+
+  <h2>Gating one job on another build</h2>
+  <p>
+    <code>builds wait</code> exits with the build's outcome, so a job can block on a build it did
+    not start — a release job waiting for a nightly, for instance:
+  </p>
+  <CodeBlock lang="bash" code={`# 0 completed, 1 failed, 130 cancelled, 124 timed out
+if appmctl builds wait "$UPSTREAM_BUILD_ID" --timeout 3600; then
+  ./scripts/promote-to-store.sh
+else
+  status=$?
+  case "$status" in
+    124) echo 'upstream build timed out' >&2 ;;
+    130) echo 'upstream build was cancelled' >&2 ;;
+    *)   echo 'upstream build failed' >&2 ;;
+  esac
+  exit "$status"
+fi`} />
+  <p>
+    For the reverse — a step that should only run while a build is still active, and should die if
+    someone cancels it:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl builds when-running "$BUILD_ID" -- ./scripts/upload-to-store.sh`} />
+
+  <h2>Dispatching a pipeline and waiting</h2>
+  <CodeBlock lang="bash" code={`set -euo pipefail
+
+INT=$(appmctl --json integrations list | jq -er '.data[] | select(.provider == "github") | .id' | head -1)
+PIPE=$(appmctl --json pipelines list --integration-id "$INT" | jq -er '.data[0].id')
+
+BUILD_ID=$(
+  appmctl --json pipelines run --integration-id "$INT" "$PIPE" \\
+    --ref main --inputs '{"profile":"production"}' |
+    jq -er '.data.id'
+)
+
+appmctl builds wait "$BUILD_ID" --timeout 3600
+appmctl --json logs get --build-id "$BUILD_ID" | jq -r '.data.content' | tail -40`} />
+
+  <h2>Release checklist across resources</h2>
+  <p>
+    A pre-release job that verifies the pieces are in place before anything is built. Each check
+    fails loudly rather than warning quietly:
+  </p>
+  <CodeBlock lang="bash" code={`set -euo pipefail
+
+# Every platform we ship has an identifier with a version set.
+appmctl --json identifiers list |
+  jq -e '[.data[] | select(.version == null)] | length == 0' >/dev/null ||
+  { echo 'an identifier has no version' >&2; exit 1; }
+
+# Signing material is present and not expiring within the month.
+appmctl --json credentials list |
+  jq -e --arg cutoff "$(date -u -v+30d +%Y-%m-%d 2>/dev/null || date -u -d '+30 days' +%Y-%m-%d)" \\
+    '[.data[] | select(.expires_at != null and .expires_at < $cutoff)] | length == 0' >/dev/null ||
+  { echo 'a credential expires within 30 days' >&2; exit 1; }
+
+# The icon has generated its store-sized variants.
+appmctl --json assets list |
+  jq -e 'has("icon.android-icon-play-store") and has("icon.ios-icon-1024")' >/dev/null ||
+  { echo 'store icon variants are missing' >&2; exit 1; }
+
+echo 'release preflight passed'`} />
+
+  <h2>Uploading everything a build produced</h2>
+  <CodeBlock lang="bash" code={`# Build outputs go on the build; things that outlive it go on the app.
+appmctl artifacts upload --build-id "$BUILD_ID" \\
+  --name app-release.aab \\
+  --metadata '{"channel":"internal"}' \\
+  --file build/app-release.aab
+
+appmctl files upload \\
+  --file build/mapping.txt \\
+  --metadata "{\\"build_id\\":\\"$BUILD_ID\\",\\"version\\":\\"1.4.0\\"}"`} />
+
+  <h2>Nightly cleanup</h2>
+  <p>
+    Deleting old artifacts while keeping the build records. Note the <code>--dry-run</code> pass
+    first: run it once to see what would go before letting the loop delete anything.
+  </p>
+  <CodeBlock lang="bash" code={`set -euo pipefail
+
+cutoff=$(date -u -v-30d +%Y-%m-%d 2>/dev/null || date -u -d '-30 days' +%Y-%m-%d)
+
+appmctl --json builds list |
+  jq -r --arg cutoff "$cutoff" \\
+    '.data[] | select(.created_at < $cutoff) | select(.status == "failed") | .id' |
+  while read -r build; do
+    appmctl --json artifacts list --build-id "$build" |
+      jq -r '.data[].id' |
+      while read -r artifact; do
+        echo "removing $artifact from $build"
+        appmctl artifacts delete --build-id "$build" "$artifact"
+      done
+  done`} />
+
+  <h2>Setting up Expo for an app</h2>
+  <CodeBlock lang="bash" code={`set -euo pipefail
+
+INT=$(appmctl --json eas connect --token "$EXPO_TOKEN" --account acme | jq -er '.data.id')
+
+appmctl eas link --integration-id "$INT" --mode existing \\
+  --project-id "$EXPO_PROJECT_ID"
+
+appmctl eas sync-identifiers
+appmctl eas auto-sync --enabled true
+appmctl eas status`} />
+
+  <h2>Debugging a request</h2>
+  <p>
+    <code>--dry-run</code> answers "what would this actually send" without sending it, and it
+    redacts the key and any credential body:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --dry-run builds create --profile production --tag ios:#3b82f6
+
+# dry-run: no request sent
+# method: POST
+# url: https://manager.example.com/api/v1/acme-mobile/apps/customer-app/builds
+# body: {
+#   "request_uuid": "...",
+#   "profile_type": "production",
+#   "reporting_mode": "manual",
+#   "tags": [["ios", "#3b82f6"]]
+# }`} />
+  <p>
+    When a command fails against a real instance, the response body is printed to stderr before
+    the status, which is usually enough to tell a validation problem from a permissions one. See
+    the status table on the <a href="/cli">CLI overview</a>.
+  </p>
+</DocsLayout>

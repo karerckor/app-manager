@@ -1,0 +1,126 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Builds" activeNav="/platform/builds">
+  <h1>Builds</h1>
+  <p>
+    A build record is the platform's account of one build attempt: which profile, which identifier,
+    its status, tags, log, and artifacts. The console is where you read that history and start new
+    builds; pipelines and runners write to it.
+  </p>
+
+  <Screenshot
+    src="builds"
+    alt="Build history with filters and four builds in completed, running, failed and pending states"
+    caption="Build history for one application, with the filter row above it."
+  />
+
+  <h2>Reporting mode decides who owns a build</h2>
+  <p>
+    The badge next to each row — <strong>MANUAL</strong>, <strong>AUTOMATIC</strong>,
+    <strong>EAS</strong> — is the single most useful thing on this screen. It says who is allowed to
+    change the build's status, and it explains why some rows offer actions others do not.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>Who reports</th><th>What you can do here</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Manual</strong></td>
+        <td>Your own runner, through the API or <code>appmctl stream</code></td>
+        <td>Force a status, cancel, tag, attach artifacts</td>
+      </tr>
+      <tr>
+        <td><strong>Automatic</strong></td>
+        <td>A CI provider the platform dispatched to</td>
+        <td>Cancel (asks the provider), tag. Status and logs are the provider's.</td>
+      </tr>
+      <tr>
+        <td><strong>EAS</strong></td>
+        <td>Expo</td>
+        <td>Tag. The record mirrors the Expo build.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>Force status</strong> appears only on manual builds, and only while they are not
+    terminal. It exists for the case where a runner died without reporting — the build would
+    otherwise claim to be running forever.
+  </p>
+
+  <h2>Filters</h2>
+  <p>
+    The filter row narrows history by tags, statuses, pipeline, artifact presence, reporting mode,
+    and a date or duration range. Two are worth calling out:
+  </p>
+  <ul>
+    <li>
+      <strong>Artifacts: Has / Has not</strong> finds builds that finished but produced nothing,
+      which usually means a pipeline succeeded while its upload step did not.
+    </li>
+    <li>
+      <strong>Reporting: Manual / Automatic</strong> separates what your runners reported from what
+      a provider did, which matters when you are chasing an inconsistency between the two.
+    </li>
+  </ul>
+
+  <h2>Tags</h2>
+  <p>
+    Tags are free-form labels with an optional colour, editable inline from the history rows —
+    the <code>+</code> under each build. Unlike status, tags can be set on <em>any</em> build
+    regardless of reporting mode, which makes them the way to annotate provider-driven builds from
+    outside: a release marker, a ticket number, a channel.
+  </p>
+  <p>
+    Tags also drive filtering here and webhook filtering elsewhere, so a consistent tagging habit
+    pays off twice.
+  </p>
+
+  <h2>Starting a build</h2>
+  <p>
+    <strong>Run build</strong> on the application header offers two paths:
+  </p>
+  <ul>
+    <li>
+      <strong>Manual build</strong> — creates a record your runner then reports against. Choose the
+      profile and optionally the identifier; the platform hands back a build id.
+    </li>
+    <li>
+      <strong>Pipeline build</strong> — dispatches a configured CI/CD pipeline. The platform creates
+      the record and the provider fills it in. Pipelines with required inputs prompt for them here.
+    </li>
+  </ul>
+  <p>
+    A manual build with no runner attached to it simply sits at <code>pending</code>: creating the
+    record does not start anything. That is the intended shape for CI that reports its own progress —
+    see <a href="/cli/builds/manual-builds">Manual builds</a>.
+  </p>
+
+  <h2>One build in detail</h2>
+  <p>
+    Opening a build shows its log, artifacts, context, and timing. The log is streamed while the
+    build runs, so the page fills in as a manual build reports. Long logs are archived, and the
+    archive stays downloadable after the live log is truncated.
+  </p>
+  <p>
+    Artifacts are listed with their size and metadata; each is downloadable. Artifacts belong to the
+    build, so deleting the build removes them — anything that should outlive a build belongs in
+    <a href="/platform/files-and-assets">files</a>.
+  </p>
+  <p>
+    For provider-driven builds this screen also carries <code>dispatch_status</code> and a link to
+    the provider's own run page. A build that failed to dispatch never ran at all, which is a
+    credentials or configuration problem rather than a build failure — a distinction worth making
+    before reading the log for clues that are not there.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <ul>
+    <li><a href="/cli/builds"><code>appmctl builds</code></a> — list, inspect, create, cancel, tag, and <code>wait</code> for an outcome</li>
+    <li><a href="/cli/builds/manual-builds"><code>appmctl stream</code></a> — run a command and upload its output as the build log</li>
+    <li><a href="/cli/integrations/pipelines"><code>appmctl pipelines run</code></a> — dispatch a pipeline and get the build id back</li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,112 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Audit log" activeNav="/platform/audit-log">
+  <h1>Audit log</h1>
+  <p>
+    The audit log records changes to the workspace: what changed, who changed it, from where, and
+    what the value was before. It is written automatically — nothing opts in, and nothing can opt
+    out.
+  </p>
+
+  <Screenshot
+    src="audit-log"
+    alt="Audit log with filters for applications, actors, events, sources and a date range, listing recent changes with before and after values"
+    caption="Each entry carries the actor, the source, and the change itself."
+  />
+
+  <h2>What an entry tells you</h2>
+  <table>
+    <thead>
+      <tr><th>Column</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Activity</td>
+        <td>
+          The record and what happened to it, with the change inline —
+          <code>Failures: 2 → 3</code>, or a full before-and-after for list values such as webhook
+          subscriptions.
+        </td>
+      </tr>
+      <tr>
+        <td>Actor</td>
+        <td>The person or API key responsible, or <strong>System</strong> for platform-initiated changes such as delivery retries.</td>
+      </tr>
+      <tr>
+        <td>Source</td>
+        <td><code>web</code> for the console, <code>api</code> for an API key, <code>System</code> for background work — with the IP address.</td>
+      </tr>
+      <tr>
+        <td>When</td>
+        <td>Timestamp of the change.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    The distinction between <code>web</code> and <code>api</code> is the one people reach for most:
+    it separates a person clicking in the console from a pipeline acting with a key, and the actor
+    column then names which key.
+  </p>
+
+  <h2>Filters</h2>
+  <p>
+    Five filters combine: application, actor, event type, source, and a date range. They are
+    designed around the questions you actually arrive with:
+  </p>
+  <ul>
+    <li>
+      <strong>"Who touched this app last week?"</strong> — filter by application and set the date
+      range. Application filtering follows the app's identifiers too, so an identifier change shows
+      up under its app rather than only under its own record.
+    </li>
+    <li>
+      <strong>"What has this API key been doing?"</strong> — filter by actor. Useful before revoking
+      a key you no longer recognise.
+    </li>
+    <li>
+      <strong>"Did anything change outside the console?"</strong> — filter Source to
+      <code>api</code>.
+    </li>
+  </ul>
+
+  <h2>Scope and retention</h2>
+  <p>
+    The log is scoped to the current workspace: entries from other teams are never visible here,
+    whatever the actor's other memberships.
+  </p>
+  <p>
+    <strong>Only owners and admins can open this screen.</strong> Contributors and viewers get
+    <code>403</code> — the sidebar entry is there, but the page is not theirs to read. If you need a
+    teammate to investigate a change, their role has to allow it; see
+    <a href="/platform/team-access">Team access</a>.
+  </p>
+  <p>
+    Secret values are excluded by design. A credential change is recorded as a change, but the
+    encrypted payload is not written into the audit trail — otherwise the log would become a second,
+    less protected copy of every secret in the vault.
+  </p>
+
+  <h2>What is recorded</h2>
+  <p>
+    Applications, identifiers, credentials, integrations, pipelines, webhook endpoints and their
+    subscriptions, notification destinations, team membership and roles, and API key lifecycle. Build
+    and artifact activity also appears in an app-scoped form on the
+    <a href="/platform/applications">application overview</a>.
+  </p>
+  <p>
+    Reads are not recorded as ordinary entries, with one exception: revealing credential material is
+    an access event and is written down. That is deliberate — knowing who read a keystore matters as
+    much as knowing who changed it.
+  </p>
+
+  <h2>No API yet</h2>
+  <p>
+    The audit log is console-only; there is no API v1 endpoint and therefore no CLI command. To ship
+    changes into an external SIEM today, use
+    <a href="/platform/integrations/webhooks">webhooks</a>, which cover the same lifecycle events as
+    they happen.
+  </p>
+</DocsLayout>

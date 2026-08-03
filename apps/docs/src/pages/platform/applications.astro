@@ -1,0 +1,106 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Applications" activeNav="/platform/applications">
+  <h1>Applications</h1>
+  <p>
+    An application is the container everything else hangs off. It carries a name, a slug, an
+    optional description and tags — and nothing platform-specific. Bundle IDs, package names,
+    versions, signing material, and build history all belong to its identifiers.
+  </p>
+
+  <h2>The catalog</h2>
+  <Screenshot
+    src="applications"
+    alt="Applications list showing four apps with tags, identifier counts and last updated dates"
+    caption="Each row shows an app's tags and how many identifiers it has."
+  />
+  <p>
+    The counters above the table — Applications, Identifiers, Credentials — are shortcuts into the
+    same data from a different angle. Search matches name, slug, and tag, so tagging apps by squad
+    or by client is a practical way to navigate a long list.
+  </p>
+  <p>
+    <strong>New application</strong> asks only for a name; the slug is derived and can be edited
+    before saving. The slug is what appears in every URL and in every CLI command, so it is worth
+    choosing deliberately — changing it later breaks scripts that reference it.
+  </p>
+
+  <h2>Application overview</h2>
+  <Screenshot
+    src="application-overview"
+    alt="Application overview with identifier and build counts, recent activity feed, and application details"
+    caption="The overview answers 'what happened here lately'."
+  />
+  <p>
+    The header carries the actions you reach for most: <strong>Edit</strong> for name, description
+    and tags, <strong>Pipelines</strong> to see which CI/CD pipelines target this app, and
+    <strong>Run build</strong> to start one.
+  </p>
+  <p>
+    <strong>Recent activity</strong> is the app-scoped slice of the audit trail, mixed with build
+    and artifact events. Each entry names the actor and the source, so
+    <code>by Docs Capture · web</code> means a person in the console and a build created
+    <code>by CI build reporter</code> means an API key. The full trail, with before and after
+    values, is on the <a href="/platform/audit-log">audit log</a>.
+  </p>
+
+  <h3>Tabs</h3>
+  <table>
+    <thead>
+      <tr><th>Tab</th><th>Contents</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Overview</td><td>Counters, recent activity, application details</td></tr>
+      <tr><td>Files and Media Library</td><td>Attached files, app icon, splash screen — see <a href="/platform/files-and-assets">Files and assets</a></td></tr>
+      <tr><td>Platforms and App Identifiers</td><td>One row per platform the app ships on</td></tr>
+      <tr><td>Builds</td><td>Build history — see <a href="/platform/builds">Builds</a></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Identifiers</h2>
+  <Screenshot
+    src="identifiers"
+    alt="Platforms and app identifiers for the application, one row per platform"
+    caption="Identifiers are where platform detail and signing material live."
+  />
+  <p>
+    Add one identifier per platform you ship on. The format is enforced: iOS and Android need a
+    reverse-DNS value such as <code>com.acme.customer</code>, and web needs a domain. The same
+    value may exist on two different apps, but not twice on one app for the same platform.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Platform</td><td><code>ios</code>, <code>android</code>, or <code>web</code></td></tr>
+      <tr><td>Identifier</td><td>Bundle ID, package name, or domain</td></tr>
+      <tr><td>Name</td><td>Display name, shown in build listings</td></tr>
+      <tr><td>Version</td><td>Marketing version, e.g. <code>1.4.0</code></td></tr>
+      <tr><td>Version code</td><td>Android only. The API rejects it for iOS and web.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Opening an identifier shows its <strong>build profiles</strong> — production, App Store,
+    development, and so on — and which credentials each profile signs with. That link is what makes
+    a build reproducible: the profile decides which keystore or certificate is used, so attaching
+    the wrong credential surfaces here rather than halfway through a release.
+  </p>
+  <p>
+    Changing an identifier to the web platform is refused while credentials or profiles are still
+    attached, since web identifiers hold no signing material. Detach them first.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <p>
+    Applications and identifiers are fully scriptable, which is the better path for anything
+    repeated:
+  </p>
+  <ul>
+    <li><a href="/cli/applications"><code>appmctl apps</code></a> — list, create, update, delete</li>
+    <li><a href="/cli/identifiers"><code>appmctl identifiers</code></a> — the same fields as the form above</li>
+  </ul>
+</DocsLayout>

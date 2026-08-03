@@ -24,42 +24,66 @@ const navSections = [
     items: [
       { label: 'Authentication', href: '/guides/authentication' },
       { label: 'Builds', href: '/guides/builds' },
-      {
-        label: 'CLI (appmctl)',
-        href: '/guides/cli',
-        children: [
-          { label: 'Installation', href: '/guides/cli/installation' },
-          { label: 'Configuration', href: '/guides/cli/configuration' },
-          { label: 'Applications', href: '/guides/cli/applications' },
-          { label: 'Identifiers', href: '/guides/cli/identifiers' },
-          { label: 'Credentials', href: '/guides/cli/credentials' },
-          { label: 'Files', href: '/guides/cli/files' },
-          {
-            label: 'Builds',
-            href: '/guides/cli/builds',
-            children: [
-              { label: 'Manual builds', href: '/guides/cli/builds/manual-builds' },
-              { label: 'Automated builds', href: '/guides/cli/builds/automated-builds' },
-              { label: 'EAS builds', href: '/guides/cli/builds/eas-builds' },
-            ],
-          },
-          {
-            label: 'Integrations',
-            href: '/guides/cli/integrations',
-            children: [
-              { label: 'EAS', href: '/guides/cli/integrations/eas' },
-              { label: 'Pipelines', href: '/guides/cli/integrations/pipelines' },
-              { label: 'Webhooks', href: '/guides/cli/integrations/webhooks' },
-              { label: 'Notifications', href: '/guides/cli/integrations/notifications' },
-            ],
-          },
-          { label: 'Examples', href: '/guides/cli/examples' },
-        ],
-      },
       { label: 'Fastlane Plugin', href: '/guides/fastlane' },
       { label: 'Webhooks', href: '/guides/webhooks' },
       { label: 'Expo Integration', href: '/guides/expo-integration' },
       { label: 'CI/CD Pipelines', href: '/guides/cicd-pipelines' },
+    ],
+  },
+  {
+    title: 'CLI (appmctl)',
+    items: [
+      { label: 'Overview', href: '/cli' },
+      { label: 'Installation', href: '/cli/installation' },
+      { label: 'Configuration', href: '/cli/configuration' },
+      { label: 'Applications', href: '/cli/applications' },
+      { label: 'Identifiers', href: '/cli/identifiers' },
+      { label: 'Credentials', href: '/cli/credentials' },
+      { label: 'Files', href: '/cli/files' },
+      {
+        label: 'Builds',
+        href: '/cli/builds',
+        children: [
+          { label: 'Manual builds', href: '/cli/builds/manual-builds' },
+          { label: 'Automated builds', href: '/cli/builds/automated-builds' },
+          { label: 'EAS builds', href: '/cli/builds/eas-builds' },
+        ],
+      },
+      {
+        label: 'Integrations',
+        href: '/cli/integrations',
+        children: [
+          { label: 'EAS', href: '/cli/integrations/eas' },
+          { label: 'Pipelines', href: '/cli/integrations/pipelines' },
+          { label: 'Webhooks', href: '/cli/integrations/webhooks' },
+          { label: 'Notifications', href: '/cli/integrations/notifications' },
+        ],
+      },
+      { label: 'Examples', href: '/cli/examples' },
+    ],
+  },
+  {
+    title: 'Platform (Web UI)',
+    items: [
+      { label: 'Overview', href: '/platform' },
+      { label: 'Applications', href: '/platform/applications' },
+      { label: 'Files and assets', href: '/platform/files-and-assets' },
+      { label: 'Builds', href: '/platform/builds' },
+      { label: 'Credentials Vault', href: '/platform/credentials-vault' },
+      { label: 'API keys', href: '/platform/api-keys' },
+      { label: 'Audit log', href: '/platform/audit-log' },
+      {
+        label: 'Integrations',
+        href: '/platform/integrations',
+        children: [
+          { label: 'EAS', href: '/platform/integrations/eas' },
+          { label: 'Pipelines', href: '/platform/integrations/pipelines' },
+          { label: 'Webhooks', href: '/platform/integrations/webhooks' },
+          { label: 'Notifications', href: '/platform/integrations/notifications' },
+        ],
+      },
+      { label: 'Team access', href: '/platform/team-access' },
+      { label: 'Push notifications', href: '/platform/push-notifications' },
     ],
   },
   {
