@@ -530,9 +530,10 @@ foreach ([
             // templates is not-null: one message body per subscribed event.
             // Note the event catalog has no "build.failed": a finished build reports
             // through build.completed and carries its own status.
+            // Placeholders are double-braced and dotted; see NotificationTemplateRenderer.
             'templates' => [
-                'build.created' => '🚀 {app} {profile} build queued',
-                'build.completed' => '{app} {profile} build finished: {status}',
+                'build.created' => '🚀 {{app.name}} {{build.profile}} build queued by {{build.requested_by}}',
+                'build.completed' => '{{build.status_icon}} {{app.name}} {{build.profile}} build {{build.status}} in {{build.duration}} — {{build.url}}',
             ],
             'last_delivered_at' => now()->subMinutes(35),
         ],
