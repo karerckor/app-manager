@@ -3698,16 +3698,36 @@ git commit -m "feat(teams): let a team narrow its permitted credential storage m
 **Files:**
 - Modify: `libs/cli/lib/commands/credentials.sh`
 - Modify: `libs/cli/tests/test_credentials.sh`
+- Modify: `libs/cli/README.md` — both the one-line summary near the top and the `### appmctl credentials` block
+- Modify: `apps/docs/src/data/outputs/credentials-list.txt` — **by re-capturing, never by hand** (Step 3b)
 - Modify: `libs/fastlane-plugin/lib/fastlane/plugin/app_manager/actions/app_manager_list_credentials_action.rb`
 - Create: `libs/fastlane-plugin/lib/fastlane/plugin/app_manager/actions/app_manager_report_credential_verification_action.rb`
 
-- [ ] **Step 1: Add the storage columns to `credentials list`**
+**Read the current `credentials.sh` before editing.** The CLI was rewritten after this plan was first written, so the format strings below are the ones actually in the file today. `libs/cli/lib/parsing.sh` registers *resources*, not actions, and `credentials` is already registered there — adding an action needs no change to it. Confirm that yourself with `grep -n credentials libs/cli/lib/parsing.sh` rather than trusting this note.
 
-In `_credentials_list()`, replace the format string:
+- [ ] **Step 1: Add the storage columns to `credentials list` and `credentials get`**
+
+In `_credentials_list()` the format string is currently:
 
 ```bash
-  local fmt='{"type":"table","fields":["id","credential_type.slug","storage_mode","vault.resource","build_profile","created_at"],"headers":["id","type","storage","resource","profile","created_at"]}'
+  local fmt='{"type":"table","fields":["id","type","name","expires_at"],"headers":["id","type","name","expires_at"]}'
 ```
+
+Replace it with one that surfaces the storage mode and the vault address:
+
+```bash
+  local fmt='{"type":"table","fields":["id","type","storage_mode","vault.resource","name","expires_at"],"headers":["id","type","storage","resource","name","expires_at"]}'
+```
+
+Dotted paths already work in this formatter — verify against `libs/cli/lib/format.sh` before relying on it, and if `table` does not support them, fall back to a jq expression the way the `resource` formatter does.
+
+In `_credentials_get()` the format is a `resource` block with a field map. Add the vault fields to it, keeping the existing entries:
+
+```bash
+"storage_mode":"storage_mode","vault_provider":"vault.provider // \"\"","vault_resource":"vault.resource // \"\"","verification":"vault.verification.status // \"\""
+```
+
+A local credential has `vault: null`, so every vault field must degrade to an empty string rather than printing `null` — that is what the `// ""` guards are for.
 
 - [ ] **Step 2: Add the `verify` action**
 
@@ -3788,6 +3808,28 @@ Append to `libs/cli/tests/test_credentials.sh`, following the dry-run assertion 
 
 Run: `bash libs/cli/tests/test_credentials.sh`
 Expected: PASS.
+
+- [ ] **Step 3b: Re-capture the documented CLI output**
+
+`apps/docs/src/data/outputs/credentials-list.txt` is not hand-written — `scripts/docs/capture-cli-output.sh` runs `credentials list` against a live instance and writes its stdout, and the docs page imports that file with Vite's `?raw`. Step 1 changes the column set, so that file is now stale and the published docs show a table the CLI no longer prints.
+
+Re-capture it:
+
+1. Seed the capture team: `php scripts/docs/seed-capture-data.php` (it is additive and idempotent, and confined to its own `acme-mobile` team).
+2. Export `APP_MANAGER_API_KEY` for that team — the script reads it from the environment only, never from a file or an argument.
+3. Run `bash scripts/docs/capture-cli-output.sh`.
+4. `git diff apps/docs/src/data/outputs/` and confirm the only changes are the credential tables gaining the two columns. If unrelated captures churn, stage only the credential ones.
+5. Check the captured file for API keys or integration tokens before staging.
+
+**Do not hand-edit the captured file.** The whole point of the harness is that a formatting change in the CLI shows up as a reviewable diff; a hand-written table silently decouples the docs from the tool. **If you cannot run the capture** — no instance, no key, seeder fails — stop, leave the file untouched, and say so in your report. I will run it. Reporting "captured" without having captured is worse than reporting a blocker.
+
+- [ ] **Step 3c: Update `libs/cli/README.md`**
+
+Two places: the `credentials` bullet in the command summary near the top, and the `### appmctl credentials` usage block further down. Add the `verify` line to the block, matching the surrounding style:
+
+```
+appmctl credentials verify [--app APP] --credential-id ID --status ok|failed [--error MSG] [--expires-at DATE]
+```
 
 - [ ] **Step 4: Extend the fastlane list action**
 
@@ -3907,18 +3949,34 @@ git commit -m "feat(cli,fastlane): show vault references and report verification
 ## Task 15: Documentation
 
 **Files:**
-- **Modify: `apps/docs/public/openapi.yaml`** — the machine-readable contract. This is the file every API consumer generates clients from; it currently contains **zero** mentions of BYOV. Step 1b below specifies exactly what to change.
-- Create: `apps/docs/src/pages/guides/byov.astro` — a "Bring your own vault" concept page (the guides directory holds `.astro` pages, not Markdown; read `guides/webhooks.astro` for the shape)
-- Modify: `apps/docs/src/pages/guides/cli/credentials.astro` — the CLI credentials page, for the new `verify` action and the storage columns from Task 14
-- Modify: `apps/docs/src/pages/guides/fastlane.astro` — for the new verification action from Task 14
+**The docs were restructured after this plan was written, and part of the BYOV work is already done.** Measure before you write. On the current branch:
+
+| Item | State |
+|---|---|
+| `/apps/{app_slug}/credentials/{credential_id}/verification` path in `openapi.yaml` | **already present** — do not re-add it |
+| `credentials:verify` in `openapi.yaml` | **already present** |
+| `storage_mode` in `openapi.yaml` | absent — Step 1b |
+| a `VaultReference` schema | absent — Step 1b |
+| `dashboard_only` / the two env vars anywhere in docs | absent — Steps 1b and 3 |
+| `/platform/credentials-vault.astro` "External vaults" section | present but **factually wrong** — Step 2 |
+| `verify` in `/cli/credentials.astro` | absent — Step 4 |
+
+Confirm each with a `grep -c` of your own before editing, and put the counts in your report. The CLI guide lives at `apps/docs/src/pages/cli/` (it was moved out of `guides/cli/`), and platform concepts live at `apps/docs/src/pages/platform/`.
+
+**Files:**
+- Modify: `apps/docs/public/openapi.yaml` — the contract clients are generated from (Step 1b)
+- Modify: `apps/docs/src/pages/platform/credentials-vault.astro` — correct the External vaults section and expand it (Step 2)
+- Modify: `apps/docs/src/pages/cli/credentials.astro` — the `verify` action and the new list columns from Task 14
+- Modify: `apps/docs/src/pages/guides/fastlane.astro` — the new verification action from Task 14
 - Modify: `apps/platform/docs/api-v1.md` — the scope table and endpoint list
 - Modify: `README.md` and `apps/platform/README.md` configuration sections
-- Modify: `apps/platform/app/Support/Credentials/CredentialSchema.php` — one inaccurate comment (see Step 3)
-- Modify: `apps/docs/src/layouts/DocsLayout.astro` — add the new guide to the navigation, or it is unreachable
+- Modify: `apps/platform/app/Support/Credentials/CredentialSchema.php` — one inaccurate comment (Step 3)
+
+There is **no** new concept page to create: `/platform/credentials-vault` is the designated home for "credential types, vault storage, verification", so BYOV belongs there. Do not add a `guides/byov.astro`, and do not touch `DocsLayout.astro` — the page is already in the navigation.
 
 - [ ] **Step 1: Read the surrounding style**
 
-Read `apps/docs/src/pages/guides/webhooks.astro` and `apps/docs/src/pages/guides/cli/credentials.astro` before writing anything, and match their component usage and heading rhythm. Check `apps/docs/CLAUDE.md` first — it requires `astro dev --background` if you start the dev server at all.
+Read `apps/docs/src/pages/platform/credentials-vault.astro` and `apps/docs/src/pages/cli/credentials.astro` in full before writing anything, and match their component usage and heading rhythm. Check `apps/docs/CLAUDE.md` first — it requires `astro dev --background` if you start the dev server at all.
 
 - [ ] **Step 1b: Update `apps/docs/public/openapi.yaml`**
 
@@ -4008,7 +4066,7 @@ Extend that schema's `description` on the `POST /apps/{app_slug}/credentials` op
 
 4. **`UpdateCredential` schema** (around line 2881) — add the same three `vault[...]` fields, and note that the vault block is **replaced wholesale**: a partial `vault` object returns 422 on the sub-keys you omit.
 
-5. **New path** `/apps/{app_slug}/credentials/{credential}/verification`, after the `{credential}/file` path:
+5. **The `/verification` path already exists** — someone added it while documenting the API against the routes. Do **not** add a second one. Instead reconcile it with the schema you just wrote: its success response inlines a `verification` object, so point it at `#/components/schemas/VaultReference` and delete the inline duplicate. Check its request body against the controller (`error` required with `failed` and prohibited with `verified`; `expires_at` prohibited with `failed`; `metadata` values strings) and correct anything that drifted. For reference, the shape it should end up matching is:
 
 ```yaml
   /apps/{app_slug}/credentials/{credential}/verification:
@@ -4078,16 +4136,38 @@ Extend that schema's `description` on the `POST /apps/{app_slug}/credentials` op
 
 After editing, validate the file parses: `cd apps/docs && npx @redocly/cli lint public/openapi.yaml` (or any YAML parse check available) and paste the result into your report. A malformed openapi.yaml breaks the docs site build.
 
-- [ ] **Step 2: Write the concept page**
+- [ ] **Step 2: Correct and expand the External vaults section**
 
-Cover, in this order:
+`apps/docs/src/pages/platform/credentials-vault.astro` already has an "External vaults" section, and its central claim is **backwards**:
+
+> "…and the platform resolves it at build time."
+
+The platform never contacts the vault. **The pipeline resolves the reference**; the platform stores only the address. Getting this wrong tells a security-conscious reader the opposite of the truth — that the instance holds vault credentials and reaches out with them — which is precisely the property that makes the mode worth adopting. Fix that sentence first.
+
+Then expand the section to cover, in this order:
 
 1. What BYOV is: App Manager holds the address, your pipeline holds the means to resolve it.
-2. The two modes, and that the mode is fixed at creation.
-3. Which fields are still collected in external mode, with the per-type table from the spec.
-4. The verification loop: read `vault.resource` → resolve → `POST …/verification`, with a `curl` example and the fastlane action.
-5. The `credentials:verify` scope and why it is separate from `credentials:write`.
-6. What `verified_at` does and does not mean — "a pipeline resolved this once", not "this is valid now".
+2. The two modes, and that the mode is fixed at creation — to change it, create a new credential and move its attachments.
+3. Which fields are still collected in external mode, with the per-type table from the spec: the file and every password field go to your vault; `key_id`, `team_id`, `issuer_id` and `key_alias` stay, because the build needs them and they are not secrets.
+4. The verification loop: read `vault.resource` → resolve it yourself → `POST …/verification`, with a `curl` example and the fastlane action.
+5. The `credentials:verify` scope and why it is separate from `credentials:write` (a build token should not be able to delete credentials).
+6. What `verified_at` does and does not mean — "a pipeline resolved this once", never "this is valid right now".
+
+**Verify every factual claim against the code that implements it, not against the screen.** The `.claude/skills/documenting-with-screenshots` skill records real cases from this repo where docs written from the UI were wrong: a documented event name that did not exist in the enum, template placeholders written `{name}` where the renderer only matches `{{a.b}}`, and three CLI flags the API silently ignored. For this page that means reading `CredentialSchema::externalRules()`, `CredentialRequestRules`, `CredentialVerificationController` and `ApiKeyScope` — not inferring from the form.
+
+- [ ] **Step 2b: Re-capture the Credentials Vault screenshot**
+
+`apps/docs/public/screenshots/credentials-vault.png` is rendered on that page through the `Screenshot` component, and Tasks 11 and 12 change exactly that screen: the toolbar gains a Storage select, the chip rail gains "Verification failed", and an external row renders provider and resource instead of a file name. The committed image is therefore stale, and a stale screenshot is worse than none — the page keeps asserting a layout nobody re-checked.
+
+For the new UI to be *visible* in the shot, the fixture tenant must contain external credentials. It currently has none: `grep -c storage_mode scripts/docs/seed-capture-data.php` returns 0.
+
+1. Extend `scripts/docs/seed-capture-data.php`, additively and idempotently as the rest of it is, to add to the `acme-mobile` team: one external credential whose reference is `verified`, and one whose reference is `failed` with a plausible `verification_error` — so both the verification chip states appear. Use realistic-looking but obviously fictional vault addresses.
+2. Re-run the seeder, then `node apps/docs/scripts/capture-ui-screenshots.mjs` with the instance URL, `docs-capture@example.com` and its password supplied via the environment.
+3. **Confirm the capture landed in the fixture tenant, by name.** The skill's first rule exists because a capture run once pulled a workspace whose rows were real customer names. `acme-mobile` only — never `demo-users-team`, whose apps read like real businesses.
+4. Check the image for a dev-server error overlay, which can bake local filesystem paths into the picture.
+5. If the capture fails for any screen, the run must exit non-zero and the old image must not be left in place.
+
+**If you cannot run the capture** — no instance, Playwright missing, seeder fails — stop, leave the image untouched, and say so in your report. Do not describe the new UI over an old screenshot.
 
 - [ ] **Step 3: Document the two config variables**
 
@@ -4117,11 +4197,25 @@ Add the new BYOV guide to `apps/docs/src/layouts/DocsLayout.astro`'s navigation 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/docs/public/openapi.yaml apps/docs/src apps/platform/docs/api-v1.md \
+git add apps/docs/public/openapi.yaml apps/docs/src apps/docs/public/screenshots \
+  scripts/docs/seed-capture-data.php apps/platform/docs/api-v1.md \
   apps/platform/app/Support/Credentials/CredentialSchema.php \
   README.md apps/platform/README.md
-git commit -m "docs(credentials): document BYOV in the OpenAPI contract and the guides"
+git commit -m "docs(credentials): document BYOV in the OpenAPI contract and the platform guide"
 ```
+
+- [ ] **Step 6: Verification checklist**
+
+From `.claude/skills/documenting-with-screenshots`, all of it:
+
+- [ ] `cd apps/docs && pnpm build` succeeds and every internal link resolves
+- [ ] every referenced screenshot and captured output exists on disk; none left unused
+- [ ] no API key, token, password or foreign tenant's data in any captured artifact — check the image and the `.txt`
+- [ ] every documented command was actually executed, or dry-run if it writes
+- [ ] the `openapi.yaml` still parses (`npx @redocly/cli lint public/openapi.yaml`)
+- [ ] no documented flag is described as working when the API ignores it
+
+Paste each result into your report. An unticked box is a blocker, not a note.
 
 Stage by explicit path as above — this checkout is shared with another developer.
 
