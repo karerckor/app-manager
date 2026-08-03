@@ -17,3 +17,6 @@ libs/fastlane-plugin/*.gem
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Claude Code worktrees
+.claude/worktrees/
