@@ -91,7 +91,7 @@
 
     $: allTags = (() => {
         const acc = [];
-        const push = (list) => (list || []).forEach((t) => acc.push(Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]));
+        const push = (list) => (list || []).forEach((t) => acc.push(Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]));
         push(app.tags);
         push(build.tags);
         (build.artifacts || []).forEach((artifact) => push(artifact.tags));

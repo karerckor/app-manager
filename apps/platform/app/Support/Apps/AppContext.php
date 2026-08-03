@@ -177,7 +177,8 @@ class AppContext
     /**
      * Aggregate the distinct tags used across the app: the app's own tags, tags on its
      * identifiers' credentials (services + profile credentials), and tags on its builds
-     * and their artifacts. Shape matches TagEditor's `suggestions` prop: [tag, color|null][].
+     * and their artifacts. Shape matches TagEditor's `suggestions` prop: the canonical
+     * compacted tuple, [text] / [text, color] / [text, color?, animation].
      */
     private static function tagSuggestions(MobileApp $app): array
     {
@@ -202,8 +203,10 @@ class AppContext
             });
 
         return $tagLists->flatten(1)
-            ->filter(fn ($tag) => filled($tag[0] ?? null))
-            ->map(fn ($tag) => [$tag[0], $tag[1] ?? null])
+            ->filter(fn ($tag) => filled(is_array($tag) ? ($tag[0] ?? null) : $tag))
+            // The cast already normalized these on read; re-shaping would only
+            // truncate the animation, so legacy strings are the sole thing to fix up.
+            ->map(fn ($tag) => is_array($tag) ? $tag : [$tag])
             ->unique(fn ($tag) => mb_strtolower($tag[0]))
             ->values()
             ->all();

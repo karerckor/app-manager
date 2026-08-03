@@ -76,8 +76,8 @@ class AuditLogPageTest extends TestCase
                     'to' => '2 tags',
                     'from_tags' => [],
                     'to_tags' => [
-                        ['label' => 'Imported from Expo', 'color' => '#6366f1'],
-                        ['label' => 'Metadata only', 'color' => '#f59e0b'],
+                        ['label' => 'Imported from Expo', 'color' => '#6366f1', 'animation' => null],
+                        ['label' => 'Metadata only', 'color' => '#f59e0b', 'animation' => null],
                     ],
                 ])
                 ->where('audits.data.0.source_label', 'Web'));

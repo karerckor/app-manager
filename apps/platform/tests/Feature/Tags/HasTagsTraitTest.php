@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tags;
 
+use App\Enums\TagAnimation;
 use App\Models\MobileApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ class HasTagsTraitTest extends TestCase
         $app = MobileApp::factory()->create();
         $app->syncTags([['bug', '#ff0000'], ['urgent', null]])->save();
 
-        $this->assertSame([['bug', '#ff0000'], ['urgent', null]], $app->fresh()->tags);
+        $this->assertSame([['bug', '#ff0000'], ['urgent']], $app->fresh()->tags);
     }
 
     public function test_add_and_remove_tag(): void
@@ -55,10 +56,46 @@ class HasTagsTraitTest extends TestCase
 
         $app = $app->fresh();
 
-        $this->assertSame([['demo', null], ['ios', null]], $app->tags);
+        $this->assertSame([['demo'], ['ios']], $app->tags);
 
         $app->removeTag('demo')->save();
 
-        $this->assertSame([['ios', null]], $app->fresh()->tags);
+        $this->assertSame([['ios']], $app->fresh()->tags);
+    }
+
+    public function test_a_row_stored_in_the_old_padded_form_reads_back_compacted(): void
+    {
+        $app = MobileApp::factory()->create();
+        DB::table('mobile_apps')->where('id', $app->id)->update([
+            'tags' => json_encode([['legacy', null], ['kept', '#abcdef']], JSON_THROW_ON_ERROR),
+        ]);
+
+        // No migration ships with the shape change: the cast normalizes on read,
+        // so old rows compact without a backfill and rewrite on the next save.
+        $this->assertSame([['legacy'], ['kept', '#abcdef']], $app->fresh()->tags);
+
+        $app = $app->fresh();
+        $app->addTag('new')->save();
+
+        $this->assertSame(
+            [['legacy'], ['kept', '#abcdef'], ['new']],
+            json_decode(DB::table('mobile_apps')->where('id', $app->id)->value('tags'), true),
+        );
+    }
+
+    public function test_add_tag_accepts_an_animation(): void
+    {
+        $app = MobileApp::factory()->create();
+        $app->addTag('onboarding', '#10B981', 'heartBeat');
+
+        $this->assertSame([['onboarding', '#10b981', 'heartbeat']], $app->tags);
+    }
+
+    public function test_add_tag_accepts_an_animation_enum_and_no_color(): void
+    {
+        $app = MobileApp::factory()->create();
+        $app->addTag('beta', null, TagAnimation::Pulse);
+
+        $this->assertSame([['beta', null, 'pulse']], $app->tags);
     }
 }

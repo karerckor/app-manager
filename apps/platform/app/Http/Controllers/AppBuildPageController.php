@@ -82,7 +82,7 @@ class AppBuildPageController extends Controller
             'filterTags' => $mobileApp->buildRecords()->pluck('tags')
                 ->flatten(1)
                 ->filter(fn ($tag) => filled(is_array($tag) ? ($tag[0] ?? null) : $tag))
-                ->map(fn ($tag) => is_array($tag) ? [$tag[0], $tag[1] ?? null] : [$tag, null])
+                ->map(fn ($tag) => is_array($tag) ? $tag : [$tag])
                 ->unique(fn ($tag) => mb_strtolower($tag[0]))
                 ->sortBy(fn ($tag) => mb_strtolower($tag[0]))
                 ->values(),

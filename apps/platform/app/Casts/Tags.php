@@ -7,7 +7,7 @@ use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * @implements CastsAttributes<array<int, array{0: string, 1: string|null}>, array<int, mixed>|null>
+ * @implements CastsAttributes<list<array{0: string, 1?: string|null, 2?: string|null}>, array<int, mixed>|null>
  */
 class Tags implements CastsAttributes
 {

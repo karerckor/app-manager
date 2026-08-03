@@ -90,6 +90,31 @@
     }
 }
 
+/* Tag animations. Adapted from animate.css (MIT) rather than taking the
+   dependency, which ships ~70KB of non-tree-shakeable CSS for three effects.
+   The pulse and ping tokens map to Tailwind's own utilities instead.
+   The reduced-motion block above already neutralizes all of these. */
+@keyframes tag-flash {
+    from, 50%, to { opacity: 1; }
+    25%, 75% { opacity: 0; }
+}
+
+@keyframes tag-tada {
+    from { transform: scale3d(1, 1, 1); }
+    10%, 20% { transform: scale3d(0.9, 0.9, 0.9) rotate3d(0, 0, 1, -3deg); }
+    30%, 50%, 70%, 90% { transform: scale3d(1.1, 1.1, 1.1) rotate3d(0, 0, 1, 3deg); }
+    40%, 60%, 80% { transform: scale3d(1.1, 1.1, 1.1) rotate3d(0, 0, 1, -3deg); }
+    to { transform: scale3d(1, 1, 1); }
+}
+
+@keyframes tag-heartbeat {
+    0% { transform: scale(1); }
+    14% { transform: scale(1.3); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.3); }
+    70% { transform: scale(1); }
+}
+
 @layer base {
     body { @apply min-h-screen bg-surface text-text antialiased; }
     input, select, textarea { @apply w-full rounded-md border border-border-control bg-surface-raised px-3.5 py-2.5 text-sm text-text shadow-sm outline-none transition placeholder:text-faint focus:border-brand focus:ring-4 focus:ring-brand/10; }
@@ -113,4 +138,7 @@
     .icon-btn { @apply grid h-8 w-8 place-items-center rounded-sm bg-transparent p-0 text-muted shadow-none transition hover:bg-brand-soft hover:text-brand focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none; }
     .row-tools { @apply opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100; }
     .chip { @apply inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-[11px] font-semibold shadow-none transition disabled:cursor-default; }
+    .tag-anim-flash { animation: tag-flash 2s infinite; }
+    .tag-anim-tada { animation: tag-tada 1s infinite; }
+    .tag-anim-heartbeat { animation: tag-heartbeat 1.3s ease-in-out infinite; }
 }
