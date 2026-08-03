@@ -3271,7 +3271,7 @@ git commit -m "feat(credentials): add the dashboard-only API profile"
 - Consumes: `vaultProviders` and `allowedStorageModes` props (Task 9).
 - Produces: a form that posts `storage_mode` and `vault[provider|resource|metadata]`.
 
-**Why the conversion is mandatory:** both files use `export let`, i.e. Svelte legacy mode, in which Inertia's `useForm` store does not re-render `$form.errors` or `$form.processing`. Every rule added in Tasks 3, 5 and 6 is server-side; without runes the user presses Save and sees nothing at all.
+**Why the conversion is mandatory:** both files use `export let`, i.e. Svelte legacy mode, in which Inertia's `useForm` store does not re-render `form.errors` or `form.processing`. Every rule added in Tasks 3, 5 and 6 is server-side; without runes the user presses Save and sees nothing at all.
 
 - [ ] **Step 1: Convert `VaultCredentialFormModal.svelte` to runes**
 
@@ -3307,7 +3307,7 @@ Mechanical rules for the conversion, applied throughout the file:
 - `on:click` → `onclick`, `on:submit|preventDefault` → `onsubmit={(event) => { event.preventDefault(); … }}`
 - `<slot />` → `{@render children?.()}` if the file has one
 
-The `useForm` store keeps its `$form` access — that is store syntax, not legacy syntax, and it works in runes mode.
+**`useForm` in `@inertiajs/svelte` 3.6.1 returns a plain rune-state object, not a store** — `let form = $state({...})` at `node_modules/@inertiajs/svelte/dist/useFormState.svelte.js:114`. Read it as `form.name`, `form.errors.name`, `form.processing`. `$form` does not compile. The repo's already-converted pages, e.g. `resources/js/Pages/Auth/Login.svelte`, use exactly this shape.
 
 - [ ] **Step 2: Create the shared field group**
 
@@ -3320,14 +3320,14 @@ The `useForm` store keeps its `$form` access — that is store syntax, not legac
 
     let { form, providers = [] } = $props();
 
-    const selected = $derived(providers.find((p) => p.value === $form.vault.provider) ?? providers[0]);
+    const selected = $derived(providers.find((p) => p.value === form.vault.provider) ?? providers[0]);
 
     let rows = $state(
-        Object.entries($form.vault.metadata ?? {}).map(([key, value]) => ({ key, value })),
+        Object.entries(form.vault.metadata ?? {}).map(([key, value]) => ({ key, value })),
     );
 
     const syncMetadata = () => {
-        $form.vault.metadata = Object.fromEntries(
+        form.vault.metadata = Object.fromEntries(
             rows.filter((row) => row.key.trim() !== '').map((row) => [row.key.trim(), row.value]),
         );
     };
@@ -3336,13 +3336,13 @@ The `useForm` store keeps its `$form` access — that is store syntax, not legac
 <div class="space-y-4">
     <div>
         <label class="text-xs font-semibold text-slate-600" for="vault-provider">Vault provider</label>
-        <Select id="vault-provider" bind:value={$form.vault.provider} onchange={syncMetadata}>
+        <Select id="vault-provider" bind:value={form.vault.provider} onchange={syncMetadata}>
             {#each providers as provider (provider.value)}
                 <option value={provider.value}>{provider.label}</option>
             {/each}
         </Select>
-        {#if $form.errors['vault.provider']}
-            <p class="mt-1 text-xs text-rose-600">{$form.errors['vault.provider']}</p>
+        {#if form.errors['vault.provider']}
+            <p class="mt-1 text-xs text-rose-600">{form.errors['vault.provider']}</p>
         {/if}
     </div>
 
@@ -3351,14 +3351,14 @@ The `useForm` store keeps its `$form` access — that is store syntax, not legac
         <input
             id="vault-resource"
             class="w-full font-mono text-xs"
-            bind:value={$form.vault.resource}
+            bind:value={form.vault.resource}
             placeholder={selected?.placeholder ?? ''}
         />
         <p class="mt-1 text-[11px] text-slate-400">
             App Manager never reads this address. Your pipeline resolves it.
         </p>
-        {#if $form.errors['vault.resource']}
-            <p class="mt-1 text-xs text-rose-600">{$form.errors['vault.resource']}</p>
+        {#if form.errors['vault.resource']}
+            <p class="mt-1 text-xs text-rose-600">{form.errors['vault.resource']}</p>
         {/if}
     </div>
 
@@ -3412,9 +3412,9 @@ Above the type select, render the switch only when there is a choice, and only w
             <button
                 type="button"
                 role="radio"
-                aria-checked={$form.storage_mode === mode}
-                class="bg-transparent px-3 py-1.5 text-xs font-semibold shadow-none {$form.storage_mode === mode ? 'rounded-md bg-indigo-50 text-indigo-700' : 'text-slate-500'}"
-                onclick={() => ($form.storage_mode = mode)}
+                aria-checked={form.storage_mode === mode}
+                class="bg-transparent px-3 py-1.5 text-xs font-semibold shadow-none {form.storage_mode === mode ? 'rounded-md bg-indigo-50 text-indigo-700' : 'text-slate-500'}"
+                onclick={() => (form.storage_mode = mode)}
             >
                 {mode === 'local' ? 'Store in App Manager' : 'Reference my vault'}
             </button>
@@ -3430,10 +3430,10 @@ Above the type select, render the switch only when there is a choice, and only w
 Then branch the body:
 
 ```svelte
-{#if $form.storage_mode === 'external'}
+{#if form.storage_mode === 'external'}
     <VaultReferenceFields {form} providers={vaultProviders} />
     <label class="text-xs font-semibold text-slate-600" for="expires-at">Expires at (optional)</label>
-    <input id="expires-at" type="date" bind:value={$form.expires_at} />
+    <input id="expires-at" type="date" bind:value={form.expires_at} />
 {:else}
     <!-- the existing file input and full payload fields, unchanged -->
 {/if}
@@ -3442,7 +3442,7 @@ Then branch the body:
 Inside the payload loop, skip password fields when the mode is external:
 
 ```svelte
-{#each (selectedType?.fields ?? []).filter((field) => $form.storage_mode !== 'external' || field.input !== 'password') as field (field.name)}
+{#each (selectedType?.fields ?? []).filter((field) => form.storage_mode !== 'external' || field.input !== 'password') as field (field.name)}
 ```
 
 - [ ] **Step 4: Repeat for `Apps/Modals/CredentialFormModal.svelte`**
@@ -3660,7 +3660,7 @@ In `resources/js/Pages/Team/Index.svelte`, beside the existing uniqueness checkb
                 <input
                     type="checkbox"
                     value={mode.value}
-                    checked={($form.allowed_credential_storage_modes ?? storageModes.instance.map((m) => m.value)).includes(mode.value)}
+                    checked={(form.allowed_credential_storage_modes ?? storageModes.instance.map((m) => m.value)).includes(mode.value)}
                     onchange={(event) => toggleStorageMode(mode.value, event.currentTarget.checked)}
                 />
                 {mode.label}
@@ -3673,7 +3673,7 @@ In `resources/js/Pages/Team/Index.svelte`, beside the existing uniqueness checkb
 {/if}
 ```
 
-with a `toggleStorageMode(value, checked)` helper that adds or removes the value from `$form.allowed_credential_storage_modes`.
+with a `toggleStorageMode(value, checked)` helper that adds or removes the value from `form.allowed_credential_storage_modes`.
 
 The `{#if}` guard implements the spec's rule: when the instance permits only one mode, the block is not rendered at all.
 
