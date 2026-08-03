@@ -1,0 +1,7 @@
+name:        mapping-1.4.0.txt
+extension:   txt
+mime_type:   text/plain
+size:        40
+metadata:    {"build":"1.4.0"}
+created_at:  2026-08-03T12:11:30+00:00
+updated_at:  2026-08-03T12:11:30+00:00

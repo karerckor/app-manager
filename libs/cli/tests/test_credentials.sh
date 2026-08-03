@@ -37,6 +37,22 @@ output=$("$CLI" --json credentials get cred-001 2>&1)
 assert_contains "$output" 'cred-001' 'credentials get returns data'
 pass 'credentials get'
 
+# --- default (non-JSON) output must map to fields the API actually returns ---
+# CredentialResource exposes "type" and nested "profiles"; it has no
+# credential_type.slug and no build_profile. Only --json was covered before, so
+# the mismatch printed blank columns unnoticed.
+output=$("$CLI" credentials list 2>&1)
+assert_contains "$output" 'android_keystore' 'credentials list prints the type'
+assert_contains "$output" 'Production Keystore' 'credentials list prints the name'
+assert_contains "$output" 'ios_certificate' 'credentials list prints every row'
+pass 'credentials list default output'
+
+output=$("$CLI" credentials get cred-001 2>&1)
+assert_contains "$output" 'android_keystore' 'credentials get prints the type'
+assert_contains "$output" 'production' 'credentials get prints the attached profile'
+assert_contains "$output" 'production.keystore' 'credentials get prints the attached file'
+pass 'credentials get default output'
+
 # --- credentials create ---
 output=$("$CLI" --json credentials create --type android_keystore --profile production 2>&1)
 assert_contains "$output" 'cred-001' 'credentials create returns data'
@@ -72,4 +88,4 @@ dry=$("$CLI" --dry-run credentials list 2>&1)
 assert_contains "$dry" 'dry-run' 'credentials list dry-run'
 pass 'credentials dry-run'
 
-printf '1..7\n'
+printf '1..9\n'

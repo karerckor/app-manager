@@ -599,6 +599,11 @@ format_resource() {
     fi
   done < <("$JQ_BIN" -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$fields")
 
+  # The printed label carries a trailing colon, so the column has to be one wider
+  # than the longest key. Without this the longest rows sit a character to the
+  # right of every other row.
+  max_label=$((max_label + 1))
+
   while IFS='=' read -r label path; do
     value=$("$JQ_BIN" -r ".data.${path} // \"\"" "$json_file")
     printf "%-${max_label}s  %s\n" "$label:" "$value"
@@ -1670,7 +1675,7 @@ _builds_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","app":"app.slug","profile":"profile_type","status":"status","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","profile":"profile_type","status":"status","reporting_mode":"reporting_mode","tags":"tags // [] | map(.[0]) | join(\", \")","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4014,7 +4019,7 @@ _credentials_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","credential_type.slug","build_profile","created_at"],"headers":["id","type","profile","created_at"]}'
+  local fmt='{"type":"table","fields":["id","type","name","expires_at"],"headers":["id","type","name","expires_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -4058,7 +4063,7 @@ _credentials_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","type":"credential_type.slug","profile":"build_profile","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","type":"type","name":"name","profiles":"profiles // [] | map(.type) | join(\", \")","expires_at":"expires_at","file":"file.name","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5291,7 +5296,7 @@ _pipelines_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  local fmt='{"type":"table","fields":["id","name","repository_full_name","workflow_name","enabled"],"headers":["id","name","repository","workflow","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5334,7 +5339,7 @@ _pipelines_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","enabled":"enabled","profile_type":"profile_type","reporting_mode":"reporting_mode","repository":"repository_full_name","workflow":"workflow_name","workflow_path":"workflow_path","default_ref":"default_ref","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5673,7 +5678,7 @@ _webhooks_list() {
   fi
 
   api_get "webhooks" || return 1
-  local fmt='{"type":"table","fields":["id","url","events","created_at"],"headers":["id","url","events","created_at"]}'
+  local fmt='{"type":"table","fields":["id","url","subscribed_events // [] | join(\", \")","enabled"],"headers":["id","url","events","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5710,7 +5715,7 @@ _webhooks_get() {
   fi
 
   api_get "webhooks/$webhook_id" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"events","active":"active","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","secret_hint":"secret_hint","consecutive_failures":"consecutive_failures","last_delivered_at":"last_delivered_at","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5770,7 +5775,7 @@ _webhooks_create() {
 
   api_post "webhooks" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  local fmt='{"type":"resource","fields":{"id":"id","url":"url","active":"active","created_at":"created_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","url":"url","events":"subscribed_events // [] | join(\", \")","enabled":"enabled","created_at":"created_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -5978,7 +5983,7 @@ _webhooks_deliveries() {
   fi
 
   api_get "webhooks/$webhook_id/deliveries" || return 1
-  local fmt='{"type":"table","fields":["id","event","status_code","delivered_at"],"headers":["id","event","status","delivered_at"]}'
+  local fmt='{"type":"table","fields":["id","event_type","status","response_status","attempt_count","delivered_at"],"headers":["id","event","status","http","attempts","delivered_at"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

@@ -293,7 +293,7 @@ _builds_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","app":"app.slug","profile":"profile_type","status":"status","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","profile":"profile_type","status":"status","reporting_mode":"reporting_mode","tags":"tags // [] | map(.[0]) | join(\", \")","request_uuid":"request_uuid","created_at":"created_at","started_at":"started_at","finished_at":"finished_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

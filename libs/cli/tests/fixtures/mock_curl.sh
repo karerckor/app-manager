@@ -79,7 +79,7 @@ case "$rel_path" in
     ;;
   apps/*/builds/*)
     case "$method" in
-      GET) printf '{"data":{"id":"bld-001","app":{"slug":"customer-app"},"profile_type":"production","status":"completed","request_uuid":"abc-123","created_at":"2025-01-15","started_at":"2025-01-15T10:00:00Z","finished_at":"2025-01-15T10:30:00Z"}}' >"$output" ;;
+      GET) printf '{"data":{"id":"bld-001","app_id":"app-001","profile_type":"production","status":"completed","reporting_mode":"manual","tags":[["android","#3ddc84"],["1.4.0","#f59e0b"]],"request_uuid":"abc-123","created_at":"2025-01-15","started_at":"2025-01-15T10:00:00Z","finished_at":"2025-01-15T10:30:00Z"}}' >"$output" ;;
       PATCH) printf '{"data":{"id":"bld-001","status":"completed"}}' >"$output" ;;
     esac
     ;;
@@ -98,13 +98,16 @@ case "$rel_path" in
     ;;
   apps/*/credentials/*)
     case "$method" in
-      GET) printf '{"data":{"id":"cred-001","credential_type":{"slug":"android_keystore"},"build_profile":"production","created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
-      PATCH) printf '{"data":{"id":"cred-001","credential_type":{"slug":"android_keystore"}}}' >"$output" ;;
+      GET) printf '{"data":{"id":"cred-001","type":"android_keystore","name":"Production Keystore","tags":[],"expires_at":null,"profiles":[{"id":"prof-001","type":"production","name":"Production","app_identifier":{"id":"ident-002","platform":"android","identifier":"com.example.customer"}}],"file":{"name":"production.keystore","mime_type":"application/x-pkcs12","size":2543},"created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
+      PATCH) printf '{"data":{"id":"cred-001","type":"android_keystore","name":"Production Keystore"}}' >"$output" ;;
       DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
     esac
     ;;
   apps/*/credentials)
-    printf '{"data":[{"id":"cred-001","credential_type":{"slug":"android_keystore"},"build_profile":"production","created_at":"2025-01-15"}]}' >"$output"
+    case "$method" in
+      POST) printf '{"data":{"id":"cred-001","type":"android_keystore","name":"Production Keystore","expires_at":null,"created_at":"2025-01-15"}}' >"$output" ;;
+      *) printf '{"data":[{"id":"cred-001","type":"android_keystore","name":"Production Keystore","expires_at":null,"created_at":"2025-01-15"},{"id":"cred-002","type":"ios_certificate","name":"App Store Certificate","expires_at":"2027-03-01","created_at":"2025-01-16"}]}' >"$output" ;;
+    esac
     ;;
   # --- assets (icon/splashscreen) ---
   apps/*/assets/*/files/*)
@@ -196,22 +199,22 @@ case "$rel_path" in
     printf '{"data":{"ok":true}}' >"$output"
     ;;
   webhooks/*/deliveries)
-    printf '{"data":[{"id":"del-001","event":"build.completed","status_code":200,"delivered_at":"2025-01-15T10:00:00Z"}]}' >"$output"
+    printf '{"data":[{"id":"del-001","event_type":"build.completed","status":"delivered","attempt_count":1,"response_status":200,"duration_ms":142,"delivered_at":"2025-01-15T10:00:00Z"},{"id":"del-002","event_type":"build.failed","status":"failed","attempt_count":3,"response_status":500,"duration_ms":98,"delivered_at":null}]}' >"$output"
     ;;
   webhooks/*/test|webhooks/*/rotate-secret)
     printf '{"data":{"ok":true}}' >"$output"
     ;;
   webhooks/*)
     case "$method" in
-      GET) printf '{"data":{"id":"wh-001","url":"https://example.com/hook","events":["build.completed"],"active":true,"created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
+      GET) printf '{"data":{"id":"wh-001","name":"Release notifier","url":"https://example.com/hook","secret_hint":"whse\u2026000","subscribed_events":["build.completed","build.failed"],"filters":{},"enabled":true,"consecutive_failures":0,"last_delivered_at":"2025-06-01T09:00:00Z","created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
       PATCH) printf '{"data":{"id":"wh-001","url":"https://new-url.com/hook"}}' >"$output" ;;
       DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
     esac
     ;;
   webhooks)
     case "$method" in
-      GET) printf '{"data":[{"id":"wh-001","url":"https://example.com/hook","events":["build.completed"],"created_at":"2025-01-15"}]}' >"$output" ;;
-      POST) printf '{"data":{"id":"wh-002","url":"https://example.com/hook","active":true,"created_at":"2025-07-31"}}' >"$output" ;;
+      GET) printf '{"data":[{"id":"wh-001","name":"Release notifier","url":"https://example.com/hook","subscribed_events":["build.completed","build.failed"],"enabled":true,"created_at":"2025-01-15"}]}' >"$output" ;;
+      POST) printf '{"data":{"id":"wh-002","name":"Release notifier","url":"https://example.com/hook","subscribed_events":["build.completed"],"enabled":true,"created_at":"2025-07-31"}}' >"$output" ;;
     esac
     ;;
   # --- expo on integrations (must precede the generic integrations/* patterns) ---
@@ -242,15 +245,15 @@ case "$rel_path" in
     ;;
   integrations/*/pipelines/*)
     case "$method" in
-      GET) printf '{"data":{"id":"pipe-001","name":"Build Pipeline","created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
+      GET) printf '{"data":{"id":"pipe-001","name":"Build Pipeline","enabled":true,"profile_type":"production","reporting_mode":"automatic","repository_full_name":"acme/customer-app","workflow_id":"98765432","workflow_name":"Release","workflow_path":".github/workflows/release.yml","default_ref":"main","input_defaults":{},"created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
       PATCH) printf '{"data":{"id":"pipe-001","name":"Updated Pipeline"}}' >"$output" ;;
       DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
     esac
     ;;
   integrations/*/pipelines)
     case "$method" in
-      GET) printf '{"data":[{"id":"pipe-001","name":"Build Pipeline","created_at":"2025-01-15"}]}' >"$output" ;;
-      POST) printf '{"data":{"id":"pipe-002","name":"New Pipeline","created_at":"2025-07-31"}}' >"$output" ;;
+      GET) printf '{"data":[{"id":"pipe-001","name":"Build Pipeline","enabled":true,"repository_full_name":"acme/customer-app","workflow_name":"Release","created_at":"2025-01-15"}]}' >"$output" ;;
+      POST) printf '{"data":{"id":"pipe-002","name":"New Pipeline","enabled":true,"repository_full_name":"acme/customer-app","workflow_name":"Release","created_at":"2025-07-31"}}' >"$output" ;;
     esac
     ;;
   integrations/*/repositories)

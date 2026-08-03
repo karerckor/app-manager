@@ -51,6 +51,11 @@ format_resource() {
     fi
   done < <("$JQ_BIN" -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$fields")
 
+  # The printed label carries a trailing colon, so the column has to be one wider
+  # than the longest key. Without this the longest rows sit a character to the
+  # right of every other row.
+  max_label=$((max_label + 1))
+
   while IFS='=' read -r label path; do
     value=$("$JQ_BIN" -r ".data.${path} // \"\"" "$json_file")
     printf "%-${max_label}s  %s\n" "$label:" "$value"

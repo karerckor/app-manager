@@ -139,4 +139,13 @@ assert_contains "$help_output" 'list' 'builds help lists actions'
 assert_contains "$help_output" 'create' 'builds help mentions create'
 pass 'builds --help'
 
-printf '1..11\n'
+# --- builds get default output ---
+# BuildRecordResource has no "app" key, so a format referencing app.slug printed a
+# blank row. Assert the fields that do exist, including tags.
+output=$("$CLI" builds get bld-001 2>&1)
+assert_contains "$output" 'manual' 'builds get prints the reporting mode'
+assert_contains "$output" 'android, 1.4.0' 'builds get prints tag names'
+assert_contains "$output" 'completed' 'builds get prints the status'
+pass 'builds get default output'
+
+printf '1..12\n'

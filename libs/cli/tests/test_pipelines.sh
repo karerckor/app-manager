@@ -82,4 +82,15 @@ output=$("$CLI" pipelines delete --integration-id int-001 pipe-001 2>&1)
 assert_contains "$output" 'deleted' 'pipelines delete prints confirmation'
 pass 'pipelines delete'
 
-printf '1..11\n'
+# --- pipelines default output ---
+output=$("$CLI" pipelines list --integration-id int-001 2>&1)
+assert_contains "$output" 'acme/customer-app' 'pipelines list prints the repository'
+assert_contains "$output" 'Release' 'pipelines list prints the workflow'
+pass 'pipelines list default output'
+
+output=$("$CLI" pipelines get --integration-id int-001 pipe-001 2>&1)
+assert_contains "$output" '.github/workflows/release.yml' 'pipelines get prints the workflow path'
+assert_contains "$output" 'main' 'pipelines get prints the default ref'
+pass 'pipelines get default output'
+
+printf '1..13\n'

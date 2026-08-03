@@ -77,7 +77,7 @@ _pipelines_list() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"table","fields":["id","name","created_at"],"headers":["id","name","created_at"]}'
+  local fmt='{"type":"table","fields":["id","name","repository_full_name","workflow_name","enabled"],"headers":["id","name","repository","workflow","enabled"]}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -120,7 +120,7 @@ _pipelines_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"id":"id","name":"name","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","enabled":"enabled","profile_type":"profile_type","reporting_mode":"reporting_mode","repository":"repository_full_name","workflow":"workflow_name","workflow_path":"workflow_path","default_ref":"default_ref","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

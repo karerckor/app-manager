@@ -1,0 +1,3 @@
+id                                    name             repository         workflow  enabled
+------------------------------------  ---------------  -----------------  --------  -------
+019fc795-326e-716d-801b-607117f050f6  Android release  acme/customer-app  Release   true   

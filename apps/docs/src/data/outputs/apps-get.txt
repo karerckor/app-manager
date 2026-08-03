@@ -1,0 +1,5 @@
+slug:         customer-app
+name:         Customer App
+description:  Consumer-facing mobile client.
+created_at:   2026-08-03T12:11:30.000000Z
+updated_at:   2026-08-03T12:11:30.000000Z

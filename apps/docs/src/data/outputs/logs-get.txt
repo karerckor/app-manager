@@ -1,0 +1,1 @@
+{"data":{"build_id":"019fc789-47b5-7034-9291-4cd3c57b75d5","content":"[1\/5] Restoring dependencies...\n[2\/5] Compiling sources...\n[3\/5] Bundling assets...\n[4\/5] Signing AAB with the production keystore...\n[5\/5] Build completed in 5m 42s.","updated_at":null,"archived_at":null,"archive_url":null}}

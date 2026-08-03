@@ -21,13 +21,19 @@
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\CredentialType;
+use App\Enums\IntegrationKind;
+use App\Enums\IntegrationProvider;
+use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Models\Artifact;
+use App\Models\CiCdPipeline;
 use App\Models\Credential;
+use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\WebhookEndpoint;
 use App\Support\Apps\AppFileLibrary;
 
 $out = static function (string $line): void {
@@ -280,5 +286,73 @@ $assetCount = static fn (string $collection): int => $app->media()
     ->where('collection_name', $collection)
     ->count();
 $out('assets: icon='.$assetCount('app_icon').' splash='.$assetCount('splash_icon'));
+
+// --- integrations, a pipeline, and a webhook endpoint ----------------------
+//
+// These exist so "integrations list", "pipelines list", and "webhooks list" have
+// rows to print. Provider-backed reads (integrations repos/workflows/refs, and
+// every eas action) still cannot be captured: they call GitHub and Expo, which
+// needs real credentials this data deliberately does not carry.
+
+$ciIntegration = Integration::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'kind' => IntegrationKind::CiCd,
+        'provider' => IntegrationProvider::GitHub,
+        'name' => 'acme/customer-app',
+    ],
+    [
+        'status' => IntegrationStatus::Active,
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
+    ],
+);
+
+CiCdPipeline::firstOrCreate(
+    ['integration_id' => $ciIntegration->id, 'name' => 'Android release'],
+    [
+        'team_id' => $team->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $android->id,
+        'profile_type' => ProfileType::Production,
+        'enabled' => true,
+        'repository_id' => 'R_kgDOJdocs1',
+        'repository_full_name' => 'acme/customer-app',
+        'workflow_id' => '98765432',
+        'workflow_name' => 'Release',
+        'workflow_path' => '.github/workflows/release.yml',
+        'default_ref' => 'main',
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
+    ],
+);
+$out('pipelines: '.CiCdPipeline::where('team_id', $team->id)->count());
+
+$webhookIntegration = Integration::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'kind' => IntegrationKind::Webhook,
+        'provider' => IntegrationProvider::Http,
+        'name' => 'Release notifier',
+    ],
+    [
+        'status' => IntegrationStatus::Active,
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
+    ],
+);
+
+WebhookEndpoint::firstOrCreate(
+    ['integration_id' => $webhookIntegration->id],
+    [
+        'team_id' => $team->id,
+        'url' => 'https://hooks.acme.example/app-manager',
+        'secret' => 'whsec_docscapture0000000000',
+        // secret_hint is varchar(8); keep the ellipsis form inside that budget.
+        'secret_hint' => 'whse…000',
+        'subscribed_events' => ['build.completed', 'build.failed', 'artifact.created'],
+    ],
+);
+$out('webhooks: '.WebhookEndpoint::where('team_id', $team->id)->count());
 
 $out('done');
