@@ -4,6 +4,7 @@ namespace App\Support\Audit;
 
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
+use App\Enums\TagAnimation;
 use App\Models\ApiKey;
 use App\Models\AppIdentifier;
 use App\Models\Audit;
@@ -486,6 +487,9 @@ final class AuditEntryPresenter
             $tags[] = [
                 'label' => Str::limit($label, TagRules::MAX_TEXT_LENGTH),
                 'color' => $color,
+                // Surfaced as text, not as a live animation: animating a
+                // historical record in the timeline would just be noise.
+                'animation' => TagAnimation::tryFromLoose($tag[2] ?? null)?->value,
             ];
         }
 

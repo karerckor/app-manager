@@ -17,6 +17,7 @@
                         <span class="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
                             <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background-color:${tag.color || '#94a3b8'}`}></span>
                             {tag.label}
+                            {#if tag.animation}<span class="text-[10px] text-slate-400">· {tag.animation}</span>{/if}
                         </span>
                     {:else}
                         <span class="pt-0.5 text-slate-400">None</span>
@@ -30,6 +31,7 @@
                         <span class="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
                             <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background-color:${tag.color || '#94a3b8'}`}></span>
                             {tag.label}
+                            {#if tag.animation}<span class="text-[10px] text-slate-400">· {tag.animation}</span>{/if}
                         </span>
                     {:else}
                         <span class="pt-0.5 text-slate-400">None</span>
@@ -43,6 +45,7 @@
                 <span class="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
                     <span class="h-1.5 w-1.5 shrink-0 rounded-full" style={`background-color:${tag.color || '#94a3b8'}`}></span>
                     {tag.label}
+                    {#if tag.animation}<span class="text-[10px] text-slate-400">· {tag.animation}</span>{/if}
                 </span>
             {:else}
                 <span class="text-slate-400">None</span>
