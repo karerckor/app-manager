@@ -174,7 +174,7 @@ class CredentialController extends Controller
             'type' => ['prohibited'],
             'app_identifier_id' => ['prohibited'],
             'profile_type' => ['prohibited'],
-            ...$this->credentialRules->forUpdate($credential, $request, $credential->type, partial: true),
+            ...$this->credentialRules->forPartialUpdate($credential, $request),
         ];
 
         $data = $request->validate($rules);

@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class CredentialExternalStorageApiTest extends TestCase
@@ -150,6 +151,81 @@ class CredentialExternalStorageApiTest extends TestCase
         ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('vault.provider');
+    }
+
+    public function test_partial_update_with_only_a_payload_on_a_fileless_local_credential_succeeds(): void
+    {
+        [$user, $team, $app, $identifier] = $this->workspace();
+        $credential = Credential::factory()
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $identifier->credentials()->attach($credential);
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+
+        $this->patchJson("/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$credential->id}", [
+            'payload' => ['key_id' => 'ABCDEFGHIJ', 'team_id' => 'KLMNOPQRST'],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['key_id' => 'ABCDEFGHIJ', 'team_id' => 'KLMNOPQRST'],
+            $credential->fresh()->payload,
+        );
+    }
+
+    public function test_partial_update_with_only_a_replacement_file_on_a_local_credential_succeeds(): void
+    {
+        Storage::fake(config('media-library.disk_name'));
+        [$user, $team, $app, $identifier] = $this->workspace();
+        $credential = Credential::factory()
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $credential->addMediaFromString($this->privateKey())
+            ->usingFileName('old.p8')
+            ->toMediaCollection('file');
+        $identifier->credentials()->attach($credential);
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+
+        $this->patch("/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$credential->id}", [
+            'file' => UploadedFile::fake()->createWithContent('new.p8', $this->privateKey()),
+        ], ['Accept' => 'application/json'])
+            ->assertOk()
+            ->assertJsonPath('data.file.name', 'new.p8');
+
+        $this->assertSame('new.p8', $credential->fresh()->getFirstMedia('file')->file_name);
+    }
+
+    public function test_partial_update_of_an_external_credential_with_only_a_name_leaves_the_vault_reference_untouched(): void
+    {
+        [$user, $team, $app, $identifier] = $this->workspace();
+        $credential = Credential::factory()
+            ->external(VaultProvider::Custom, 'somewhere')
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $identifier->credentials()->attach($credential);
+        $reference = $credential->vaultReference;
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+
+        $this->patchJson("/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$credential->id}", [
+            'name' => 'Renamed',
+        ])->assertOk()
+            ->assertJsonPath('data.name', 'Renamed');
+
+        $fresh = $reference->fresh();
+        $this->assertSame($reference->resource, $fresh->resource);
+        $this->assertSame($reference->metadata_version, $fresh->metadata_version);
+    }
+
+    public function test_patching_a_file_onto_an_external_credential_is_rejected(): void
+    {
+        [$user, $team, $app, $identifier] = $this->workspace();
+        $credential = Credential::factory()
+            ->external(VaultProvider::Custom, 'somewhere')
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $identifier->credentials()->attach($credential);
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+
+        $this->patch("/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$credential->id}", [
+            'file' => UploadedFile::fake()->createWithContent('key.p8', $this->privateKey()),
+        ], ['Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('file');
     }
 
     private function privateKey(): string

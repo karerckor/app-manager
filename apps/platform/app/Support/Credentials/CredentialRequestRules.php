@@ -6,7 +6,9 @@ use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Models\Credential;
 use App\Models\Team;
+use App\Rules\ValidCredentialFile;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -56,26 +58,13 @@ class CredentialRequestRules
         return $rules;
     }
 
-    /**
-     * @param  bool  $partial  When true (a partial API update), payload, file and
-     *                         vault rules are contributed only if the request
-     *                         actually supplies one of them.
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function forUpdate(
         Credential $credential,
         Request $request,
         ?CredentialType $type,
-        bool $partial = false,
     ): array {
         if (! $type) {
-            return [];
-        }
-
-        if ($partial
-            && ! $request->has('payload')
-            && ! $request->has('vault')
-            && ! $request->hasFile('file')) {
             return [];
         }
 
@@ -86,6 +75,62 @@ class CredentialRequestRules
                 $type !== $credential->type || ! $credential->getFirstMedia('file'),
                 (array) $request->input('payload', []),
             );
+    }
+
+    /**
+     * Rules for the REST API's partial update. Payload, file and vault rules are
+     * contributed only for the field the caller actually sent, preserving the
+     * pre-BYOV contract: a name-only PATCH validates nothing else, a file-only
+     * PATCH does not demand a payload, and a payload-only PATCH does not demand
+     * a file.
+     *
+     * @return array<string, mixed>
+     */
+    public function forPartialUpdate(Credential $credential, Request $request): array
+    {
+        $type = $credential->type;
+
+        if ($credential->isExternal()) {
+            // The file sub-resource does not exist for an external credential,
+            // and its secrets live in the customer's vault, so neither a file
+            // nor a password field is ever acceptable here — whichever field
+            // the caller happened to send.
+            $rules = ['file' => ['prohibited']];
+
+            foreach (CredentialSchema::definition($type)['fields'] as $field) {
+                if ($field['input'] === 'password') {
+                    $rules['payload.'.$field['name']] = ['prohibited'];
+                }
+            }
+
+            if ($request->has('vault')) {
+                $rules = [...$rules, ...Arr::only(CredentialSchema::externalRules($type), [
+                    'vault',
+                    'vault.provider',
+                    'vault.resource',
+                    'vault.metadata',
+                    'vault.metadata.*',
+                ])];
+            }
+
+            return $rules;
+        }
+
+        if ($request->has('payload')) {
+            return CredentialSchema::rules($type, false, (array) $request->input('payload', []));
+        }
+
+        if ($request->hasFile('file')) {
+            return [
+                'file' => [
+                    'file',
+                    'max:20480',
+                    new ValidCredentialFile($type, $credential->payload ?? []),
+                ],
+            ];
+        }
+
+        return [];
     }
 
     /** @throws ValidationException */
