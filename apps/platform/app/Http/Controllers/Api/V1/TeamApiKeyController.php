@@ -39,7 +39,7 @@ class TeamApiKeyController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'scopes' => ['required', 'array', 'min:1'],
-            'scopes.*' => ['required', 'string', 'distinct', Rule::enum(ApiKeyScope::class)],
+            'scopes.*' => ['required', 'string', 'distinct', Rule::in(ApiKeyScope::assignableValues())],
         ]);
 
         $caller = $request->user()->currentAccessToken();

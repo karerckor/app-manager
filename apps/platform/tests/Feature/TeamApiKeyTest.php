@@ -60,6 +60,7 @@ class TeamApiKeyTest extends TestCase
                     ApiKeyScope::FilesRead->value,
                     ApiKeyScope::CredentialsRead->value,
                     ApiKeyScope::CredentialsReveal->value,
+                    ApiKeyScope::CredentialsVerify->value,
                     ApiKeyScope::BuildsWrite->value,
                     ApiKeyScope::LogsWrite->value,
                     ApiKeyScope::ArtifactsWrite->value,

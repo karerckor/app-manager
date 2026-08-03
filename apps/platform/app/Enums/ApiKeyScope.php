@@ -63,9 +63,14 @@ enum ApiKeyScope: string
      */
     public static function groups(): array
     {
+        $assignable = self::assignableValues();
         $groups = [];
 
         foreach (self::cases() as $scope) {
+            if (! in_array($scope->value, $assignable, true)) {
+                continue;
+            }
+
             $resource = $scope->resource();
             $groups[$resource] ??= [
                 'key' => $resource,

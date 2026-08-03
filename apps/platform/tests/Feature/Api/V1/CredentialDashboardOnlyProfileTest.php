@@ -128,10 +128,26 @@ class CredentialDashboardOnlyProfileTest extends TestCase
         );
     }
 
-    public function test_the_reveal_scope_is_not_assignable(): void
+    public function test_the_reveal_scope_cannot_be_granted_to_a_new_api_key(): void
     {
-        $this->assertNotContains(ApiKeyScope::CredentialsReveal->value, ApiKeyScope::assignableValues());
-        $this->assertContains(ApiKeyScope::CredentialsRead->value, ApiKeyScope::assignableValues());
+        [$user, $team] = $this->workspace();
+        $this->authenticate($user, $team, [ApiKeyScope::ApiKeysWrite, ApiKeyScope::CredentialsRead]);
+
+        $this->postJson("/api/v1/{$team->slug}/api-keys", [
+            'name' => 'Runner key',
+            'scopes' => [ApiKeyScope::CredentialsReveal->value],
+        ])->assertUnprocessable()->assertJsonValidationErrors('scopes.0');
+
+        $this->postJson("/api/v1/{$team->slug}/api-keys", [
+            'name' => 'Runner key',
+            'scopes' => [ApiKeyScope::CredentialsRead->value],
+        ])->assertCreated();
+
+        $credentialsGroup = collect(ApiKeyScope::groups())->firstWhere('key', 'credentials');
+        $this->assertNotContains(
+            ApiKeyScope::CredentialsReveal->value,
+            array_column($credentialsGroup['scopes'], 'value'),
+        );
     }
 
     /** @return array{0: User, 1: Team, 2: MobileApp, 3: Credential} */
