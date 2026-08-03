@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Models\CredentialVaultReference;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -39,8 +40,33 @@ class CredentialResource extends JsonResource
                     'credential' => $this->resource,
                 ]),
             ] : null,
+            'storage_mode' => $this->storage_mode->value,
+            'vault' => $this->resource->relationLoaded('vaultReference')
+                ? $this->vaultBlock($this->resource->vaultReference)
+                : $this->vaultBlock($this->resource->vaultReference()->first()),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function vaultBlock(?CredentialVaultReference $reference): ?array
+    {
+        if (! $reference) {
+            return null;
+        }
+
+        return [
+            'provider' => $reference->provider->value,
+            'resource' => $reference->resource,
+            'metadata' => $reference->metadata,
+            'metadata_version' => $reference->metadata_version,
+            'metadata_source' => $reference->metadata_source->value,
+            'verification' => [
+                'status' => $reference->verification_status->value,
+                'verified_at' => $reference->verified_at,
+                'error' => $reference->verification_error,
+            ],
         ];
     }
 }
