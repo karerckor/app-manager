@@ -2,6 +2,7 @@
     import { onDestroy, tick } from 'svelte';
     import { router } from '@inertiajs/svelte';
     import { Plus, X } from '@lucide/svelte';
+    import { TAG_ANIMATIONS, TAG_ANIMATION_TOKENS, animationClass } from '../lib/tagAnimations.js';
 
     export let tags = [];
     export let url = null;
@@ -25,17 +26,18 @@
     let working = [];
     let text = '';
     let color = null;
+    let animation = null;
     let saving = false;
     let open = false;
     let anchorEl;
     let popEl;
     let pos = { top: 0, left: 0, ready: false };
 
-    $: working = (tags || []).map((t) => [t[0], t[1] ?? null]);
+    $: working = (tags || []).map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]));
     $: canEdit = !disabled && !!url;
     $: toolClass = quiet && working.length ? 'row-tools' : '';
     $: available = (suggestions || [])
-        .map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null] : [t, null]))
+        .map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]))
         .filter((t) => t[0] && !working.some((w) => w[0].toLowerCase() === t[0].toLowerCase()))
         .filter((t, i, arr) => arr.findIndex((x) => x[0].toLowerCase() === t[0].toLowerCase()) === i)
         .slice(0, 6);
@@ -50,9 +52,13 @@
     }
     const tint = (hex) => `${hex}1f`;
 
+    // Drop trailing nulls so the payload matches what the server stores. A tag
+    // with an animation but no color must keep the null placeholder at index 1.
+    const compact = (t) => (t[2] ? [t[0], t[1] ?? null, t[2]] : t[1] ? [t[0], t[1]] : [t[0]]);
+
     function submit(next) {
         saving = true;
-        router.patch(url, { tags: next }, { preserveScroll: true, onFinish: () => (saving = false) });
+        router.patch(url, { tags: next.map(compact) }, { preserveScroll: true, onFinish: () => (saving = false) });
     }
 
     function place() {
@@ -91,6 +97,7 @@
         if (!canEdit) return;
         text = '';
         color = null;
+        animation = null;
         pos = { ...pos, ready: false };
         open = true;
         bindReposition();
@@ -105,20 +112,20 @@
         unbindReposition();
     }
 
-    function addValue(value, c) {
+    function addValue(value, c, a) {
         const v = (value || '').trim();
         if (!v) return;
         if (working.some((t) => t[0].toLowerCase() === v.toLowerCase())) return;
-        const next = [...working, [v, c ?? null]];
+        const next = [...working, [v, c ?? null, a ?? null]];
         working = next;
         submit(next);
     }
     function addFromInput() {
-        addValue(text, color);
+        addValue(text, color, animation);
         closePop();
     }
     function addSuggestion(tag) {
-        addValue(tag[0], tag[1]);
+        addValue(tag[0], tag[1], tag[2]);
         closePop();
     }
     function removeTag(i) {
@@ -142,7 +149,7 @@
 <span class="group inline-flex flex-wrap items-center gap-1">
     {#each working as tag, i (tag[0])}
         <span
-            class="group/tag inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset"
+            class="group/tag inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset {animationClass(tag[2])}"
             style={tag[1]
                 ? `background-color:${tint(tag[1])};color:${tag[1]};--tw-ring-color:${tint(tag[1])}`
                 : 'background-color:var(--surface-sunken);color:var(--text-muted);--tw-ring-color:var(--border)'}
@@ -211,13 +218,36 @@
             {/each}
         </div>
 
+        <div class="mt-2.5 flex flex-wrap items-center gap-1.5">
+            <button
+                type="button"
+                class="rounded-sm px-2 py-1 text-xs font-medium shadow-none ring-1 ring-inset {animation === null ? 'ring-text' : 'ring-border'}"
+                style="background-color:var(--surface-sunken);color:var(--text-muted)"
+                aria-pressed={animation === null}
+                on:click={() => (animation = null)}
+            >
+                No motion
+            </button>
+            {#each TAG_ANIMATION_TOKENS as token}
+                <button
+                    type="button"
+                    class="rounded-sm px-2 py-1 text-xs font-medium shadow-none ring-1 ring-inset {animation === token ? `ring-text ${animationClass(token)}` : 'ring-border'}"
+                    style="background-color:var(--surface-sunken);color:var(--text-muted)"
+                    aria-pressed={animation === token}
+                    on:click={() => (animation = token)}
+                >
+                    {TAG_ANIMATIONS[token].label}
+                </button>
+            {/each}
+        </div>
+
         {#if available.length}
             <p class="eyebrow mt-4 mb-2">Reuse</p>
             <div class="flex flex-wrap gap-1.5">
                 {#each available as tag}
                     <button
                         type="button"
-                        class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium shadow-none ring-1 ring-inset"
+                        class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium shadow-none ring-1 ring-inset {animationClass(tag[2])}"
                         style={tag[1]
                             ? `background-color:${tint(tag[1])};color:${tag[1]};--tw-ring-color:${tint(tag[1])}`
                             : 'background-color:var(--surface-sunken);color:var(--text-muted);--tw-ring-color:var(--border)'}
