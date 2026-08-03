@@ -49,6 +49,30 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Generate an idempotency key. The API validates these as UUIDs, so the urandom
+# fallback forces the version and variant nibbles rather than emitting 32 random
+# hex characters, which would be the right shape but not a valid UUID.
+new_request_uuid() {
+  if command_exists uuidgen; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+    return 0
+  fi
+
+  if [ -r /proc/sys/kernel/random/uuid ]; then
+    cat /proc/sys/kernel/random/uuid
+    return 0
+  fi
+
+  local hex
+  hex=$(od -An -tx1 -N16 /dev/urandom 2>/dev/null | tr -d ' \n') || return 1
+  [ "${#hex}" -eq 32 ] || return 1
+
+  local variant
+  variant=$(printf '%x' $(( 0x${hex:16:2} & 0x3f | 0x80 )))
+  printf '%s-%s-4%s-%s%s-%s\n' \
+    "${hex:0:8}" "${hex:8:4}" "${hex:13:3}" "$variant" "${hex:18:2}" "${hex:20:12}"
+}
+
 require_value() {
   [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 requires a value"
 }
@@ -1736,16 +1760,7 @@ _builds_create() {
   fi
 
   if [ -z "$request_uuid" ]; then
-    if command_exists uuidgen; then
-      request_uuid=$(uuidgen)
-    else
-      request_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s-%s-%s-%s' \
-        "$(head -c 8 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 12 /dev/urandom | xxd -p)")
-    fi
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
@@ -5516,6 +5531,8 @@ _pipelines_run() {
   local integration_id=""
   local pipeline_id=""
   local inputs=""
+  local ref=""
+  local request_uuid=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -5524,12 +5541,18 @@ _pipelines_run() {
       --integration-id=*) integration_id=${1#*=}; shift ;;
       --inputs) require_value "$1" "$2"; inputs="$2"; shift 2 ;;
       --inputs=*) inputs=${1#*=}; shift ;;
+      --ref) require_value "$1" "$2"; ref="$2"; shift 2 ;;
+      --ref=*) ref=${1#*=}; shift ;;
+      --request-uuid) require_value "$1" "$2"; request_uuid="$2"; shift 2 ;;
+      --request-uuid=*) request_uuid=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]\n'
+        printf 'Usage: appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON] [--ref REF] [--request-uuid UUID]\n'
+        printf '\nThe run is idempotent on --request-uuid; one is generated when omitted.\n'
+        printf '--ref overrides the pipeline default ref. Prints the created build record.\n'
         return 0
         ;;
       -*) die "unknown pipelines run option: $1" ;;
@@ -5544,12 +5567,27 @@ _pipelines_run() {
 
   local path="integrations/$integration_id/pipelines/$pipeline_id/runs"
 
-  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  if [ -n "$inputs" ]; then
-    "$JQ_BIN" -n --argjson i "$inputs" '{inputs: $i}' >"$body_file"
-  else
-    printf '{}' >"$body_file"
+  # request_uuid is required by the API and makes a retried CI step reuse the same
+  # build instead of dispatching a second one.
+  if [ -z "$request_uuid" ]; then
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
+
+  require_jq
+  body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
+  local jq_args=(-n --arg uuid "$request_uuid")
+  local jq_expr='{request_uuid: $uuid'
+  if [ -n "$ref" ]; then
+    jq_args+=(--arg ref "$ref")
+    jq_expr="$jq_expr, ref: \$ref"
+  fi
+  if [ -n "$inputs" ]; then
+    jq_args+=(--argjson inputs "$inputs")
+    jq_expr="$jq_expr, inputs: \$inputs"
+  fi
+  jq_expr="$jq_expr}"
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" \
+    || { rm -f -- "$body_file"; die "--inputs must be valid JSON"; }
 
   if [ "$DRY_RUN" -eq 1 ]; then
     local url
@@ -5558,14 +5596,16 @@ _pipelines_run() {
     printf 'dry-run: no request sent\n'
     printf 'method: POST\n'
     printf 'url: %s\n' "$url"
-    [ -n "$inputs" ] && printf 'inputs: %s\n' "$inputs"
+    printf 'body: %s\n' "$(cat "$body_file")"
     rm -f -- "$body_file"
     return 0
   fi
 
   api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  printf 'Pipeline run triggered\n'
+  # The response is the build record the dispatch created, and callers need its id.
+  local fmt='{"type":"resource","fields":{"build_id":"id","status":"status","reporting_mode":"reporting_mode","dispatch_status":"dispatch_status","external_run_url":"external_run_url","request_uuid":"request_uuid","created_at":"created_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
 _pipelines_inputs() {

@@ -238,7 +238,7 @@ case "$rel_path" in
     ;;
   # --- integrations ---
   integrations/*/pipelines/*/runs)
-    printf '{"data":{"ok":true}}' >"$output"
+    printf '{"data":{"id":"bld-004","status":"pending","reporting_mode":"automatic","dispatch_status":"dispatched","external_run_url":"https://github.com/acme/customer-app/actions/runs/1234567","request_uuid":"33333333-4444-4555-8666-777777777777","created_at":"2026-08-03"}}' >"$output"
     ;;
   integrations/*/pipelines/*/inputs)
     printf '{"data":[{"name":"branch","type":"string","required":true}]}' >"$output"

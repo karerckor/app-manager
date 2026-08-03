@@ -53,10 +53,16 @@ The default destination is `$HOME/.local/bin/appmctl`. Select another directory 
 ```bash
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+  APPMCTL_SHA256="$APPMCTL_SHA256" \
   APPMCTL_INSTALL_DIR="$PWD/.appmctl-bin" bash
 
 export PATH="$PWD/.appmctl-bin:$PATH"
 ```
+
+`APPMCTL_SHA256` is required. The installer aborts without it, because piping an
+unverified remote script into `bash` is how a compromised upstream reaches a runner. Set
+`APPMCTL_ALLOW_UNVERIFIED=1` only against a source you already control.
+
 
 Do not put `APPMCTL_INSTALL_DIR=...` immediately before `curl`: that variable would be available to `curl`, but not to the `bash` process running the installer.
 
@@ -111,6 +117,7 @@ APPMCTL_BIN_DIR="${CI_PROJECT_DIR:-$PWD}/.appmctl-bin"
 
 curl -fsSL \
   https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+  APPMCTL_SHA256="$APPMCTL_SHA256" \
   APPMCTL_INSTALL_DIR="$APPMCTL_BIN_DIR" bash
 
 export PATH="$APPMCTL_BIN_DIR:$PATH"
@@ -129,6 +136,7 @@ GitHub Actions persists the installed directory for later steps through `$GITHUB
   run: |
     curl -fsSL \
       https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh |
+      APPMCTL_SHA256="$APPMCTL_SHA256" \
       APPMCTL_INSTALL_DIR="$RUNNER_TEMP/appmctl-bin" bash
     echo "$RUNNER_TEMP/appmctl-bin" >> "$GITHUB_PATH"
 
@@ -150,7 +158,7 @@ GitLab CI can install it in `before_script`:
 
 ```yaml
 before_script:
-  - curl -fsSL https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
+  - curl -fsSL https://raw.githubusercontent.com/karerckor/app-manager/main/libs/cli/install.sh | APPMCTL_SHA256="$APPMCTL_SHA256" APPMCTL_INSTALL_DIR="$CI_PROJECT_DIR/.appmctl-bin" bash
   - export PATH="$CI_PROJECT_DIR/.appmctl-bin:$PATH"
 
 build:
@@ -364,9 +372,14 @@ appmctl pipelines get --integration-id ID <pipeline-id>
 appmctl pipelines create --integration-id ID --name NAME [--config JSON]
 appmctl pipelines update --integration-id ID <pipeline-id> [--name NAME] [--config JSON]
 appmctl pipelines delete --integration-id ID <pipeline-id>
-appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON]
+appmctl pipelines run --integration-id ID <pipeline-id> [--inputs JSON] [--ref REF] [--request-uuid UUID]
 appmctl pipelines inputs --integration-id ID <pipeline-id>
 ```
+
+`run` dispatches the workflow and prints the build record the platform created, so the
+build id for `builds wait` comes straight out of the trigger. The run is idempotent on
+`--request-uuid`, which is generated when omitted — pass your own so a retried CI step
+attaches to the same build instead of dispatching a second workflow.
 
 ### `appmctl webhooks`
 

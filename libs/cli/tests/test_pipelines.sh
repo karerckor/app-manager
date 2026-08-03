@@ -68,7 +68,7 @@ pass 'pipelines create'
 # --- pipelines run ---
 : >"$MOCK_LOG"
 output=$("$CLI" pipelines run --integration-id int-001 pipe-001 2>&1)
-assert_contains "$output" 'triggered' 'pipelines run prints confirmation'
+assert_contains "$output" 'bld-004' 'pipelines run prints the created build'
 assert_contains "$(cat "$MOCK_LOG")" 'runs' 'pipelines run hits runs endpoint'
 pass 'pipelines run'
 
@@ -93,4 +93,22 @@ assert_contains "$output" '.github/workflows/release.yml' 'pipelines get prints 
 assert_contains "$output" 'main' 'pipelines get prints the default ref'
 pass 'pipelines get default output'
 
-printf '1..13\n'
+# --- pipelines run sends the required request_uuid and prints the build ---
+# The API requires request_uuid on a run; without it every trigger answered 422.
+: >"$MOCK_LOG"
+output=$("$CLI" pipelines run --integration-id int-001 pipe-001 --inputs '{"ref":"main"}' 2>&1)
+assert_contains "$output" 'bld-004' 'pipelines run prints the created build id'
+assert_contains "$output" 'dispatched' 'pipelines run prints the dispatch status'
+log_contents=$(cat "$MOCK_LOG")
+assert_contains "$log_contents" 'request_uuid' 'pipelines run sends request_uuid'
+assert_contains "$log_contents" 'pipelines/pipe-001/runs' 'pipelines run posts to the runs endpoint'
+pass 'pipelines run body and output'
+
+# --- an explicit request uuid and ref are forwarded ---
+dry=$("$CLI" --dry-run pipelines run --integration-id int-001 pipe-001 \
+  --request-uuid 33333333-4444-4555-8666-777777777777 --ref release/1.4 2>&1)
+assert_contains "$dry" '"request_uuid": "33333333-4444-4555-8666-777777777777"' 'run forwards the request uuid'
+assert_contains "$dry" '"ref": "release/1.4"' 'run forwards the ref'
+pass 'pipelines run idempotency key and ref'
+
+printf '1..15\n'

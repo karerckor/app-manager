@@ -6,6 +6,11 @@ interface Props {
 
 const { title, activeNav } = Astro.props;
 
+// A subtree opens only while the reader is inside it, so the CLI section does not
+// push the rest of the sidebar off the screen from every other page.
+const isWithin = (href: string): boolean =>
+  activeNav === href || (activeNav?.startsWith(`${href}/`) ?? false);
+
 const navSections = [
   {
     title: 'Overview',
@@ -19,7 +24,38 @@ const navSections = [
     items: [
       { label: 'Authentication', href: '/guides/authentication' },
       { label: 'Builds', href: '/guides/builds' },
-      { label: 'CLI (appmctl)', href: '/guides/cli' },
+      {
+        label: 'CLI (appmctl)',
+        href: '/guides/cli',
+        children: [
+          { label: 'Installation', href: '/guides/cli/installation' },
+          { label: 'Configuration', href: '/guides/cli/configuration' },
+          { label: 'Applications', href: '/guides/cli/applications' },
+          { label: 'Identifiers', href: '/guides/cli/identifiers' },
+          { label: 'Credentials', href: '/guides/cli/credentials' },
+          { label: 'Files', href: '/guides/cli/files' },
+          {
+            label: 'Builds',
+            href: '/guides/cli/builds',
+            children: [
+              { label: 'Manual builds', href: '/guides/cli/builds/manual-builds' },
+              { label: 'Automated builds', href: '/guides/cli/builds/automated-builds' },
+              { label: 'EAS builds', href: '/guides/cli/builds/eas-builds' },
+            ],
+          },
+          {
+            label: 'Integrations',
+            href: '/guides/cli/integrations',
+            children: [
+              { label: 'EAS', href: '/guides/cli/integrations/eas' },
+              { label: 'Pipelines', href: '/guides/cli/integrations/pipelines' },
+              { label: 'Webhooks', href: '/guides/cli/integrations/webhooks' },
+              { label: 'Notifications', href: '/guides/cli/integrations/notifications' },
+            ],
+          },
+          { label: 'Examples', href: '/guides/cli/examples' },
+        ],
+      },
       { label: 'Fastlane Plugin', href: '/guides/fastlane' },
       { label: 'Webhooks', href: '/guides/webhooks' },
       { label: 'Expo Integration', href: '/guides/expo-integration' },
@@ -139,6 +175,16 @@ const navSections = [
       .nav-link:hover {
         color: var(--text);
         background: var(--bg);
+      }
+
+      .nav-link-child {
+        padding-left: 34px;
+        font-size: 13px;
+      }
+
+      .nav-link-grandchild {
+        padding-left: 48px;
+        font-size: 13px;
       }
 
       .nav-link.active {
@@ -300,12 +346,32 @@ const navSections = [
         <div class="nav-section">
           <div class="nav-section-title">{section.title}</div>
           {section.items.map((item) => (
-            <a
-              href={item.href}
-              class:list={['nav-link', { active: activeNav === item.href }]}
-            >
-              {item.label}
-            </a>
+            <Fragment>
+              <a
+                href={item.href}
+                class:list={['nav-link', { active: activeNav === item.href }]}
+              >
+                {item.label}
+              </a>
+              {item.children && isWithin(item.href) && item.children.map((child) => (
+                <Fragment>
+                  <a
+                    href={child.href}
+                    class:list={['nav-link', 'nav-link-child', { active: activeNav === child.href }]}
+                  >
+                    {child.label}
+                  </a>
+                  {child.children && isWithin(child.href) && child.children.map((grandchild) => (
+                    <a
+                      href={grandchild.href}
+                      class:list={['nav-link', 'nav-link-grandchild', { active: activeNav === grandchild.href }]}
+                    >
+                      {grandchild.label}
+                    </a>
+                  ))}
+                </Fragment>
+              ))}
+            </Fragment>
           ))}
         </div>
       ))}

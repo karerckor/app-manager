@@ -1,0 +1,74 @@
+---
+import DocsLayout from '../../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI notifications" activeNav="/guides/cli/integrations/notifications">
+  <h1>Notifications</h1>
+  <p>
+    Notification destinations send build events to a chat channel — Slack, Discord, Telegram —
+    with per-event message templates.
+  </p>
+
+  <h2>There is no CLI command, and no API</h2>
+  <p>
+    <strong>Notification destinations are configured in the web UI only.</strong> They are not
+    part of API v1: <code>routes/api.php</code> defines no notification endpoints at all. Their
+    routes live in the session-authenticated web application
+    (<code>/integrations/notifications</code>), which an API key cannot reach.
+  </p>
+  <p>
+    This means there is nothing for <code>appmctl</code> to call — not even through
+    <code>appmctl request</code>, which is scoped to <code>/api/v1/&#123;team&#125;/</code> and
+    authenticates with a bearer token. Attempting it fails on authentication, not on the path:
+  </p>
+  <CodeBlock lang="bash" code={`# Does not work. There is no such API endpoint.
+appmctl request GET integrations/notifications
+# 404 Not Found`} />
+  <p>
+    Configure destinations at <strong>Integrations → Notifications</strong> in the web UI. What
+    you set there — the channel credentials, the subscribed events, the templates, and the tag
+    filters — is stored on the destination and applies to every matching event, whether the build
+    was created by the CLI or not.
+  </p>
+
+  <h2>Use webhooks for automation</h2>
+  <p>
+    Everything a notification destination reacts to is also available as a
+    <a href="/guides/cli/integrations/webhooks">webhook</a> event, and webhooks are fully
+    manageable from the CLI. If you need notifications under version control or created by a
+    script, send the events to your own receiver and post to chat from there:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl webhooks create \\
+  --url https://hooks.acme.example/build-notifier \\
+  --events '["build.completed","build.failed"]' \\
+  --app customer-app`} />
+  <p>
+    That trades the built-in templates for control: your receiver decides the message format, and
+    the endpoint's configuration lives wherever you keep infrastructure code. The tradeoff is
+    that you now run and monitor that receiver.
+  </p>
+
+  <h2>Checking what is configured</h2>
+  <p>
+    Notification destinations hang off integrations, so the integration itself is visible from the
+    CLI even though the destination is not. A <code>slack</code>, <code>discord</code>, or
+    <code>telegram</code> provider in this list means a notification channel exists:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --json integrations list |
+  jq -r '.data[] | select(.provider == "slack" or .provider == "discord" or .provider == "telegram")
+         | "\\(.provider)  \\(.name)"'`} />
+  <p>
+    The destination's own settings — channel, events, templates, failure count — are not exposed.
+    Read them in the web UI.
+  </p>
+
+  <h2>If this needs to be scriptable</h2>
+  <p>
+    Making destinations CLI-manageable is a platform change, not a CLI one. It needs API v1
+    routes, a controller, a resource, an ability scope alongside the existing ones, and tests —
+    at which point a <code>appmctl notifications</code> command becomes straightforward. Until
+    that exists, this page describes the whole story: web UI for destinations, webhooks for
+    automation.
+  </p>
+</DocsLayout>

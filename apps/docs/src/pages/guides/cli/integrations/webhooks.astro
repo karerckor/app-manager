@@ -1,0 +1,153 @@
+---
+import DocsLayout from '../../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../../components/CodeBlock.astro';
+import CommandOutput from '../../../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI webhooks" activeNav="/guides/cli/integrations/webhooks">
+  <h1>Webhooks</h1>
+  <p>
+    A webhook endpoint receives platform events over HTTP: builds finishing, artifacts arriving,
+    identifiers changing. Deliveries are signed, retried, and recorded, so the CLI can tell you
+    not just what you subscribed to but whether it actually arrived.
+  </p>
+  <p>
+    For payload formats and signature verification see the
+    <a href="/guides/webhooks">Webhooks guide</a>. This page is about managing endpoints from
+    the command line.
+  </p>
+
+  <h2>Commands</h2>
+  <CodeBlock lang="bash" code={`appmctl webhooks list
+appmctl webhooks get    WEBHOOK_ID
+appmctl webhooks create --url URL [--events JSON] [--app SLUG]
+appmctl webhooks update WEBHOOK_ID [--url URL] [--events JSON]
+appmctl webhooks delete WEBHOOK_ID
+appmctl webhooks test   WEBHOOK_ID
+appmctl webhooks rotate WEBHOOK_ID
+appmctl webhooks deliveries WEBHOOK_ID
+appmctl webhooks redeliver --webhook-id ID DELIVERY_ID`} />
+
+  <h3>List</h3>
+  <CommandOutput command="appmctl webhooks list" capture="webhooks-list" />
+  <p>
+    <code>enabled</code> follows the state of the endpoint's integration. A disabled integration
+    stops deliveries without deleting the endpoint or its history.
+  </p>
+
+  <h3>Show one endpoint</h3>
+  <CodeBlock lang="bash" code={`appmctl webhooks get 019fc795-6498-7243-a2ba-f97ef4cee99a
+
+# id:                     019fc795-6498-7243-a2ba-f97ef4cee99a
+# name:                   Release notifier
+# url:                    https://hooks.acme.example/app-manager
+# events:                 build.completed, build.failed, artifact.created
+# enabled:                true
+# secret_hint:            whse…000
+# consecutive_failures:   0
+# last_delivered_at:      2026-08-03T12:30:00+00:00`} />
+  <p>
+    <code>consecutive_failures</code> is the health signal to watch. The secret itself is never
+    returned — only a hint, enough to tell two secrets apart in a log.
+  </p>
+
+  <h3>Create and update</h3>
+  <p>
+    <code>--events</code> takes a JSON array of event names. Omitting it subscribes to the
+    platform default set. <code>--app</code> scopes the endpoint to a single app, so an endpoint
+    for one team's release channel does not receive every other app's builds:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl webhooks create \\
+  --url https://hooks.acme.example/app-manager \\
+  --events '["build.completed","build.failed","artifact.created"]' \\
+  --app customer-app
+
+# Subscriptions are replaced, not merged
+appmctl webhooks update 019fc795-6498-7243-a2ba-f97ef4cee99a \\
+  --events '["build.completed"]'
+
+appmctl webhooks delete 019fc795-6498-7243-a2ba-f97ef4cee99a`} />
+
+  <h2>Testing an endpoint</h2>
+  <p>
+    <code>test</code> sends a synthetic delivery so you can verify a receiver end to end before
+    a real build depends on it:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl webhooks test 019fc795-6498-7243-a2ba-f97ef4cee99a`} />
+  <p>
+    A test delivery appears in <code>deliveries</code> like any other, which is the point: if the
+    test does not show up there, the problem is on this side, and if it shows up as failed, the
+    problem is at your receiver.
+  </p>
+
+  <h2>Rotating the signing secret</h2>
+  <p>
+    <code>rotate</code> issues a new HMAC secret and returns it once. It is not retrievable
+    afterwards, so capture it in the same step that stores it:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl --json webhooks rotate 019fc795-6498-7243-a2ba-f97ef4cee99a |
+  jq -r '.data.secret'`} />
+  <p>
+    Rotation takes effect immediately: deliveries signed with the old secret stop verifying at
+    your receiver the moment it happens. Deploy the new secret to the receiver first if you
+    cannot tolerate a gap, or accept a brief window of rejected deliveries and let the retry
+    schedule cover it.
+  </p>
+
+  <h2>Inspecting deliveries</h2>
+  <CodeBlock lang="bash" code={`appmctl webhooks deliveries 019fc795-6498-7243-a2ba-f97ef4cee99a
+
+# id       event            status     http  attempts  delivered_at
+# -------  ---------------  ---------  ----  --------  ------------------------
+# del-001  build.completed  delivered  200   1         2026-08-03T12:30:00+00:00
+# del-002  build.failed     failed     500   3`} />
+  <p>
+    <code>status</code> is the platform's own verdict, <code>http</code> the receiver's response
+    code, and <code>attempts</code> how many tries it took. A delivery with no
+    <code>delivered_at</code> never succeeded.
+  </p>
+  <p>Full details, including the response preview and the last error, come from <code>--json</code>:</p>
+  <CodeBlock lang="bash" code={`appmctl --json webhooks deliveries "$WH" |
+  jq '.data[] | select(.status == "failed") | {id, event_type, response_status, last_error, next_attempt_at}'`} />
+
+  <h3>Redelivering</h3>
+  <p>
+    After fixing a receiver, replay what it missed. <code>redeliver</code> needs both ids,
+    since a delivery id only means something in the context of its endpoint:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl webhooks redeliver --webhook-id "$WH" del-002
+
+# Replay everything that failed
+appmctl --json webhooks deliveries "$WH" |
+  jq -r '.data[] | select(.status == "failed") | .id' |
+  while read -r delivery; do
+    appmctl webhooks redeliver --webhook-id "$WH" "$delivery"
+  done`} />
+  <p>
+    A redelivery is a new delivery that records what it replays, so the original attempt stays in
+    the history rather than being overwritten.
+  </p>
+
+  <h2>Watching endpoint health in CI</h2>
+  <CodeBlock lang="bash" code={`# Fail a monitoring job when any endpoint is failing repeatedly
+appmctl --json webhooks list |
+  jq -e '[.data[] | select(.consecutive_failures > 3)] | length == 0' >/dev/null ||
+  { echo 'a webhook endpoint is failing repeatedly' >&2; exit 1; }`} />
+
+  <h2>Scopes</h2>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Scope</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>list</code>, <code>get</code></td><td><code>webhooks:read</code></td></tr>
+      <tr><td><code>create</code>, <code>update</code>, <code>delete</code>, <code>test</code>, <code>rotate</code></td><td><code>webhooks:write</code></td></tr>
+      <tr><td><code>deliveries</code></td><td><code>deliveries:read</code></td></tr>
+      <tr><td><code>redeliver</code></td><td><code>webhooks:write</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    A monitoring key needs <code>webhooks:read</code> and <code>deliveries:read</code> only —
+    keep <code>webhooks:write</code>, which can rotate a secret, out of it.
+  </p>
+</DocsLayout>

@@ -354,16 +354,7 @@ _builds_create() {
   fi
 
   if [ -z "$request_uuid" ]; then
-    if command_exists uuidgen; then
-      request_uuid=$(uuidgen)
-    else
-      request_uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s-%s-%s-%s-%s' \
-        "$(head -c 8 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 4 /dev/urandom | xxd -p)" \
-        "$(head -c 12 /dev/urandom | xxd -p)")
-    fi
+    request_uuid=$(new_request_uuid) || die "could not generate a request UUID"
   fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"

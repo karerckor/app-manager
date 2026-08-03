@@ -1,0 +1,117 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import CommandOutput from '../../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI identifiers" activeNav="/guides/cli/identifiers">
+  <h1>Identifiers</h1>
+  <p>
+    An identifier is what an app is called on one platform: the iOS bundle ID, the Android
+    package name, or the web domain. Builds, build profiles, and credentials all attach to an
+    identifier rather than to the app directly, so an app that ships on two platforms has two
+    identifiers and two independent signing setups.
+  </p>
+
+  <h2>Commands</h2>
+  <CodeBlock lang="bash" code={`appmctl identifiers list   [--app APP] [--per-page N]
+appmctl identifiers show   [--app APP] IDENTIFIER_ID
+appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID \\
+                           [--name NAME] [--version VERSION] [--version-code N]
+appmctl identifiers update [--app APP] IDENTIFIER_ID [--platform PLATFORM] [--identifier ID] \\
+                           [--name NAME] [--version VERSION] [--version-code N]
+appmctl identifiers delete [--app APP] IDENTIFIER_ID`} />
+
+  <h3>List</h3>
+  <CommandOutput command="appmctl identifiers list" capture="identifiers-list" />
+
+  <h3>Show one identifier</h3>
+  <CommandOutput
+    command="appmctl identifiers show 019fc789-479a-71b2-800a-1b8c4aed6fc7"
+    capture="identifiers-show"
+  />
+
+  <h2>Fields</h2>
+  <table>
+    <thead>
+      <tr><th>Flag</th><th>Applies to</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--platform</code></td><td>all</td><td><code>ios</code>, <code>android</code>, or <code>web</code>. Required on create.</td></tr>
+      <tr><td><code>--identifier</code></td><td>all</td><td>Bundle ID, package name, or domain. Required on create.</td></tr>
+      <tr><td><code>--name</code></td><td>all</td><td>Display name, shown in the UI and in build listings</td></tr>
+      <tr><td><code>--version</code></td><td>all</td><td>Marketing version, e.g. <code>1.4.0</code></td></tr>
+      <tr><td><code>--version-code</code></td><td>android only</td><td>Integer build number. The API rejects it for iOS and web.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Format rules</h3>
+  <p>
+    For <code>ios</code> and <code>android</code> the identifier must be reverse-DNS: at
+    least two segments separated by <code>.</code>, <code>_</code>, or <code>-</code>, with
+    alphanumeric characters inside each segment. For <code>web</code> it must be a valid
+    domain name, and it is lowercased before validation. An identifier is unique per app and
+    platform, so the same bundle ID can exist on two different apps but not twice on one.
+  </p>
+  <p>
+    The CLI checks only the platform value locally. Everything else — the format, uniqueness,
+    the Android-only <code>version_code</code> rule — is enforced by the API, which keeps the
+    CLI from drifting away from the server's rules as they change.
+  </p>
+
+  <h3>Create</h3>
+  <CodeBlock lang="bash" code={`# Android, with a version code
+appmctl identifiers create --platform android --identifier com.acme.customer \\
+  --name 'Customer App (Android)' --version 1.4.0 --version-code 1408
+
+# iOS
+appmctl identifiers create --platform ios --identifier com.acme.customer \\
+  --name 'Customer App (iOS)' --version 1.4.0
+
+# Web
+appmctl identifiers create --platform web --identifier customer.acme.example \\
+  --name 'Customer Web'`} />
+  <p>Inspect the request body before sending if you are scripting this:</p>
+  <CodeBlock lang="bash" code={`appmctl --dry-run identifiers create --platform android \\
+  --identifier com.acme.customer --version-code 1408
+
+# dry-run: no request sent
+# method: POST
+# url: https://manager.example.com/api/v1/acme-mobile/apps/customer-app/identifiers
+# body: {
+#   "platform": "android",
+#   "identifier": "com.acme.customer",
+#   "version_code": 1408
+# }`} />
+
+  <h3>Update</h3>
+  <p>
+    <code>update</code> is partial: send only what changes. It requires at least one field.
+    Bumping a version before a release is the common case:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl identifiers update 019fc789-479a-71b2-800a-1b8c4aed6fc7 \\
+  --version 1.5.0 --version-code 1500`} />
+  <p>
+    Changing an identifier's platform to <code>web</code> is refused while credentials or
+    build profiles are still attached, since web identifiers cannot hold signing material.
+    Detach those first.
+  </p>
+
+  <h3>Delete</h3>
+  <CodeBlock lang="bash" code={`appmctl identifiers delete 019fc789-479a-71b2-800a-1b8c4aed6fc7`} />
+
+  <h2>Expo identifiers</h2>
+  <p>
+    When an app is linked to an Expo project, <code>appmctl eas identifiers</code> shows the
+    same identifiers alongside their sync state on Expo, and
+    <code>eas sync-identifiers</code> pushes local ones upward. See
+    <a href="/guides/cli/integrations/eas">EAS</a>.
+  </p>
+
+  <h2>Scopes</h2>
+  <p>
+    <code>identifiers:read</code> for <code>list</code> and <code>show</code>,
+    <code>identifiers:write</code> plus the <code>manage_applications</code> team permission
+    for <code>create</code>, <code>update</code>, and <code>delete</code>.
+  </p>
+</DocsLayout>

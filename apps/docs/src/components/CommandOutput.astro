@@ -1,0 +1,67 @@
+---
+import CodeBlock from './CodeBlock.astro';
+
+interface Props {
+  /** Command to show above the output. */
+  command: string;
+  /** Basename of a file in src/data/outputs, without the .txt suffix. */
+  capture: string;
+}
+
+const { command, capture } = Astro.props;
+
+// Captures are recorded by scripts/docs/capture-cli-output.sh. Loading them
+// eagerly means a renamed or deleted capture breaks the build instead of
+// rendering an empty block that nobody notices.
+const captures = import.meta.glob<string>('../data/outputs/*.txt', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+const key = `../data/outputs/${capture}.txt`;
+const output = captures[key];
+
+if (output === undefined) {
+  throw new Error(
+    `No captured output named "${capture}". Available: ${Object.keys(captures)
+      .map((path) => path.replace('../data/outputs/', '').replace('.txt', ''))
+      .join(', ')}`
+  );
+}
+---
+
+<CodeBlock lang="bash" code={command} />
+<div class="captured-output">
+  <div class="captured-output-label">Output</div>
+  <pre>{output.replace(/\n+$/, '')}</pre>
+</div>
+
+<style>
+  .captured-output {
+    margin-bottom: 16px;
+  }
+
+  .captured-output-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .captured-output pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text);
+    margin: 0;
+    white-space: pre;
+  }
+</style>
