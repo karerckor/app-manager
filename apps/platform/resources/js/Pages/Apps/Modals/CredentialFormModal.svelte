@@ -61,6 +61,42 @@
     const isExternal = $derived(credentialForm.storage_mode === 'external');
     const visiblePayloadFields = $derived((selectedSchema?.fields ?? []).filter((field) => !isExternal || field.input !== 'password'));
 
+    // Rendering hides the vault block in local mode and the password fields
+    // in external mode, but the form's internal state still carries all of
+    // it — payloadFor() seeds every field name, and vault defaults to a
+    // non-empty object regardless of mode. Posted straight through, local
+    // mode's non-empty `vault` trips the server's `prohibited` rule, and
+    // external mode's password payload keys trip its payload shape rule.
+    // Shape the outgoing data instead of the rendered data.
+    const shapeForSubmit = (data) => {
+        if (data.storage_mode !== 'external') {
+            const { vault, ...rest } = data;
+            return rest;
+        }
+
+        const visibleNames = new Set(visiblePayloadFields.map((field) => field.name));
+
+        return {
+            ...data,
+            payload: Object.fromEntries(
+                Object.entries(data.payload ?? {}).filter(([key]) => visibleNames.has(key)),
+            ),
+        };
+    };
+
+    const displayedErrorKeys = $derived(new Set([
+        'app_identifier_id',
+        'type',
+        'expires_at',
+        'profile_type',
+        'name',
+        'file',
+        'vault.provider',
+        'vault.resource',
+        ...visiblePayloadFields.map((field) => `payload.${field.name}`),
+    ]));
+    const otherErrors = $derived(Object.entries(credentialForm.errors).filter(([key]) => !displayedErrorKeys.has(key)));
+
     const schemaFor = (type) => credentialTypes.find((definition) => definition.value === type);
     const typeLabel = (type) => schemaFor(type)?.label ?? type.replaceAll('_', ' ');
     const selectVaultCredential = (value) => {
@@ -121,6 +157,7 @@
         credentialForm.clearErrors();
     };
 
+    let vaultFieldsRef = $state(null);
     let wasOpen = false;
     // $effect.pre (not $effect) so the reset lands before this same open-toggle
     // renders the modal's children — VaultReferenceFields seeds its key/value
@@ -157,6 +194,8 @@
             return;
         }
 
+        vaultFieldsRef?.sync();
+        credentialForm.transform(shapeForSubmit);
         credentialForm.post(editing?.update_url ?? app.urls.credentials, {
             forceFormData: true,
             preserveScroll: true,
@@ -354,7 +393,7 @@
                     {/if}
 
                     {#if isExternal}
-                        <VaultReferenceFields form={credentialForm} providers={vaultProviders} />
+                        <VaultReferenceFields bind:this={vaultFieldsRef} form={credentialForm} providers={vaultProviders} />
                     {:else}
                         <label class="block">
                             <span class="label">Credential file <span class="font-normal text-faint">({credentialFileRequired() ? 'required' : 'optional'}, max 20 MB)</span></span>
@@ -380,6 +419,17 @@
                                 </span>
                             </span>
                         </label>
+                    {/if}
+
+                    {#if otherErrors.length}
+                        <div class="rounded-md border border-danger/30 bg-danger/5 p-3.5">
+                            <p class="text-xs font-semibold text-danger">This could not be saved</p>
+                            <ul class="mt-1.5 space-y-1">
+                                {#each otherErrors as [key, message] (key)}
+                                    <li class="text-xs text-danger"><code class="mr-1 text-[10px] text-danger/70">{key}</code>{message}</li>
+                                {/each}
+                            </ul>
+                        </div>
                     {/if}
                 {/if}
             </div>

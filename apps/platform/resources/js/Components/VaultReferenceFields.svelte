@@ -17,6 +17,16 @@
                 .map((row) => [row.key.trim(), String(row.value)]),
         );
     };
+
+    // Rows only flush into form.vault.metadata on blur. Clicking Save is safe
+    // (mousedown blurs the input first), but pressing Enter inside a text
+    // input submits the form without blurring anything first, which would
+    // otherwise post the metadata block one edit behind what is on screen —
+    // and since the server replaces metadata wholesale, a newly added row
+    // would be silently dropped. The parent calls this before every submit.
+    export function sync() {
+        syncMetadata();
+    }
 </script>
 
 <div class="space-y-5">
