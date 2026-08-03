@@ -57,4 +57,52 @@ class TagScopeTest extends TestCase
         $this->assertTrue($ids->contains($match->id));
         $this->assertFalse($ids->contains($otherTeam->id));
     }
+
+    public function test_where_all_tags_requires_every_text(): void
+    {
+        $team = Team::factory()->create();
+        $both = MobileApp::factory()->create(['team_id' => $team->id]);
+        $both->syncTags([['beta', null], ['qa', '#fff']])->save();
+        $one = MobileApp::factory()->create(['team_id' => $team->id]);
+        $one->syncTags([['beta', null]])->save();
+
+        $ids = MobileApp::whereAllTags(['beta', 'qa'])->pluck('id');
+
+        $this->assertTrue($ids->contains($both->id));
+        $this->assertFalse($ids->contains($one->id));
+    }
+
+    public function test_where_tag_like_matches_partial_text_case_insensitively(): void
+    {
+        $team = Team::factory()->create();
+        $match = MobileApp::factory()->create(['team_id' => $team->id]);
+        $match->syncTags([['Onboarding', null]])->save();
+        $miss = MobileApp::factory()->create(['team_id' => $team->id]);
+        $miss->syncTags([['release', null]])->save();
+
+        $ids = MobileApp::whereTagLike('%onb%')->pluck('id');
+
+        $this->assertTrue($ids->contains($match->id));
+        $this->assertFalse($ids->contains($miss->id));
+    }
+
+    public function test_where_tag_like_ignores_color_and_animation(): void
+    {
+        $team = Team::factory()->create();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $app->syncTags([['beta', '#10b981', 'pulse']])->save();
+
+        $this->assertFalse(MobileApp::whereTagLike('%10b981%')->pluck('id')->contains($app->id));
+        $this->assertFalse(MobileApp::whereTagLike('%pulse%')->pluck('id')->contains($app->id));
+        $this->assertTrue(MobileApp::whereTagLike('%bet%')->pluck('id')->contains($app->id));
+    }
+
+    public function test_new_scopes_tolerate_a_null_tags_column(): void
+    {
+        $team = Team::factory()->create();
+        $untagged = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->assertFalse(MobileApp::whereAllTags(['beta'])->pluck('id')->contains($untagged->id));
+        $this->assertFalse(MobileApp::whereTagLike('%beta%')->pluck('id')->contains($untagged->id));
+    }
 }

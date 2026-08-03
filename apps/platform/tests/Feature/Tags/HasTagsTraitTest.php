@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tags;
 
+use App\Enums\TagAnimation;
 use App\Models\MobileApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -60,5 +61,21 @@ class HasTagsTraitTest extends TestCase
         $app->removeTag('demo')->save();
 
         $this->assertSame([['ios']], $app->fresh()->tags);
+    }
+
+    public function test_add_tag_accepts_an_animation(): void
+    {
+        $app = MobileApp::factory()->create();
+        $app->addTag('onboarding', '#10B981', 'heartBeat');
+
+        $this->assertSame([['onboarding', '#10b981', 'heartbeat']], $app->tags);
+    }
+
+    public function test_add_tag_accepts_an_animation_enum_and_no_color(): void
+    {
+        $app = MobileApp::factory()->create();
+        $app->addTag('beta', null, TagAnimation::Pulse);
+
+        $this->assertSame([['beta', null, 'pulse']], $app->tags);
     }
 }
