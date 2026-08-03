@@ -1900,6 +1900,8 @@ and add the private method to the class:
 
 To keep `index` off an N+1, add `'vaultReference'` to the array returned by `CredentialController::relationsFor()`.
 
+**The API block deliberately omits `provider_label`, which the two Inertia payloads carry.** A machine consumer gets `provider` and maps the enum itself; putting our English label into the API contract would freeze a UI string into it. The Svelte pages get the label so the frontend does not keep a second copy of the enum. The two Inertia payloads — `CredentialPresenter` (Task 8) and `CredentialVaultController::presentCredential()` (Task 9) — must stay identical to each other.
+
 - [ ] **Step 4: Branch `Api\V1\CredentialController::store`**
 
 Add the same imports and constructor collaborators as in Task 5 — `CredentialRequestRules`, `SyncVaultReference`, `CredentialStorageMode`, `VaultMetadataSource`, `VaultProvider`. **Do not re-derive the mode or re-assemble the storage rules here**; Task 5 created `CredentialRequestRules` precisely so this controller consumes it.
