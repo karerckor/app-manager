@@ -170,6 +170,41 @@ class CredentialExternalStorageTest extends TestCase
         $this->assertSame(VaultMetadataSource::User, $reference->metadata_source);
     }
 
+    public function test_changing_only_the_resource_with_reordered_but_unchanged_metadata_does_not_bump_the_metadata_version(): void
+    {
+        [$owner, $team] = $this->workspace();
+        $credential = Credential::factory()
+            ->external(VaultProvider::Custom, 'old-address')
+            ->create(['team_id' => $team->id, 'type' => CredentialType::ApnsKey]);
+        $credential->vaultReference->update([
+            'metadata' => ['project' => 'p', 'region' => 'eu-central-1'],
+            'metadata_version' => 3,
+            'metadata_source' => VaultMetadataSource::Pipeline,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.credentials.update', [$team, $credential]), [
+                'name' => 'APNs production',
+                'type' => CredentialType::ApnsKey->value,
+                'vault' => [
+                    'provider' => VaultProvider::Custom->value,
+                    'resource' => 'new-address',
+                    // Same pairs as stored, submitted in a different order.
+                    'metadata' => ['region' => 'eu-central-1', 'project' => 'p'],
+                ],
+                'payload' => ['key_id' => 'ABCDEFGHIJ', 'team_id' => 'KLMNOPQRST'],
+            ])
+            ->assertRedirect();
+
+        $reference = $credential->fresh()->vaultReference;
+        $this->assertSame('new-address', $reference->resource);
+        $metadata = $reference->metadata;
+        ksort($metadata);
+        $this->assertSame(['project' => 'p', 'region' => 'eu-central-1'], $metadata);
+        $this->assertSame(3, $reference->metadata_version);
+        $this->assertSame(VaultMetadataSource::Pipeline, $reference->metadata_source);
+    }
+
     /** @return array{0: User, 1: Team, 2: MobileApp, 3: AppIdentifier} */
     private function workspace(): array
     {

@@ -343,6 +343,8 @@ class CredentialController extends Controller
 
     public function upload(UploadCredentialFileRequest $request, Team $team, Credential $credential): RedirectResponse
     {
+        abort_if($credential->isExternal(), 404);
+
         DB::transaction(function () use ($credential, $team, $request) {
             CredentialFileStorage::storeUploaded($credential, $request->file('file'));
             $credential->forceFill([

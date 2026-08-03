@@ -44,7 +44,7 @@ class SyncVaultReference
         VaultMetadataSource $source,
     ): CredentialVaultReference {
         $metadata = $vault['metadata'] ?? null;
-        $metadataChanged = $metadata !== $reference->metadata;
+        $metadataChanged = $this->normalize($metadata) !== $this->normalize($reference->metadata);
 
         $reference->update([
             'provider' => VaultProvider::from($vault['provider']),
@@ -57,5 +57,22 @@ class SyncVaultReference
         ]);
 
         return $reference;
+    }
+
+    /**
+     * Normalises metadata for change comparison only: null and an empty
+     * array are the same "no metadata" state, and key order must not affect
+     * whether the metadata is considered changed. The stored value is left
+     * untouched — only this comparison copy is sorted.
+     *
+     * @param  array<string, string|null>|null  $metadata
+     * @return array<string, string|null>
+     */
+    private function normalize(?array $metadata): array
+    {
+        $normalized = $metadata ?? [];
+        ksort($normalized);
+
+        return $normalized;
     }
 }

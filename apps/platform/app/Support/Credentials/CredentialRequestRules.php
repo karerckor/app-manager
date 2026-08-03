@@ -56,10 +56,26 @@ class CredentialRequestRules
         return $rules;
     }
 
-    /** @return array<string, mixed> */
-    public function forUpdate(Credential $credential, Request $request, ?CredentialType $type): array
-    {
+    /**
+     * @param  bool  $partial  When true (a partial API update), payload, file and
+     *                         vault rules are contributed only if the request
+     *                         actually supplies one of them.
+     * @return array<string, mixed>
+     */
+    public function forUpdate(
+        Credential $credential,
+        Request $request,
+        ?CredentialType $type,
+        bool $partial = false,
+    ): array {
         if (! $type) {
+            return [];
+        }
+
+        if ($partial
+            && ! $request->has('payload')
+            && ! $request->has('vault')
+            && ! $request->hasFile('file')) {
             return [];
         }
 
