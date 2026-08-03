@@ -10,8 +10,10 @@ It provides domain-aware subcommands for all major API resources, plus generic a
 - **`files`** — list, inspect, download, upload, update, and delete files attached to an app
 - **`assets`** — list, preview, download, upload, and delete app icons and splash screens
 - **`apps`** — list, get, create, update, and delete applications
+- **`identifiers`** — manage per-platform bundle IDs, package names, and web domains
 - **`credentials`** — manage app credentials and credential types
 - **`integrations`** — list integrations, repositories, workflows, and refs
+- **`eas`** — connect an Expo account, link projects, and sync identifiers and credentials
 - **`pipelines`** — manage and trigger CI/CD pipelines
 - **`webhooks`** — manage webhook endpoints, deliveries, and secrets
 - **`request`** — generic access to any team API endpoint
@@ -275,6 +277,27 @@ appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]
 appmctl apps delete <slug>
 ```
 
+### `appmctl identifiers`
+
+```bash
+appmctl identifiers list   [--app APP] [--per-page N]
+appmctl identifiers show   [--app APP] <identifier-id>
+appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID \
+                           [--name NAME] [--version VERSION] [--version-code N]
+appmctl identifiers update [--app APP] <identifier-id> [same flags]
+appmctl identifiers delete [--app APP] <identifier-id>
+```
+
+Identifiers are the per-platform bundle IDs, package names, and web domains an app
+ships under. `--version-code` applies to Android only, and the API rejects it for
+other platforms. Uniqueness is enforced per app and platform.
+
+```bash
+appmctl identifiers create --platform android --identifier com.acme.customer \
+  --name 'Customer App' --version 1.4.0 --version-code 42
+appmctl identifiers list
+```
+
 ### `appmctl credentials`
 
 ```bash
@@ -296,6 +319,41 @@ appmctl integrations get <integration-id>
 appmctl integrations repos --integration-id ID
 appmctl integrations workflows --integration-id ID
 appmctl integrations refs --integration-id ID
+```
+
+### `appmctl eas`
+
+```bash
+# Expo account, attached to an integration
+appmctl eas connect --token TOKEN [--account NAME]
+appmctl eas projects --integration-id ID
+appmctl eas import   --integration-id ID --project-id ID
+
+# Project link, attached to an app
+appmctl eas status            [--app APP]
+appmctl eas link              [--app APP] --integration-id ID --mode create|existing [--project-id ID]
+appmctl eas auto-sync         [--app APP] --enabled true|false
+appmctl eas identifiers       [--app APP]
+appmctl eas sync-identifiers  [--app APP]
+appmctl eas provision         [--app APP] --identifier-id ID [--credential-ids ID,ID]
+appmctl eas attach-credential [--app APP] --identifier-id ID --credential-id ID
+
+# Either scope, chosen by the flag you pass
+appmctl eas sync       (--app APP | --integration-id ID)
+appmctl eas disconnect (--app APP | --integration-id ID)
+```
+
+The Expo API splits across two scopes: the account hangs off an integration, and the
+project link hangs off an app. `sync` and `disconnect` exist in both, so they take the
+scope from the flag — `--integration-id` for the account, `--app` for the project link
+— and refuse to run when given both.
+
+The Expo GraphQL and REST proxies are not wrapped. Their payloads pass straight
+through, so use `appmctl request` for them:
+
+```bash
+appmctl request POST integrations/int-002/expo/graphql \
+  --data '{"query":"{ me { username } }"}' --json
 ```
 
 ### `appmctl pipelines`
@@ -612,6 +670,8 @@ bash libs/cli/tests/test_webhooks.sh      # Webhooks subcommands
 bash libs/cli/tests/test_logs_artifacts.sh # Logs + artifacts subcommands
 bash libs/cli/tests/test_files.sh         # Files subcommands
 bash libs/cli/tests/test_assets.sh        # Assets (icon + splash screen) subcommands
+bash libs/cli/tests/test_identifiers.sh   # Identifiers subcommands
+bash libs/cli/tests/test_eas.sh           # Expo/EAS subcommands
 ```
 
 The test suite uses a mock `curl` executable and covers URL construction, secret handling, all subcommand actions, dry-run output, formatted output, and backward compatibility with `request`/`stream`. Keep the script compatible with Bash 3.2 and avoid adding runtime dependencies without updating the requirements and CI examples.

@@ -136,19 +136,44 @@ case "$rel_path" in
       *) printf '{"data":[{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"},{"id":"file-002","name":"mapping.txt","mime_type":"text/plain","size":512,"created_at":"2026-07-30"}]}' >"$output" ;;
     esac
     ;;
-  # --- identifiers ---
-  apps/*/identifiers/*)
-    printf '{"data":{"ok":true}}' >"$output"
-    ;;
-  apps/*/identifiers)
-    printf '{"data":[]}' >"$output"
-    ;;
   # --- app expo links ---
-  apps/*/expo/*)
-    printf '{"data":{"ok":true}}' >"$output"
+  apps/*/expo/identifiers/*/provision)
+    printf '{"data":{"identifier":"com.example.customer","platform":"ios","provisioned":["ios_distribution_certificate","ios_provisioning_profile"],"skipped":[]}}' >"$output"
+    ;;
+  apps/*/expo/identifiers/*/credentials/*)
+    printf '{"data":{"identifier":"com.example.customer","platform":"ios","credential_id":"cred-001","pushed":true}}' >"$output"
+    ;;
+  apps/*/expo/identifiers/sync)
+    printf '{"data":{"created":1,"updated":2,"unchanged":0}}' >"$output"
+    ;;
+  apps/*/expo/identifiers)
+    printf '{"data":[{"local_id":"ident-001","platform":"ios","identifier":"com.example.customer","name":"Customer App","sync_status":"synced"},{"local_id":"ident-002","platform":"android","identifier":"com.example.customer","name":"Customer App","sync_status":"app_manager_only"}]}' >"$output"
+    ;;
+  apps/*/expo/automatic-sync)
+    printf '{"data":{"automatic_sync":{"enabled":true,"status":"idle","error":null,"last_pushed_at":"2026-08-02T18:20:00+00:00"}}}' >"$output"
+    ;;
+  apps/*/expo/sync)
+    printf '{"data":{"project":{"slug":"customer-app","full_name":"@acme/customer-app","exists_on_expo":true,"last_synced_at":"2026-08-03T10:20:00+00:00"}}}' >"$output"
     ;;
   apps/*/expo)
-    printf '{"data":{"ok":true}}' >"$output"
+    case "$method" in
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+      POST) printf '{"data":{"id":"expo-proj-001","external_id":"11111111-2222-3333-4444-555555555555","slug":"customer-app","full_name":"@acme/customer-app","exists_on_expo":true}}' >"$output" ;;
+      *) printf '{"data":{"project":{"id":"expo-proj-001","external_id":"11111111-2222-3333-4444-555555555555","slug":"customer-app","name":"Customer App","full_name":"@acme/customer-app","account":{"id":"acct-001","name":"acme"},"exists_on_expo":true,"last_synced_at":"2026-08-02T18:20:00+00:00","automatic_sync":{"enabled":true,"status":"idle","error":null,"last_pushed_at":"2026-08-02T18:20:00+00:00"}},"remote":{"builds":[],"submissions":[]}}}' >"$output" ;;
+    esac
+    ;;
+  # --- identifiers ---
+  apps/*/identifiers/*)
+    case "$method" in
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+      *) printf '{"data":{"id":"ident-001","platform":"ios","identifier":"com.example.customer","name":"Customer App","version":"1.4.0","version_code":null,"created_at":"2026-07-20T09:00:00+00:00","updated_at":"2026-08-01T11:30:00+00:00"}}' >"$output" ;;
+    esac
+    ;;
+  apps/*/identifiers)
+    case "$method" in
+      POST) printf '{"data":{"id":"ident-003","platform":"android","identifier":"com.example.customer","name":"Customer App","version":"1.4.0","version_code":42,"created_at":"2026-08-03T10:00:00+00:00","updated_at":"2026-08-03T10:00:00+00:00"}}' >"$output" ;;
+      *) printf '{"data":[{"id":"ident-001","platform":"ios","identifier":"com.example.customer","name":"Customer App","version":"1.4.0","version_code":null,"created_at":"2026-07-20T09:00:00+00:00"},{"id":"ident-002","platform":"android","identifier":"com.example.customer","name":"Customer App","version":"1.4.0","version_code":42,"created_at":"2026-07-20T09:05:00+00:00"}]}' >"$output" ;;
+    esac
     ;;
   # --- single app ---
   apps/*)
@@ -188,6 +213,25 @@ case "$rel_path" in
       GET) printf '{"data":[{"id":"wh-001","url":"https://example.com/hook","events":["build.completed"],"created_at":"2025-01-15"}]}' >"$output" ;;
       POST) printf '{"data":{"id":"wh-002","url":"https://example.com/hook","active":true,"created_at":"2025-07-31"}}' >"$output" ;;
     esac
+    ;;
+  # --- expo on integrations (must precede the generic integrations/* patterns) ---
+  integrations/*/expo/projects/*/import)
+    printf '{"data":{"id":"expo-proj-001","external_id":"11111111-2222-3333-4444-555555555555","slug":"customer-app","name":"Customer App","full_name":"@acme/customer-app","account":{"id":"acct-001","name":"acme"},"exists_on_expo":true,"mobile_app":{"id":"app-001","slug":"customer-app","name":"Customer App"}}}' >"$output"
+    ;;
+  integrations/*/expo/projects)
+    printf '{"data":[{"id":"expo-proj-001","external_id":"11111111-2222-3333-4444-555555555555","slug":"customer-app","name":"Customer App","full_name":"@acme/customer-app","account":{"id":"acct-001","name":"acme"},"exists_on_expo":true,"last_synced_at":"2026-08-02T18:20:00+00:00"},{"id":"expo-proj-002","external_id":"66666666-7777-8888-9999-000000000000","slug":"internal-tools","name":"Internal Tools","full_name":"@acme/internal-tools","account":{"id":"acct-001","name":"acme"},"exists_on_expo":false,"last_synced_at":null}]}' >"$output"
+    ;;
+  integrations/*/expo/graphql|integrations/*/expo/proxy/*)
+    printf '{"data":{"ok":true}}' >"$output"
+    ;;
+  integrations/*/expo/sync)
+    printf '{"data":{"id":"int-002","provider":"expo","name":"acme","status":"active","projects_synced":2}}' >"$output"
+    ;;
+  integrations/*/expo)
+    printf '{"data":{"ok":true}}' >"$output"
+    ;;
+  integrations/expo)
+    printf '{"data":{"id":"int-002","provider":"expo","name":"acme","status":"active","created_at":"2026-08-03T10:15:00+00:00"}}' >"$output"
     ;;
   # --- integrations ---
   integrations/*/pipelines/*/runs)
@@ -234,13 +278,6 @@ case "$rel_path" in
     ;;
   api-keys)
     printf '{"data":[]}' >"$output"
-    ;;
-  # --- expo proxy ---
-  integrations/*/expo/*)
-    printf '{"data":{"ok":true}}' >"$output"
-    ;;
-  integrations/*/expo)
-    printf '{"data":{"ok":true}}' >"$output"
     ;;
   # --- fallback ---
   *)
