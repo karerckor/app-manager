@@ -13,6 +13,7 @@
     export let roles = [];
     export let canManage = false;
     export let checkCredentialUniquenessByDefault = true;
+    export let storageModes = { instance: [], selected: null };
     export let updateTeamUrl;
     export let inviteUrl;
 
@@ -21,6 +22,9 @@
     const renameForm = useForm({ name: navigationTeam?.name ?? '' });
     const uniquenessForm = useForm({
         check_credential_uniqueness_by_default: checkCredentialUniquenessByDefault,
+    });
+    const storageModesForm = useForm({
+        allowed_credential_storage_modes: storageModes.selected,
     });
     const inviteForm = useForm({ email: '', role: 'contributor' });
 
@@ -32,6 +36,13 @@
     const formatDate = (value) => new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(value));
     const renameTeam = () => renameForm.patch(updateTeamUrl, { preserveScroll: true });
     const saveCredentialUniqueness = () => uniquenessForm.patch(updateTeamUrl, { preserveScroll: true });
+    const toggleStorageMode = (value, checked) => {
+        const current = storageModesForm.allowed_credential_storage_modes ?? storageModes.instance.map((m) => m.value);
+        storageModesForm.allowed_credential_storage_modes = checked
+            ? [...current, value]
+            : current.filter((mode) => mode !== value);
+    };
+    const saveStorageModes = () => storageModesForm.patch(updateTeamUrl, { preserveScroll: true });
     const sendInvite = () => inviteForm.post(inviteUrl, {
         preserveScroll: true,
         onSuccess: () => {
@@ -164,6 +175,37 @@
                         {/if}
                     </form>
                 </section>
+
+                {#if storageModes.instance.length > 1}
+                    <section class="card">
+                        <div class="mb-4 flex items-center gap-3">
+                            <span class="grid h-9 w-9 place-items-center rounded-sm bg-brand-soft text-brand"><ShieldCheck class="h-5 w-5" strokeWidth={1.8} /></span>
+                            <div><h2 class="text-sm font-bold">Permitted credential storage</h2><p class="text-xs text-muted">Where new credentials in this workspace may be stored.</p></div>
+                        </div>
+                        <form on:submit|preventDefault={saveStorageModes}>
+                            <fieldset class="space-y-2">
+                                <legend class="sr-only">Permitted credential storage</legend>
+                                {#each storageModes.instance as mode (mode.value)}
+                                    <label class="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface-sunken px-3.5 py-2.5 text-xs">
+                                        <input
+                                            type="checkbox"
+                                            value={mode.value}
+                                            checked={(storageModesForm.allowed_credential_storage_modes ?? storageModes.instance.map((m) => m.value)).includes(mode.value)}
+                                            on:change={(event) => toggleStorageMode(mode.value, event.currentTarget.checked)}
+                                            disabled={!canManage}
+                                        />
+                                        <span class="text-text">{mode.label}</span>
+                                    </label>
+                                {/each}
+                            </fieldset>
+                            {#if storageModesForm.errors['allowed_credential_storage_modes.0']}<span class="error">{storageModesForm.errors['allowed_credential_storage_modes.0']}</span>{/if}
+                            <p class="mt-2 text-[11px] text-muted">Unchecking everything leaves the instance default in force.</p>
+                            {#if canManage}
+                                <button class="mt-3 w-full" disabled={storageModesForm.processing}>{storageModesForm.processing ? 'Saving…' : 'Save storage settings'}</button>
+                            {/if}
+                        </form>
+                    </section>
+                {/if}
 
                 {#if canManage}
                     <section class="card overflow-hidden p-0">

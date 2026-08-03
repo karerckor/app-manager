@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Enums\TeamPermission;
 use App\Enums\TeamRole;
 use App\Models\Team;
+use App\Support\Credentials\StorageModePolicy;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -59,6 +61,13 @@ class TeamController extends Controller
                 ->all(),
             'canManage' => $canManage,
             'checkCredentialUniquenessByDefault' => $team->check_credential_uniqueness_by_default,
+            'storageModes' => [
+                'instance' => array_map(
+                    fn ($mode) => ['value' => $mode->value, 'label' => $mode->label()],
+                    app(StorageModePolicy::class)->instanceModes(),
+                ),
+                'selected' => $team->allowed_credential_storage_modes,
+            ],
             'updateTeamUrl' => route('accounts.team.update', ['team' => $team]),
             'inviteUrl' => route('accounts.team.invitations.store', ['team' => $team]),
         ]);
@@ -95,6 +104,10 @@ class TeamController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'check_credential_uniqueness_by_default' => ['sometimes', 'required', 'boolean'],
+            'allowed_credential_storage_modes' => ['sometimes', 'nullable', 'array'],
+            'allowed_credential_storage_modes.*' => [
+                Rule::in(app(StorageModePolicy::class)->allowedValuesFor($team)),
+            ],
         ]);
         $team->update($data);
 
@@ -102,7 +115,9 @@ class TeamController extends Controller
             'status',
             array_key_exists('check_credential_uniqueness_by_default', $data)
                 ? 'Credential uniqueness default updated.'
-                : 'Team name updated.',
+                : (array_key_exists('allowed_credential_storage_modes', $data)
+                    ? 'Permitted credential storage updated.'
+                    : 'Team name updated.'),
         );
     }
 }
