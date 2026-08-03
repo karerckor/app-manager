@@ -7,7 +7,8 @@ It provides domain-aware subcommands for all major API resources, plus generic a
 - **`builds`** — create, list, get, cancel, and patch builds
 - **`logs`** — fetch and append build logs
 - **`artifacts`** — list, download, upload, and delete build artifacts
-- **`files`** — list, download, upload, update, and delete files attached to an app
+- **`files`** — list, inspect, download, upload, update, and delete files attached to an app
+- **`assets`** — list, preview, download, upload, and delete app icons and splash screens
 - **`apps`** — list, get, create, update, and delete applications
 - **`credentials`** — manage app credentials and credential types
 - **`integrations`** — list integrations, repositories, workflows, and refs
@@ -189,9 +190,19 @@ All subcommands support `--help` for detailed usage and `--dry-run` to preview t
 ```bash
 appmctl builds list [--app APP] [--status STATUS] [--page N]
 appmctl builds get [--app APP] <build-id>
-appmctl builds create [--app APP] --profile TYPE [--request-uuid UUID] [--context JSON]
+appmctl builds create [--app APP] --profile TYPE [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
 appmctl builds cancel [--app APP] <build-id>
-appmctl builds patch [--app APP] <build-id> --status STATUS
+appmctl builds patch [--app APP] <build-id> [--status STATUS] [--tag NAME[:#HEX]]
+```
+
+`--tag` is repeatable and takes either a bare name or `NAME:#RRGGBB` for a colored
+badge. On `patch` it replaces the build's whole tag set, and at least one of
+`--status` or `--tag` must be given. Tags may be set on any build; `--status`
+transitions remain limited to manually reported builds.
+
+```bash
+appmctl builds create --profile appstore --tag ios:#3b82f6 --tag 1.0.0:#f59e0b
+appmctl builds patch bld-abc123 --tag ios:#3b82f6
 ```
 
 ### `appmctl logs`
@@ -208,6 +219,50 @@ appmctl artifacts list [--app APP] --build-id ID
 appmctl artifacts get [--app APP] --build-id ID <artifact-id> [-o FILE]
 appmctl artifacts upload [--app APP] --build-id ID --name NAME [--metadata JSON] --file FILE
 appmctl artifacts delete [--app APP] --build-id ID <artifact-id>
+```
+
+### `appmctl files`
+
+```bash
+appmctl files list [--app APP] [--per-page N]
+appmctl files show [--app APP] --name NAME
+appmctl files get [--app APP] --name NAME [-o FILE]
+appmctl files upload [--app APP] --file FILE [--metadata JSON]
+appmctl files update [--app APP] --name NAME --metadata JSON
+appmctl files delete [--app APP] --name NAME
+```
+
+Files are addressed by name, not by id. `show` returns metadata, `get` downloads
+the content. Names are percent-encoded for you, but must not contain slashes —
+use `appmctl request` for names outside the ASCII range. `--metadata` takes a
+JSON object, or the literal `null` to clear it.
+
+```bash
+appmctl files upload --file ./mapping.txt --metadata '{"channel":"beta"}'
+appmctl files show --name mapping.txt
+```
+
+### `appmctl assets`
+
+```bash
+appmctl assets list [--app APP]
+appmctl assets show [--app APP] --type icon|splashscreen [-o FILE]
+appmctl assets download [--app APP] --type icon|splashscreen [--variant VARIANT] [-o FILE]
+appmctl assets upload [--app APP] --type icon|splashscreen --file FILE
+appmctl assets delete [--app APP] --type icon|splashscreen
+```
+
+Each app has at most one icon and one splash screen, so `upload` replaces the
+existing asset. Besides the original file, the platform generates per-platform
+variants (`ios-icon-40`, `android-icon-mdpi`, and so on); `list` prints the
+download URL for the original plus every variant that has actually been
+generated, and `download --variant` fetches one of them. `show` streams the
+original inline for previewing.
+
+```bash
+appmctl assets list
+appmctl assets download --type icon --variant ios-icon-40 -o icon-40.png
+appmctl assets upload --type splashscreen --file ./splash.png
 ```
 
 ### `appmctl apps`
@@ -555,6 +610,8 @@ bash libs/cli/tests/test_credentials.sh   # Credentials subcommands
 bash libs/cli/tests/test_pipelines.sh     # Integrations + pipelines subcommands
 bash libs/cli/tests/test_webhooks.sh      # Webhooks subcommands
 bash libs/cli/tests/test_logs_artifacts.sh # Logs + artifacts subcommands
+bash libs/cli/tests/test_files.sh         # Files subcommands
+bash libs/cli/tests/test_assets.sh        # Assets (icon + splash screen) subcommands
 ```
 
 The test suite uses a mock `curl` executable and covers URL construction, secret handling, all subcommand actions, dry-run output, formatted output, and backward compatibility with `request`/`stream`. Keep the script compatible with Bash 3.2 and avoid adding runtime dependencies without updating the requirements and CI examples.

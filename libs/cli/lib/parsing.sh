@@ -20,6 +20,7 @@ Resources:
   logs            Read and write build logs
   artifacts       Manage build artifacts
   files           Manage files attached to an app
+  assets          Manage app icons and splash screens
   credentials     Manage app credentials
   integrations    Manage integrations
   pipelines       Manage CI/CD pipelines
@@ -88,7 +89,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|credentials|integrations|pipelines|webhooks)
+      request|stream|apps|builds|logs|artifacts|files|assets|credentials|integrations|pipelines|webhooks)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -112,6 +113,7 @@ dispatch_command() {
     logs) source "$cmd_dir/logs.sh"; command_logs "${REMAINING_ARGS[@]}" ;;
     artifacts) source "$cmd_dir/artifacts.sh"; command_artifacts "${REMAINING_ARGS[@]}" ;;
     files) source "$cmd_dir/files.sh"; command_files "${REMAINING_ARGS[@]}" ;;
+    assets) source "$cmd_dir/assets.sh"; command_assets "${REMAINING_ARGS[@]}" ;;
     credentials) source "$cmd_dir/credentials.sh"; command_credentials "${REMAINING_ARGS[@]}" ;;
     integrations) source "$cmd_dir/integrations.sh"; command_integrations "${REMAINING_ARGS[@]}" ;;
     pipelines) source "$cmd_dir/pipelines.sh"; command_pipelines "${REMAINING_ARGS[@]}" ;;

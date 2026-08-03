@@ -2,6 +2,35 @@
 
 # "builds" subcommands: list, get, create, cancel, patch.
 
+# Turn repeated --tag specs ("name" or "name:#rrggbb") into the [[text, color]]
+# tuples the API expects. Colorless tags carry a null color.
+_builds_tags_json() {
+  local out='[]'
+  local spec text color
+
+  for spec in "$@"; do
+    case "$spec" in
+      *:#*) text="${spec%:#*}"; color="#${spec##*:#}" ;;
+      *) text="$spec"; color="" ;;
+    esac
+
+    [ -n "$text" ] || die "--tag requires a name (use NAME or NAME:#RRGGBB)"
+
+    if [ -n "$color" ]; then
+      case "$color" in
+        \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+        *) die "tag '$text' has an invalid color '$color' (expected a hex value like #3b82f6)" ;;
+      esac
+      out=$("$JQ_BIN" -nc --argjson acc "$out" --arg t "$text" --arg c "$color" '$acc + [[$t, $c]]')
+    else
+      out=$("$JQ_BIN" -nc --argjson acc "$out" --arg t "$text" '$acc + [[$t, null]]')
+    fi
+  done
+
+  printf '%s' "$out"
+}
+
 builds_usage() {
   cat <<'EOF'
 Usage:
@@ -62,17 +91,23 @@ builds_create_usage() {
 Usage:
   appmctl builds create [--app APP] [options]
 
-Create a manual build.
+Create a build. Defaults to manual reporting mode.
 
 Options:
-  --profile TYPE        Build profile (e.g. production, staging)
-  --request-uuid UUID   Idempotency key for CI retries
-  --context JSON        Inline JSON context/metadata
+  --profile TYPE           Build profile (e.g. production, staging, appstore)
+  --request-uuid UUID      Idempotency key for CI retries
+  --context JSON           Inline JSON context/metadata
+  --reporting-mode MODE    Build reporting mode: manual (default) or eas
+  --expo-build-id ID       Expo/EAS build ID (required when reporting-mode=eas)
+  --app-identifier-id UUID Target app identifier ID
+  --tag NAME[:#HEX]        Attach a tag; repeatable (e.g. --tag ios:#3b82f6)
 
 Examples:
   appmctl builds create --app customer-app --profile production
   appmctl builds create --profile staging --request-uuid "$(uuidgen)"
   appmctl builds create --profile production --context '{"runner":"github"}'
+  appmctl builds create --profile production --reporting-mode eas --expo-build-id "abc-123"
+  appmctl builds create --profile production --tag ios:#3b82f6 --tag 1.0.0
 EOF
 }
 
@@ -91,13 +126,20 @@ EOF
 builds_patch_usage() {
   cat <<'EOF'
 Usage:
-  appmctl builds patch [--app APP] <build-id> --status STATUS
+  appmctl builds patch [--app APP] <build-id> [--status STATUS] [--tag NAME[:#HEX]]
 
-Update a build's status (for manual builds with force-status).
+Update a build's status and/or its tags. At least one of --status or --tag is
+required. Status transitions apply to manually reported builds only; tags can be
+set on any build.
+
+Options:
+  --status STATUS     New status: running, completed, failed, cancelled
+  --tag NAME[:#HEX]   Replace the tag set; repeatable (e.g. --tag ios:#3b82f6)
 
 Examples:
   appmctl builds patch bld-abc123 --status completed
   appmctl builds patch bld-abc123 --status failed
+  appmctl builds patch bld-abc123 --tag ios:#3b82f6 --tag 1.0.0
 EOF
 }
 
@@ -260,6 +302,10 @@ _builds_create() {
   local profile=""
   local request_uuid=""
   local context=""
+  local reporting_mode="manual"
+  local expo_build_id=""
+  local app_identifier_id=""
+  local tag_specs=()
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -272,6 +318,14 @@ _builds_create() {
       --request-uuid=*) request_uuid=${1#*=}; shift ;;
       --context) require_value "$1" "$2"; context="$2"; shift 2 ;;
       --context=*) context=${1#*=}; shift ;;
+      --reporting-mode) require_value "$1" "$2"; reporting_mode="$2"; shift 2 ;;
+      --reporting-mode=*) reporting_mode=${1#*=}; shift ;;
+      --expo-build-id) require_value "$1" "$2"; expo_build_id="$2"; shift 2 ;;
+      --expo-build-id=*) expo_build_id=${1#*=}; shift ;;
+      --app-identifier-id) require_value "$1" "$2"; app_identifier_id="$2"; shift 2 ;;
+      --app-identifier-id=*) app_identifier_id=${1#*=}; shift ;;
+      --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;;
+      --tag=*) tag_specs+=("${1#*=}"); shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
@@ -284,6 +338,20 @@ _builds_create() {
   APP="$app"
   require_app
   [ -n "$profile" ] || die "--profile is required"
+  case "$reporting_mode" in
+    manual|eas) ;;
+    *) die "--reporting-mode must be 'manual' or 'eas'" ;;
+  esac
+  if [ "$reporting_mode" = "eas" ] && [ -z "$expo_build_id" ]; then
+    die "--expo-build-id is required when --reporting-mode=eas"
+  fi
+
+  # Validate tags before anything else is allocated. Assign separately:
+  # `local x=$(...)` would swallow the helper's exit status.
+  local tags_json=""
+  if [ "${#tag_specs[@]}" -gt 0 ]; then
+    tags_json=$(_builds_tags_json "${tag_specs[@]}") || return 1
+  fi
 
   if [ -z "$request_uuid" ]; then
     if command_exists uuidgen; then
@@ -299,13 +367,32 @@ _builds_create() {
   fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  if [ -n "$context" ]; then
-    "$JQ_BIN" -n --arg pid "$request_uuid" --arg pf "$profile" --argjson ctx "$context" \
-      '{request_uuid: $pid, profile_type: $pf, context: $ctx}' >"$body_file"
-  else
-    "$JQ_BIN" -n --arg pid "$request_uuid" --arg pf "$profile" \
-      '{request_uuid: $pid, profile_type: $pf}' >"$body_file"
+
+  local jq_args=(--arg pid "$request_uuid" --arg pf "$profile" --arg rm "$reporting_mode")
+  local jq_filter='{request_uuid: $pid, profile_type: $pf, reporting_mode: $rm'
+
+  if [ -n "$expo_build_id" ]; then
+    jq_args+=(--arg eid "$expo_build_id")
+    jq_filter="$jq_filter, expo_build_id: \$eid"
   fi
+
+  if [ -n "$app_identifier_id" ]; then
+    jq_args+=(--arg iid "$app_identifier_id")
+    jq_filter="$jq_filter, app_identifier_id: \$iid"
+  fi
+
+  if [ -n "$context" ]; then
+    jq_args+=(--argjson ctx "$context")
+    jq_filter="$jq_filter, context: \$ctx"
+  fi
+
+  if [ -n "$tags_json" ]; then
+    jq_args+=(--argjson tags "$tags_json")
+    jq_filter="$jq_filter, tags: \$tags"
+  fi
+
+  jq_filter="$jq_filter}"
+  "$JQ_BIN" -n "${jq_args[@]}" "$jq_filter" >"$body_file"
 
   local path="apps/$APP/builds"
 
@@ -323,7 +410,7 @@ _builds_create() {
 
   api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  local fmt='{"type":"resource","fields":{"id":"id","status":"status","profile":"profile_type","request_uuid":"request_uuid","created_at":"created_at"}}'
+  local fmt='{"type":"resource","fields":{"id":"id","status":"status","profile":"profile_type","reporting_mode":"reporting_mode","request_uuid":"request_uuid","created_at":"created_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -374,6 +461,7 @@ _builds_patch() {
   local app="${APP:-}"
   local build_id=""
   local new_status=""
+  local tag_specs=()
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -381,6 +469,8 @@ _builds_patch() {
       --app=*) app=${1#*=}; shift ;;
       --status) require_value "$1" "$2"; new_status="$2"; shift 2 ;;
       --status=*) new_status=${1#*=}; shift ;;
+      --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;;
+      --tag=*) tag_specs+=("${1#*=}"); shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
@@ -398,13 +488,38 @@ _builds_patch() {
   APP="$app"
   require_app
   [ -n "$build_id" ] || die "build ID is required"
-  [ -n "$new_status" ] || die "--status is required"
+  if [ -z "$new_status" ] && [ "${#tag_specs[@]}" -eq 0 ]; then
+    die "--status or --tag is required"
+  fi
   validate_slug "build ID" "$build_id"
+
+  # Validate tags before anything else is allocated. Assign separately:
+  # `local x=$(...)` would swallow the helper's exit status.
+  local tags_json=""
+  if [ "${#tag_specs[@]}" -gt 0 ]; then
+    tags_json=$(_builds_tags_json "${tag_specs[@]}") || return 1
+  fi
 
   local path="apps/$APP/builds/$build_id"
   local body_file
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
-  printf '{"status":"%s"}' "$new_status" >"$body_file"
+
+  local jq_args=()
+  local jq_filter='{'
+
+  if [ -n "$new_status" ]; then
+    jq_args+=(--arg st "$new_status")
+    jq_filter="${jq_filter}status: \$st"
+  fi
+
+  if [ -n "$tags_json" ]; then
+    jq_args+=(--argjson tags "$tags_json")
+    [ -n "$new_status" ] && jq_filter="$jq_filter, "
+    jq_filter="${jq_filter}tags: \$tags"
+  fi
+
+  jq_filter="$jq_filter}"
+  "$JQ_BIN" -nc "${jq_args[@]}" "$jq_filter" >"$body_file"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     local url
@@ -420,7 +535,11 @@ _builds_patch() {
 
   api_patch "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
   rm -f -- "$body_file"
-  printf 'Build %s updated to %s\n' "$build_id" "$new_status"
+  if [ -n "$new_status" ]; then
+    printf 'Build %s updated to %s\n' "$build_id" "$new_status"
+  else
+    printf 'Build %s tags updated\n' "$build_id"
+  fi
 }
 
 _builds_wait() {

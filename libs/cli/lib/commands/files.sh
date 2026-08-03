@@ -9,6 +9,7 @@ Usage:
 
 Actions:
   list                List files attached to an app
+  show                Show a single file's metadata
   get                 Download a file
   upload              Attach a file to an app
   update              Replace a file's metadata
@@ -16,7 +17,7 @@ Actions:
 
 Options:
   --app APP           App slug (default: APP_MANAGER_APP)
-  --name NAME         File name (required for get, update, delete)
+  --name NAME         File name (required for show, get, update, delete)
   --file FILE         File to upload (upload)
   --metadata JSON     JSON object with metadata (upload, update; "null" clears)
   --per-page N        Page size for list
@@ -61,12 +62,13 @@ command_files() {
 
   case "$action" in
     list) _files_list "$@" ;;
+    show) _files_show "$@" ;;
     get) _files_get "$@" ;;
     upload) _files_upload "$@" ;;
     update) _files_update "$@" ;;
     delete) _files_delete "$@" ;;
     -h|--help|"") files_usage; [ -z "$action" ] && return 1; return 0 ;;
-    *) die "unknown files action: $action (use list, get, upload, update, delete)" ;;
+    *) die "unknown files action: $action (use list, show, get, upload, update, delete)" ;;
   esac
 }
 
@@ -115,6 +117,55 @@ _files_list() {
 
   api_get "$path" || return 1
   local fmt='{"type":"table","fields":["name","mime_type","size","created_at"],"headers":["name","type","size","created_at"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_files_show() {
+  local app="${APP:-}"
+  local name=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --name) require_value "$1" "$2"; name="$2"; shift 2 ;;
+      --name=*) name=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl files show [--app APP] --name NAME\n'
+        return 0
+        ;;
+      -*) die "unknown files show option: $1" ;;
+      *)
+        [ -z "$name" ] || die "unexpected argument: $1"
+        name="$1"
+        shift
+        ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$name" ] || die "--name is required"
+  validate_file_name "$name"
+
+  local path="apps/$APP/files/$(url_encode_segment "$name")"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: GET\n'
+    printf 'url: %s\n' "$url"
+    return 0
+  fi
+
+  api_get "$path" || return 1
+  # "metadata" is an object; render it as compact JSON so the aligned output
+  # stays on one line, and blank when the file carries no metadata.
+  local fmt='{"type":"resource","fields":{"name":"name","extension":"extension","mime_type":"mime_type","size":"size","metadata":"metadata // empty | tojson","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 

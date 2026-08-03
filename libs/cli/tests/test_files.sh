@@ -32,6 +32,25 @@ assert_contains "$output" 'release-notes.pdf' 'files list returns data'
 assert_contains "$(cat "$MOCK_LOG")" 'apps/customer-app/files' 'files list hits the files endpoint'
 pass 'files list'
 
+# --- files show (metadata) ---
+: >"$MOCK_LOG"
+output=$("$CLI" files show --name release-notes.pdf 2>&1)
+assert_contains "$output" 'release-notes.pdf' 'files show prints the name'
+assert_contains "$output" 'application/pdf' 'files show prints the mime type'
+assert_contains "$output" '{"channel":"beta"}' 'files show prints metadata on one line'
+log_contents=$(cat "$MOCK_LOG")
+assert_contains "$log_contents" 'files/release-notes.pdf' 'files show hits the metadata endpoint'
+case "$log_contents" in
+  */content*) fail 'files show must not hit the content endpoint' ;;
+esac
+pass 'files show'
+
+# --- files show accepts a positional name ---
+: >"$MOCK_LOG"
+"$CLI" files show 'report (1).pdf' >/dev/null 2>&1
+assert_contains "$(cat "$MOCK_LOG")" 'report%20%281%29.pdf' 'files show percent-encodes a positional name'
+pass 'files show positional name'
+
 # --- files get (download) ---
 : >"$MOCK_LOG"
 output_file="$TEST_DIR/downloaded.pdf"
@@ -82,4 +101,4 @@ dry=$("$CLI" --dry-run files list 2>&1)
 assert_contains "$dry" 'dry-run' 'files list dry-run'
 pass 'files list dry-run'
 
-printf '1..8\n'
+printf '1..10\n'

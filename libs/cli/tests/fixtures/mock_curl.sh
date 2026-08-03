@@ -106,6 +106,20 @@ case "$rel_path" in
   apps/*/credentials)
     printf '{"data":[{"id":"cred-001","credential_type":{"slug":"android_keystore"},"build_profile":"production","created_at":"2025-01-15"}]}' >"$output"
     ;;
+  # --- assets (icon/splashscreen) ---
+  apps/*/assets/*/files/*)
+    printf 'fake-asset-content' >"$output"
+    ;;
+  apps/*/assets/*)
+    case "$method" in
+      POST) printf '{"data":{"slug":"customer-app","name":"Customer App","created_at":"2025-01-15"}}' >"$output" ;;
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+      *) printf 'fake-asset-preview' >"$output" ;;
+    esac
+    ;;
+  apps/*/assets)
+    printf '{"data":{"icon.original":"https://manager.example/api/v1/mobile-team/apps/customer-app/assets/icon/files/original","icon.ios-icon-40":"https://manager.example/api/v1/mobile-team/apps/customer-app/assets/icon/files/ios-icon-40","splashscreen.original":"https://manager.example/api/v1/mobile-team/apps/customer-app/assets/splashscreen/files/original"}}' >"$output"
+    ;;
   # --- files (app media library) ---
   apps/*/files/*/content)
     printf 'fake-file-content' >"$output"
@@ -113,7 +127,7 @@ case "$rel_path" in
   apps/*/files/*)
     case "$method" in
       DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
-      *) printf '{"data":{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"}}' >"$output" ;;
+      *) printf '{"data":{"id":"file-001","name":"release-notes.pdf","extension":"pdf","mime_type":"application/pdf","size":2048,"metadata":{"channel":"beta"},"created_at":"2026-07-31","updated_at":"2026-08-01"}}' >"$output" ;;
     esac
     ;;
   apps/*/files)
@@ -121,10 +135,6 @@ case "$rel_path" in
       POST) printf '{"data":{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"}}' >"$output" ;;
       *) printf '{"data":[{"id":"file-001","name":"release-notes.pdf","mime_type":"application/pdf","size":2048,"created_at":"2026-07-31"},{"id":"file-002","name":"mapping.txt","mime_type":"text/plain","size":512,"created_at":"2026-07-30"}]}' >"$output" ;;
     esac
-    ;;
-  # --- assets (icon/splashscreen) ---
-  apps/*/assets/*)
-    printf '{"data":{"ok":true}}' >"$output"
     ;;
   # --- identifiers ---
   apps/*/identifiers/*)

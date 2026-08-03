@@ -96,10 +96,47 @@ request_body=$(grep -o '"status":"completed"' "$MOCK_LOG" || true)
 [ -n "$request_body" ] || fail 'builds patch sends status in body'
 pass 'builds patch'
 
+# --- builds create with tags ---
+: >"$MOCK_LOG"
+output=$("$CLI" --json builds create --app customer-app --profile production \
+  --tag 'ios:#3b82f6' --tag '1.0.0' 2>&1)
+assert_contains "$output" 'bld-003' 'builds create with tags returns new build'
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$log_line" 'tags' 'builds create sends tags in body'
+assert_contains "$log_line" '"ios"' 'builds create sends tag name'
+assert_contains "$log_line" '"#3b82f6"' 'builds create sends tag color'
+assert_contains "$log_line" '"1.0.0"' 'builds create sends colorless tag'
+pass 'builds create with tags'
+
+# --- builds patch tags only (no status) ---
+: >"$MOCK_LOG"
+output=$("$CLI" builds patch --app customer-app bld-001 --tag 'android:#22c55e' 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$log_line" '"tags":[["android","#22c55e"]]' 'builds patch sends tags-only body'
+assert_not_contains "$log_line" '"status"' 'builds patch omits status when not given'
+pass 'builds patch with tags only'
+
+# --- builds patch status and tags together ---
+: >"$MOCK_LOG"
+output=$("$CLI" builds patch --app customer-app bld-001 --status completed --tag 'web' 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$log_line" '"status":"completed"' 'builds patch keeps status alongside tags'
+assert_contains "$log_line" '"tags":[["web",null]]' 'builds patch sends colorless tag as null'
+pass 'builds patch with status and tags'
+
+# --- builds rejects a malformed tag color ---
+set +e
+bad_output=$("$CLI" builds patch --app customer-app bld-001 --tag 'ios:#blue' 2>&1)
+bad_code=$?
+set -e
+[ "$bad_code" -ne 0 ] || fail 'builds patch should reject an invalid tag color'
+assert_contains "$bad_output" 'hex' 'invalid tag color explains the expected format'
+pass 'builds rejects invalid tag color'
+
 # --- builds --help ---
 help_output=$("$CLI" builds --help 2>&1)
 assert_contains "$help_output" 'list' 'builds help lists actions'
 assert_contains "$help_output" 'create' 'builds help mentions create'
 pass 'builds --help'
 
-printf '1..7\n'
+printf '1..11\n'
