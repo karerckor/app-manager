@@ -45,13 +45,14 @@
     export let vaultProviders = [];
     export let allowedStorageModes = ['local'];
     export let filters = {};
-    export let stats = { total: 0, expiring: 0, expired: 0, missing_files: 0, unattached: 0, never: 0 };
+    export let stats = { total: 0, expiring: 0, expired: 0, missing_files: 0, unattached: 0, never: 0, verification_failed: 0 };
     export let tagSuggestions = [];
 
     let query = filters.search ?? '';
     let type = filters.type ?? '';
     let status = filters.status ?? '';
     let app = filters.app ?? '';
+    let storage = filters.storage ?? '';
     let sort = filters.sort ?? 'updated';
     let searchTimer;
     let showCredential = false;
@@ -73,7 +74,7 @@
         .map((link) => link.url ?? link.label)
         .join('|');
     $: hasConfiguredApps = apps.some((item) => item.identifiers.length);
-    $: hasFilters = Boolean(query || type || status || app || sort !== 'updated');
+    $: hasFilters = Boolean(query || type || status || app || storage || sort !== 'updated');
     $: iosCredentialTypes = credentialTypes.filter((definition) => definition.platforms.includes('ios'));
     $: androidCredentialTypes = credentialTypes.filter((definition) => definition.platforms.includes('android'));
     $: statusChips = [
@@ -83,6 +84,7 @@
         { value: 'unattached', label: 'Unattached', count: stats.unattached, tone: 'amber' },
         { value: 'missing_file', label: 'No file', count: stats.missing_files, tone: 'amber' },
         { value: 'never', label: 'No expiry', count: stats.never, tone: 'neutral' },
+        { value: 'verification_failed', label: 'Verification failed', count: stats.verification_failed, tone: 'rose' },
     ];
 
     const schemaFor = (value) => credentialTypes.find((definition) => definition.value === value);
@@ -152,6 +154,7 @@
         type: type || undefined,
         status: status || undefined,
         app: app || undefined,
+        storage: storage || undefined,
         sort: sort === 'updated' ? undefined : sort,
     }, {
         only: ['credentials', 'filters'],
@@ -168,6 +171,7 @@
         type = '';
         status = '';
         app = '';
+        storage = '';
         sort = 'updated';
         visitFilters();
     };
@@ -306,7 +310,7 @@
             />
         </div>
 
-        <div class="mb-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_190px_180px_170px_auto]">
+        <div class="mb-4 grid gap-2 md:grid-cols-[minmax(220px,1fr)_190px_180px_160px_170px_auto]">
             <label class="relative">
                 <span class="sr-only">Search credentials</span>
                 <Search class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-faint" />
@@ -319,6 +323,10 @@
             <label>
                 <span class="sr-only">Application</span>
                 <Select bind:value={app} options={[{ value: '', label: 'All applications' }, ...apps.map((item) => ({ value: item.id, label: item.name }))]} ariaLabel="Application" on:change={visitFilters} />
+            </label>
+            <label>
+                <span class="sr-only">Storage</span>
+                <Select bind:value={storage} options={[{ value: '', label: 'All storage' }, { value: 'local', label: 'In App Manager' }, { value: 'external', label: 'In my vault' }]} ariaLabel="Storage" on:change={visitFilters} />
             </label>
             <label>
                 <span class="sr-only">Sort order</span>
@@ -356,8 +364,13 @@
                                             {credential.name}
                                         </button>
                                         <p class="mt-0.5 truncate text-[11px] text-faint">
-                                            {typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} secure field${credential.fields.length === 1 ? '' : 's'}` : ''} ·
-                                            {#if credential.file}<span class="font-mono">{credential.file.name}</span>{:else}<span class="font-medium text-warn-fill">no secure file uploaded</span>{/if}
+                                            {#if credential.storage_mode === 'external'}
+                                                {typeLabel(credential.type)} · {credential.vault.provider_label} ·
+                                                <span class="font-mono">{credential.vault.resource}</span>
+                                            {:else}
+                                                {typeLabel(credential.type)}{credential.fields.length ? ` · ${credential.fields.length} secure field${credential.fields.length === 1 ? '' : 's'}` : ''} ·
+                                                {#if credential.file}<span class="font-mono">{credential.file.name}</span>{:else}<span class="font-medium text-warn-fill">no secure file uploaded</span>{/if}
+                                            {/if}
                                         </p>
                                         {#if credential.tags.length || canManage}
                                             <div class="mt-1">
@@ -380,17 +393,26 @@
                                 </div>
 
                                 <div>
-                                    {#if credential.expiration.status === 'never'}
-                                        <div class="border-t border-dashed border-border" aria-hidden="true"></div>
-                                    {:else if credential.expiration.status === 'expired'}
-                                        <div class="h-1 overflow-hidden rounded-full bg-danger/10" aria-hidden="true">
-                                            <span class="block h-full w-full rounded-full bg-danger"></span>
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="min-w-0 flex-1">
+                                            {#if credential.expiration.status === 'never'}
+                                                <div class="border-t border-dashed border-border" aria-hidden="true"></div>
+                                            {:else if credential.expiration.status === 'expired'}
+                                                <div class="h-1 overflow-hidden rounded-full bg-danger/10" aria-hidden="true">
+                                                    <span class="block h-full w-full rounded-full bg-danger"></span>
+                                                </div>
+                                            {:else}
+                                                <div class="h-1 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true">
+                                                    <span class="block h-full rounded-full {runwayFill(credential.expiration)} motion-safe:transition-[width] motion-safe:duration-300" style="width: {runwayWidth(credential.expiration)}%"></span>
+                                                </div>
+                                            {/if}
                                         </div>
-                                    {:else}
-                                        <div class="h-1 overflow-hidden rounded-full bg-surface-sunken" aria-hidden="true">
-                                            <span class="block h-full rounded-full {runwayFill(credential.expiration)} motion-safe:transition-[width] motion-safe:duration-300" style="width: {runwayWidth(credential.expiration)}%"></span>
-                                        </div>
-                                    {/if}
+                                        {#if credential.vault?.verification.status === 'failed'}
+                                            <span class="shrink-0 rounded bg-danger/10 px-1 py-0.5 text-[10px] font-bold text-danger" title={credential.vault.verification.error}>Verification failed</span>
+                                        {:else if credential.vault?.verification.status === 'unverified'}
+                                            <span class="shrink-0 rounded bg-surface-sunken px-1 py-0.5 text-[10px] font-bold text-muted">Not verified</span>
+                                        {/if}
+                                    </div>
                                     <p class="mt-1.5 font-mono text-[11px] font-semibold tabular-nums {validityTone(credential.expiration.status)}">{validityLabel(credential.expiration)}</p>
                                 </div>
 
