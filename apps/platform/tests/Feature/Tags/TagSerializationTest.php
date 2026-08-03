@@ -25,7 +25,7 @@ class TagSerializationTest extends TestCase
     {
         $app = MobileApp::factory()->create();
         $app->syncTags([['a', null]])->save();
-        $this->assertSame([['a', null]], (new MobileAppResource($app))->toArray(request())['tags']);
+        $this->assertSame([['a']], (new MobileAppResource($app))->toArray(request())['tags']);
         $this->assertArrayHasKey('tags', (new MobileAppResource($app))->toArray(request()));
 
         $credential = Credential::factory()->create();
@@ -34,11 +34,11 @@ class TagSerializationTest extends TestCase
 
         $build = BuildRecord::factory()->create();
         $build->syncTags([['c', null]])->save();
-        $this->assertSame([['c', null]], (new BuildRecordResource($build))->toArray(request())['tags']);
+        $this->assertSame([['c']], (new BuildRecordResource($build))->toArray(request())['tags']);
 
         $artifact = Artifact::factory()->create();
         $artifact->syncTags([['d', null]])->save();
-        $this->assertSame([['d', null]], (new ArtifactResource($artifact))->toArray(request())['tags']);
+        $this->assertSame([['d']], (new ArtifactResource($artifact))->toArray(request())['tags']);
     }
 
     public function test_show_page_exposes_tags_and_urls(): void

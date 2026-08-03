@@ -40,7 +40,7 @@ class TagsEndpointTest extends TestCase
             ])
             ->assertRedirect();
 
-        $this->assertSame([['bug', '#ff0000'], ['urgent', null]], $app->fresh()->tags);
+        $this->assertSame([['bug', '#ff0000'], ['urgent']], $app->fresh()->tags);
     }
 
     public function test_app_tag_update_records_webhook_event(): void
@@ -88,7 +88,7 @@ class TagsEndpointTest extends TestCase
             ->patch("/accounts/{$team->slug}/apps/{$app->slug}/builds/{$build->id}/tags", [
                 'tags' => [['nightly', null]],
             ])->assertRedirect();
-        $this->assertSame([['nightly', null]], $build->fresh()->tags);
+        $this->assertSame([['nightly']], $build->fresh()->tags);
 
         $this->actingAs($user)
             ->patch("/accounts/{$team->slug}/apps/{$app->slug}/builds/{$build->id}/artifacts/{$artifact->id}/tags", [

@@ -14,7 +14,7 @@ class TagRulesTest extends TestCase
 
     public function test_normalize_drops_empty_text(): void
     {
-        $this->assertSame([['ok', null]], TagRules::normalize([['   ', '#fff'], ['ok', null]]));
+        $this->assertSame([['ok']], TagRules::normalize([['   ', '#fff'], ['ok', null]]));
     }
 
     public function test_normalize_dedupes_case_insensitively_first_wins(): void
@@ -22,9 +22,9 @@ class TagRulesTest extends TestCase
         $this->assertSame([['Bug', '#111111']], TagRules::normalize([['Bug', '#111111'], ['bug', '#222222']]));
     }
 
-    public function test_normalize_coerces_missing_color_to_null(): void
+    public function test_normalize_compacts_a_missing_color(): void
     {
-        $this->assertSame([['urgent', null]], TagRules::normalize([['urgent']]));
+        $this->assertSame([['urgent']], TagRules::normalize([['urgent']]));
     }
 
     public function test_normalize_handles_null_input(): void
@@ -46,14 +46,14 @@ class TagRulesTest extends TestCase
         $this->assertContains('array', $rules['tags.*']);
     }
 
-    public function test_normalize_coerces_non_string_color_to_null(): void
+    public function test_normalize_compacts_a_non_string_color(): void
     {
-        $this->assertSame([['ok', null]], TagRules::normalize([['ok', 123]]));
+        $this->assertSame([['ok']], TagRules::normalize([['ok', 123]]));
     }
 
-    public function test_normalize_accepts_legacy_string_tags_and_ignores_extra_elements(): void
+    public function test_normalize_accepts_legacy_string_tags(): void
     {
-        $this->assertSame([['plain', null], ['ok', '#fff']], TagRules::normalize(['plain', ['ok', '#fff', 'extra']]));
+        $this->assertSame([['plain'], ['ok', '#fff']], TagRules::normalize(['plain', ['ok', '#fff']]));
     }
 
     public function test_normalize_compacts_a_text_only_tag(): void

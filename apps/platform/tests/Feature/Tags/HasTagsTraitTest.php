@@ -16,7 +16,7 @@ class HasTagsTraitTest extends TestCase
         $app = MobileApp::factory()->create();
         $app->syncTags([['bug', '#ff0000'], ['urgent', null]])->save();
 
-        $this->assertSame([['bug', '#ff0000'], ['urgent', null]], $app->fresh()->tags);
+        $this->assertSame([['bug', '#ff0000'], ['urgent']], $app->fresh()->tags);
     }
 
     public function test_add_and_remove_tag(): void
@@ -55,10 +55,10 @@ class HasTagsTraitTest extends TestCase
 
         $app = $app->fresh();
 
-        $this->assertSame([['demo', null], ['ios', null]], $app->tags);
+        $this->assertSame([['demo'], ['ios']], $app->tags);
 
         $app->removeTag('demo')->save();
 
-        $this->assertSame([['ios', null]], $app->fresh()->tags);
+        $this->assertSame([['ios']], $app->fresh()->tags);
     }
 }
