@@ -186,39 +186,25 @@ class CredentialDashboardOnlyProfileTest extends TestCase
         [$user, $team] = $this->workspace();
         $this->authenticate($user, $team, [ApiKeyScope::WebhooksWrite]);
 
-        // Simulates an endpoint that subscribed to a credential event back
-        // when the instance ran `full`, before it switched to
-        // `dashboard_only`. It cannot be created this way through the API
-        // under the current profile, which is exactly the point.
-        $integration = Integration::factory()->create([
-            'team_id' => $team->id,
-            'kind' => IntegrationKind::Webhook,
-            'provider' => IntegrationProvider::Http,
-        ]);
-        $endpoint = WebhookEndpoint::factory()->create([
-            'team_id' => $team->id,
-            'integration_id' => $integration->id,
-            'subscribed_events' => [
+        $endpoint = $this->credentialSubscribedEndpoint($team);
+
+        // The dashboard form seeds itself from [...endpoint.events], so a
+        // PATCH that only changes the URL still echoes every currently
+        // stored event back — including the credential one. That echo is
+        // the failure mode this reproduces: submit `events` explicitly,
+        // carrying the stored credential event, exactly as the form would.
+        $this->patchJson("/api/v1/{$team->slug}/webhooks/{$endpoint->id}", [
+            'url' => 'https://example.test/new-hook',
+            'events' => [
                 WebhookEventType::CredentialExpired->value,
                 WebhookEventType::BuildCompleted->value,
             ],
-        ]);
-        $integration->update(['external_id' => $endpoint->id]);
-
-        // Changing an unrelated field (the URL) must succeed without the
-        // stored credential event being rejected by the update validator.
-        $this->patchJson("/api/v1/{$team->slug}/webhooks/{$endpoint->id}", [
-            'url' => 'https://example.test/new-hook',
         ])->assertOk();
 
-        $this->assertSame(
-            'https://example.test/new-hook',
-            $endpoint->fresh()->url,
-        );
-        $this->assertContains(
-            WebhookEventType::CredentialExpired->value,
-            $endpoint->fresh()->subscribed_events,
-        );
+        $endpoint->refresh();
+        $this->assertSame('https://example.test/new-hook', $endpoint->url);
+        $this->assertContains(WebhookEventType::CredentialExpired->value, $endpoint->subscribed_events);
+        $this->assertContains(WebhookEventType::BuildCompleted->value, $endpoint->subscribed_events);
 
         // A brand-new endpoint gets no such allowance: creation always
         // validates against what is subscribable right now.
@@ -227,6 +213,45 @@ class CredentialDashboardOnlyProfileTest extends TestCase
             'url' => 'https://example.test/new',
             'events' => [WebhookEventType::CredentialExpired->value],
         ])->assertUnprocessable()->assertJsonValidationErrors('events.0');
+    }
+
+    public function test_the_dashboard_update_route_also_preserves_a_stored_credential_event(): void
+    {
+        config([
+            'integrations.enabled' => true,
+            'integrations.webhooks.enabled' => true,
+            'webhooks.allow_private_addresses' => true,
+        ]);
+
+        [$user, $team] = $this->workspace();
+        $endpoint = $this->credentialSubscribedEndpoint($team);
+
+        // Same failure mode as the API test above, reproduced against the
+        // dashboard (Inertia/session) controller rather than the JSON API
+        // one — the two controllers have independent `rules()` methods.
+        $this->actingAs($user)
+            ->patch(route('accounts.integrations.webhooks.update', [$team, $endpoint]), [
+                'url' => 'https://example.test/dashboard-hook',
+                'events' => [
+                    WebhookEventType::CredentialExpired->value,
+                    WebhookEventType::BuildCompleted->value,
+                ],
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+
+        $endpoint->refresh();
+        $this->assertSame('https://example.test/dashboard-hook', $endpoint->url);
+        $this->assertContains(WebhookEventType::CredentialExpired->value, $endpoint->subscribed_events);
+        $this->assertContains(WebhookEventType::BuildCompleted->value, $endpoint->subscribed_events);
+
+        $this->actingAs($user)
+            ->post(route('accounts.integrations.webhooks.store', $team), [
+                'name' => 'New dashboard hook',
+                'url' => 'https://example.test/new-dashboard',
+                'events' => [WebhookEventType::CredentialExpired->value],
+            ])
+            ->assertSessionHasErrors('events.0');
     }
 
     public function test_the_reveal_scope_cannot_be_granted_to_a_new_api_key(): void
@@ -269,6 +294,32 @@ class CredentialDashboardOnlyProfileTest extends TestCase
         $identifier->credentials()->attach($credential);
 
         return [$user->fresh(), $team, $app, $credential, $identifier];
+    }
+
+    /**
+     * Simulates an endpoint that subscribed to a credential event back when
+     * the instance ran `full`, before it switched to `dashboard_only`. It
+     * cannot be created this way through either controller under the
+     * current profile, which is exactly the point.
+     */
+    private function credentialSubscribedEndpoint(Team $team): WebhookEndpoint
+    {
+        $integration = Integration::factory()->create([
+            'team_id' => $team->id,
+            'kind' => IntegrationKind::Webhook,
+            'provider' => IntegrationProvider::Http,
+        ]);
+        $endpoint = WebhookEndpoint::factory()->create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'subscribed_events' => [
+                WebhookEventType::CredentialExpired->value,
+                WebhookEventType::BuildCompleted->value,
+            ],
+        ]);
+        $integration->update(['external_id' => $endpoint->id]);
+
+        return $endpoint;
     }
 
     /** @param list<ApiKeyScope> $scopes */
