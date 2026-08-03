@@ -45,6 +45,19 @@ enum ApiKeyScope: string
         );
     }
 
+    /** @return list<string> */
+    public static function assignableValues(): array
+    {
+        if (CredentialApiProfile::current()->exposesSecretMaterial()) {
+            return self::values();
+        }
+
+        return array_values(array_filter(
+            self::values(),
+            fn (string $scope): bool => $scope !== self::CredentialsReveal->value,
+        ));
+    }
+
     /**
      * @return list<array{key: string, label: string, scopes: list<array{value: string, label: string, description: string}>}>
      */
@@ -87,7 +100,7 @@ enum ApiKeyScope: string
                 'name' => 'CI/CD pipeline',
                 'label' => 'CI/CD pipeline',
                 'description' => 'Reads release inputs and credentials, then reports builds, logs, and artifacts.',
-                'scopes' => [
+                'scopes' => array_values(array_intersect([
                     self::AppsRead->value,
                     self::IdentifiersRead->value,
                     self::AssetsRead->value,
@@ -98,7 +111,7 @@ enum ApiKeyScope: string
                     self::BuildsWrite->value,
                     self::LogsWrite->value,
                     self::ArtifactsWrite->value,
-                ],
+                ], self::assignableValues())),
             ],
         ];
     }

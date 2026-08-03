@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Enums\CredentialApiProfile;
 use App\Models\CredentialVaultReference;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,11 +35,13 @@ class CredentialResource extends JsonResource
                 'name' => $media->file_name,
                 'mime_type' => $media->mime_type,
                 'size' => $media->size,
-                'url' => route('api.v1.apps.credentials.file.show', [
-                    'team' => $request->route('team'),
-                    'mobileApp' => $mobileApp,
-                    'credential' => $this->resource,
-                ]),
+                'url' => CredentialApiProfile::current()->exposesSecretMaterial()
+                    ? route('api.v1.apps.credentials.file.show', [
+                        'team' => $request->route('team'),
+                        'mobileApp' => $mobileApp,
+                        'credential' => $this->resource,
+                    ])
+                    : null,
             ] : null,
             'storage_mode' => $this->storage_mode->value,
             'vault' => $this->resource->relationLoaded('vaultReference')

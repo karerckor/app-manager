@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CredentialApiProfile;
 use App\Http\Controllers\Api\V1\AppAssetController;
 use App\Http\Controllers\Api\V1\AppFileController;
 use App\Http\Controllers\Api\V1\AppIdentifierController;
@@ -140,22 +141,6 @@ Route::prefix('v1/{team:slug}')
                 'team.permission:manage_integrations',
             ])
             ->name('apps.expo.identifiers.sync');
-        Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/provision', [ExpoCredentialController::class, 'provision'])
-            ->middleware([
-                'abilities:identifiers:write,credentials:write,integrations:write',
-                'team.permission:manage_applications',
-                'team.permission:manage_credentials',
-                'team.permission:manage_integrations',
-            ])
-            ->name('apps.expo.identifiers.provision');
-        Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/credentials/{credential}', [ExpoCredentialController::class, 'store'])
-            ->middleware([
-                'abilities:credentials:write,integrations:write',
-                'team.permission:manage_credentials',
-                'team.permission:manage_integrations',
-            ])
-            ->name('apps.expo.credentials.store');
-
         Route::get('/apps/{mobileApp:slug}/assets', [AppAssetController::class, 'files'])
             ->middleware(['abilities:assets:read', 'team.permission:view'])
             ->name('apps.assets.files.index');
@@ -211,12 +196,31 @@ Route::prefix('v1/{team:slug}')
                 'throttle:60,1',
             ])
             ->name('apps.credentials.verification.store');
-        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/reveal', [CredentialController::class, 'reveal'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials', 'throttle:30,1'])->name('apps.credentials.reveal');
         Route::patch('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'update'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.update');
         Route::delete('/apps/{mobileApp:slug}/credentials/{credential}', [CredentialController::class, 'destroy'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.destroy');
-        Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials'])->name('apps.credentials.file.show');
-        Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.store');
-        Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.destroy');
+
+        if (CredentialApiProfile::current()->exposesSecretMaterial()) {
+            Route::post('/apps/{mobileApp:slug}/credentials/{credential}/reveal', [CredentialController::class, 'reveal'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials', 'throttle:30,1'])->name('apps.credentials.reveal');
+            Route::get('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'download'])->middleware(['abilities:credentials:reveal', 'team.permission:manage_credentials'])->name('apps.credentials.file.show');
+            Route::post('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'upload'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.store');
+            Route::delete('/apps/{mobileApp:slug}/credentials/{credential}/file', [CredentialController::class, 'destroyFile'])->middleware(['abilities:credentials:write', 'team.permission:manage_credentials'])->name('apps.credentials.file.destroy');
+
+            Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/provision', [ExpoCredentialController::class, 'provision'])
+                ->middleware([
+                    'abilities:identifiers:write,credentials:write,integrations:write',
+                    'team.permission:manage_applications',
+                    'team.permission:manage_credentials',
+                    'team.permission:manage_integrations',
+                ])
+                ->name('apps.expo.identifiers.provision');
+            Route::post('/apps/{mobileApp:slug}/expo/identifiers/{appIdentifier}/credentials/{credential}', [ExpoCredentialController::class, 'store'])
+                ->middleware([
+                    'abilities:credentials:write,integrations:write',
+                    'team.permission:manage_credentials',
+                    'team.permission:manage_integrations',
+                ])
+                ->name('apps.expo.credentials.store');
+        }
 
         Route::get('/api-keys', [TeamApiKeyController::class, 'index'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.index');
         Route::get('/api-keys/{apiKey}', [TeamApiKeyController::class, 'show'])->middleware(['abilities:api-keys:read', 'team.permission:manage_team'])->name('api-keys.show');

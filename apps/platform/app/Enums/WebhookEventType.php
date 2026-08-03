@@ -42,9 +42,12 @@ enum WebhookEventType: string
     /** @return list<string> */
     public static function subscribableValues(): array
     {
+        $credentialsExposed = CredentialApiProfile::current()->exposesSecretMaterial();
+
         return array_values(array_filter(
             self::values(),
-            fn (string $event) => $event !== self::WebhookTest->value,
+            fn (string $event): bool => $event !== self::WebhookTest->value
+                && ($credentialsExposed || ! self::from($event)->isCredentialEvent()),
         ));
     }
 

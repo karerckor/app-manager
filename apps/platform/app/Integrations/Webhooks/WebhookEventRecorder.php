@@ -2,6 +2,7 @@
 
 namespace App\Integrations\Webhooks;
 
+use App\Enums\CredentialApiProfile;
 use App\Enums\WebhookEventType;
 use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Jobs\Notifications\PublishNotificationEvent;
@@ -32,6 +33,11 @@ class WebhookEventRecorder
     ): ?WebhookEvent {
         if ($dispatchExpoSync && $aggregate instanceof Model) {
             $this->expoAutoSync->dispatchForAggregate($aggregate);
+        }
+
+        if ($eventType->isCredentialEvent()
+            && ! CredentialApiProfile::current()->exposesSecretMaterial()) {
+            return null;
         }
 
         $webhooksEnabled = (bool) config('integrations.webhooks.enabled');
