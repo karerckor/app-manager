@@ -1,0 +1,159 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Expo EAS" activeNav="/platform/integrations/eas">
+  <h1>Expo EAS</h1>
+  <p>
+    The Expo integration connects an Expo account, links its projects to applications here, and keeps
+    identifiers, credentials and builds in step between the two systems. It is the one integration
+    where both sides hold overlapping state, so most of this page is about which side owns what.
+  </p>
+
+  <Screenshot
+    src="integrations-eas"
+    alt="The Expo EAS tab with no account connected, offering a Connect Expo action"
+    caption="The empty state. Everything below requires a connected Expo account."
+  />
+  <p>
+    The screenshot shows the tab with nothing connected, which is what a new workspace looks like.
+    The connected views are not captured here: rendering them calls Expo's API, so they need real
+    Expo credentials that the documentation data deliberately does not carry.
+  </p>
+
+  <h2>Two scopes: the account and the project link</h2>
+  <p>
+    This distinction runs through the whole feature, including the CLI:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Scope</th><th>Belongs to</th><th>Holds</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Expo account</strong></td>
+        <td>An integration in the workspace</td>
+        <td>The access token, and the list of projects that account can see</td>
+      </tr>
+      <tr>
+        <td><strong>Project link</strong></td>
+        <td>One application</td>
+        <td>Which Expo project this app is, and its sync state</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Connecting an account does not link anything by itself, and unlinking one app leaves the account
+    connected for the others.
+  </p>
+
+  <h2>Connecting an account</h2>
+  <p>
+    <strong>Connect Expo</strong> takes an Expo access token. If the token can see more than one
+    account, you also choose which one. The token is encrypted at rest and used for every later call —
+    listing projects, syncing, provisioning credentials.
+  </p>
+  <p>
+    Unlike GitHub and GitLab, this connection is <em>not</em> browser-only: it is a token, so
+    <a href="/guides/cli/integrations/eas"><code>appmctl eas connect</code></a> does the same job from
+    a script.
+  </p>
+
+  <h2>Importing and linking projects</h2>
+  <p>
+    Once connected, the tab lists the projects the account can see, with whether each still exists on
+    Expo. From there:
+  </p>
+  <ul>
+    <li>
+      <strong>Import</strong> creates an App Manager application from an Expo project — the quick path
+      when Expo is already your source of truth.
+    </li>
+    <li>
+      <strong>Link</strong> attaches an existing application to an Expo project, either to one that
+      already exists or by creating a new Expo project for it.
+    </li>
+  </ul>
+  <p>
+    Projects can be imported in batches, which matters when an account holds dozens.
+  </p>
+
+  <h2>The per-application Expo screen</h2>
+  <p>
+    A linked application gains an Expo screen of its own, reachable from the application. It shows the
+    linked project, its account, whether it still exists upstream, the last sync, and recent Expo
+    builds and submissions.
+  </p>
+  <p>
+    That screen returns <code>404</code> when the app has no linked project — the absence of a link is
+    not an empty state but a missing resource, which is worth knowing before assuming the page is
+    broken.
+  </p>
+
+  <h3>Automatic sync</h3>
+  <p>
+    With automatic sync on, the platform keeps the link current without being asked: mirrored EAS build
+    records advance on their own, and identifier and icon changes propagate. It cannot be enabled while
+    the project is missing upstream or the account's token is broken — the platform refuses with a
+    message telling you to reconnect, rather than silently enabling something that cannot work.
+  </p>
+
+  <h2>Identifiers</h2>
+  <p>
+    The identifier view compares what this platform holds against what Expo holds, per platform, and
+    labels each one:
+  </p>
+  <table>
+    <thead>
+      <tr><th>State</th><th>Meaning</th><th>What to do</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>synced</code></td><td>Present on both sides</td><td>Nothing</td></tr>
+      <tr><td><code>app_manager_only</code></td><td>Here but not on Expo</td><td>Push it up with a sync</td></tr>
+      <tr><td><code>expo_only</code></td><td>On Expo but not here</td><td>Create it in <a href="/platform/applications">Applications</a></td></tr>
+    </tbody>
+  </table>
+  <p>
+    Only iOS and Android take part; web identifiers have no meaning on Expo.
+  </p>
+
+  <h2>Credentials</h2>
+  <p>
+    EAS builds sign with credentials Expo holds, so the two vaults have to agree. Two operations bridge
+    them:
+  </p>
+  <ul>
+    <li>
+      <strong>Provision</strong> asks Expo to generate whatever signing material an identifier is
+      missing.
+    </li>
+    <li>
+      <strong>Attach</strong> pushes a credential you already hold in the
+      <a href="/platform/credentials-vault">vault</a> up to Expo.
+    </li>
+  </ul>
+  <p>
+    Both move signing material between systems, so both require credential-management rights as well
+    as integration rights.
+  </p>
+
+  <h2>EAS builds</h2>
+  <p>
+    An EAS build record mirrors an Expo build: you register it with the Expo build id, and the platform
+    tracks its status. Manual status and log writes are refused, because Expo owns both — see
+    <a href="/guides/cli/builds/eas-builds">EAS builds</a>.
+  </p>
+  <p>
+    How quickly a mirrored record advances depends on sync. Without automatic sync it moves when
+    something asks it to, which is why a finished Expo build can still read <code>pending</code> here.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <p>
+    <a href="/guides/cli/integrations/eas"><code>appmctl eas</code></a> covers all of it: connect,
+    projects, import, link, status, sync, auto-sync, identifiers, sync-identifiers, provision, attach,
+    disconnect. Actions that exist in both scopes take the scope from the flag —
+    <code>--integration-id</code> for the account, <code>--app</code> for the project link.
+  </p>
+</DocsLayout>

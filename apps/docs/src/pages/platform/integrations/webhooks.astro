@@ -1,0 +1,137 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Webhooks" activeNav="/platform/integrations/webhooks">
+  <h1>Webhooks</h1>
+  <p>
+    A webhook endpoint receives platform events over HTTP: builds being created and finishing,
+    artifacts arriving, identifiers and credentials changing, team membership moving. Deliveries are
+    signed, retried, and recorded, so this screen tells you not only what you subscribed to but
+    whether it actually arrived.
+  </p>
+
+  <Screenshot
+    src="integrations-webhooks"
+    alt="Webhooks tab showing one endpoint with its subscribed events and a delivery history including one exhausted delivery"
+    caption="An endpoint, its subscriptions, and the recent deliveries underneath."
+  />
+
+  <h2>The endpoint row</h2>
+  <p>
+    Under the name and URL sit the two facts you check first: the <strong>secret hint</strong>, which
+    identifies which signing secret is live without revealing it, and <strong>last delivery</strong>.
+    The event pills below list the subscription, and the line under them says whether filters narrow
+    it — <code>No filters · all matching events are delivered</code> means every subscribed event in
+    the workspace goes to this endpoint.
+  </p>
+  <p>
+    Deliveries are signed with HMAC-SHA256 and retried automatically, as the header on the screen
+    states. Verification is covered in the <a href="/guides/webhooks">Webhooks guide</a>.
+  </p>
+
+  <h2>Creating an endpoint</h2>
+  <p>
+    <strong>New endpoint</strong> needs a name, a URL, and at least one event. The event list is a
+    fixed catalog, and it is worth reading rather than guessing at names:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Group</th><th>Events</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Builds</td>
+        <td><code>build.created</code>, <code>build.started</code>, <code>build.cancel_requested</code>, <code>build.completed</code></td>
+      </tr>
+      <tr>
+        <td>Artifacts and files</td>
+        <td><code>artifact.created</code>, <code>artifact.deleted</code>, <code>app_file.created</code>, <code>app_file.deleted</code></td>
+      </tr>
+      <tr>
+        <td>Applications</td>
+        <td><code>mobile_app.created</code>, <code>mobile_app.updated</code>, <code>mobile_app.deleted</code>, and the same three for <code>app_identifier</code></td>
+      </tr>
+      <tr>
+        <td>Credentials</td>
+        <td><code>credential.created</code>, <code>credential.updated</code>, <code>credential.deleted</code>, the expiry warnings, and <code>credential.verification_failed</code></td>
+      </tr>
+      <tr>
+        <td>Team</td>
+        <td><code>team.invitation.created</code>, <code>team.invitation.accepted</code>, <code>team.invitation.revoked</code>, <code>team.member.role_changed</code>, <code>team.member.removed</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>There is no <code>build.failed</code>.</strong> A finished build reports through
+    <code>build.completed</code> and carries its own status, so a receiver that cares only about
+    failures should subscribe to <code>build.completed</code> and check the status in the payload.
+  </p>
+  <p>
+    Credential events are only offered when the workspace's credential API profile exposes secret
+    material. If your list is missing them, that setting is why.
+  </p>
+
+  <h3>Filters</h3>
+  <p>
+    Without filters an endpoint receives every subscribed event in the workspace. Filters narrow it by
+    application, build status, build tag, and profile type — which is how you keep one team's release
+    channel from hearing about every other app's nightly builds.
+  </p>
+
+  <h2>Testing and rotating</h2>
+  <p>
+    <strong>Send test</strong> delivers a synthetic event so you can verify a receiver before a real
+    build depends on it. The test appears in the delivery list like any other, which makes the result
+    unambiguous: nothing listed means the problem is on this side, a failed row means it is at your
+    receiver.
+  </p>
+  <p>
+    <strong>Rotate secret</strong> issues a new signing secret and shows it once. Rotation takes
+    effect immediately, so deploy the new secret to your receiver first if you cannot tolerate a
+    window of rejected deliveries — the retry schedule will cover a short gap, but not a long one.
+  </p>
+
+  <h2>Reading deliveries</h2>
+  <p>
+    The delivery table shows the event, the platform's verdict, the number of attempts, the receiver's
+    HTTP status with the request duration, and when it happened.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Status</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>pending</code></td><td>Queued, not yet attempted</td></tr>
+      <tr><td><code>delivering</code></td><td>In flight</td></tr>
+      <tr><td><code>retry_scheduled</code></td><td>Failed, and another attempt is scheduled</td></tr>
+      <tr><td><code>delivered</code></td><td>Accepted by the receiver</td></tr>
+      <tr><td><code>exhausted</code></td><td>Every retry failed. This one needs your attention.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    In the screenshot the <code>build.created</code> delivery is <code>exhausted</code> after five
+    attempts against a receiver answering <code>500</code>. Opening a delivery shows the payload that
+    was sent, the response preview, and the last error, which is usually enough to tell a receiver bug
+    from a signature mismatch.
+  </p>
+  <p>
+    A delivery can be replayed after you fix the receiver. A replay is recorded as a new delivery that
+    references the original, so the failed attempt stays in the history instead of being overwritten.
+  </p>
+
+  <h2>Watching endpoint health</h2>
+  <p>
+    Each endpoint tracks consecutive failures. That counter is the thing to alert on rather than
+    individual deliveries — a single failure is noise, ten in a row is an outage:
+  </p>
+  <pre><code>appmctl --json webhooks list |
+  jq -e '[.data[] | select(.consecutive_failures &gt; 3)] | length == 0'</code></pre>
+
+  <h2>Doing the same from the CLI</h2>
+  <p>
+    <a href="/guides/cli/integrations/webhooks"><code>appmctl webhooks</code></a> covers the whole
+    lifecycle: create with filters, update, test, rotate, list deliveries, and redeliver.
+  </p>
+</DocsLayout>

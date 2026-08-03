@@ -1,0 +1,102 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Pipelines" activeNav="/platform/integrations/pipelines">
+  <h1>Pipelines</h1>
+  <p>
+    A pipeline is a saved pointer to one CI workflow: which connection, which repository, which
+    workflow file, which ref by default, and which application and build profile the resulting build
+    belongs to. It is the piece that turns a connected provider into something you can build with.
+  </p>
+
+  <Screenshot
+    src="integrations-cicd"
+    alt="The CI/CD tab showing a connected GitHub provider with one linked app and one pipeline"
+    caption="Pipelines are reached through their connection: Manage opens it."
+  />
+
+  <h2>Defining one</h2>
+  <p>
+    The form fills itself from the provider, in this order:
+  </p>
+  <ol>
+    <li><strong>Repository</strong> — the repositories this connection can see</li>
+    <li><strong>Workflow</strong> — for GitHub, the <code>workflow_dispatch</code> workflows in that repository</li>
+    <li><strong>Ref</strong> — the default branch or tag to build</li>
+    <li><strong>Application and profile</strong> — where the resulting build record lands</li>
+  </ol>
+  <p>
+    Those lists are fetched live from the provider rather than cached, which has a practical
+    consequence: <strong>empty dropdowns usually mean the connection's token has expired</strong>, not
+    that the repository has no workflows. Check the connection status before hunting for a workflow
+    that is definitely there.
+  </p>
+  <p>
+    Only workflows that can be dispatched are offered. A workflow with no <code>workflow_dispatch</code>
+    trigger cannot be started by anything but its own events, so it is not something a pipeline can
+    point at.
+  </p>
+
+  <h2>Inputs</h2>
+  <p>
+    Workflows usually declare inputs. The platform reads that declaration, so the run form asks for
+    exactly what the workflow expects and marks which ones are required. A pipeline can also carry
+    <strong>input defaults</strong>, which is how you keep a routine release from asking the same three
+    questions every time.
+  </p>
+  <p>
+    Defaults are per pipeline, so the same workflow can back two pipelines — a nightly with one set of
+    inputs and a release with another — instead of being reconfigured each run.
+  </p>
+
+  <h2>Running</h2>
+  <p>
+    A run can be started from the pipeline itself or from <strong>Run build → Pipeline build</strong> on
+    an application. Either way the platform creates a build record in <code>automatic</code> reporting
+    mode, dispatches the workflow, and then mirrors what the provider reports.
+  </p>
+  <p>
+    <code>dispatch_status</code> on the resulting build is the field to read first when a run seems to
+    do nothing. A build that never dispatched has no run at the provider at all, which points at
+    credentials or configuration rather than at the build.
+  </p>
+
+  <h3>Batch operations</h3>
+  <p>
+    Pipelines can be renamed, deleted, and run in batches from the connection screen. Batch running is
+    the practical answer to a workflow that serves several apps: one action, one dispatch per pipeline,
+    each with its own build record.
+  </p>
+
+  <h2>Enabled and disabled</h2>
+  <p>
+    A pipeline carries an <strong>enabled</strong> flag. A disabled pipeline stays configured but
+    refuses to dispatch, which is worth checking before debugging a trigger that appears to do nothing —
+    the request is rejected rather than silently dropped.
+  </p>
+
+  <h2>What you cannot do to the resulting build</h2>
+  <p>
+    Builds a pipeline creates are the provider's to report. Writing status or logs to them is refused
+    with <code>409</code>, while tags, artifacts, and cancellation stay available. The reasoning and the
+    full matrix are on <a href="/guides/cli/builds/automated-builds">Automated builds</a>.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <p>
+    <a href="/guides/cli/integrations/pipelines"><code>appmctl pipelines</code></a> covers list, get,
+    create, update, delete, inputs, and run. Two things matter when triggering from a script:
+  </p>
+  <ul>
+    <li>
+      <code>run</code> prints the created build record, so the id for <code>appmctl builds wait</code>
+      comes straight out of the trigger.
+    </li>
+    <li>
+      Pass <code>--request-uuid</code> derived from your CI job id. The run is idempotent on that key,
+      so a retried step attaches to the same build instead of dispatching a second workflow.
+    </li>
+  </ul>
+</DocsLayout>

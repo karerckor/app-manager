@@ -1,0 +1,139 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Notifications" activeNav="/platform/integrations/notifications">
+  <h1>Notifications</h1>
+  <p>
+    Notification destinations turn platform events into messages in a chat channel. Unlike webhooks,
+    which hand a payload to your own code, this is the built-in path: pick the events, write the
+    message once, and route it to Slack, Discord, or Telegram.
+  </p>
+
+  <Screenshot
+    src="integrations-notifications"
+    alt="Notifications tab with two destinations, provider selection, channel label, stored webhook URL, notification tags and per-event toggles"
+    caption="The routing model: event, then template, then destination."
+  />
+
+  <h2>Event, template, destination</h2>
+  <p>
+    The three chips in the header describe the whole model. A <strong>destination</strong> subscribes
+    to <strong>events</strong>, and each subscribed event has its own <strong>template</strong> — the
+    message body that gets sent. Nothing is delivered for an event with no template, which is why the
+    events list and the templates are edited together on one screen.
+  </p>
+
+  <h2>Providers</h2>
+  <table>
+    <thead>
+      <tr><th>Provider</th><th>What it needs</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Slack</td><td>An incoming webhook URL. The webhook itself determines the channel.</td></tr>
+      <tr><td>Discord</td><td>A channel webhook URL. Messages are capped at 2,000 characters.</td></tr>
+      <tr><td>Telegram</td><td>A bot token plus a numeric chat ID or an <code>@channel</code> username.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The <strong>Channel label</strong> is only a recognisable name for the destination — it does not
+    route anything. For Slack and Discord the webhook URL decides where messages land, so a label of
+    <code>#mobile-releases</code> pointing at a webhook for <code>#general</code> will mislead you and
+    nothing else.
+  </p>
+  <p>
+    Credentials are encrypted at rest and never shown again. The field reads
+    <em>Stored securely — enter a new URL to replace it</em>, and leaving it blank keeps the current
+    value rather than clearing it, the same convention as the credentials vault.
+  </p>
+
+  <h2>Templates</h2>
+  <p>
+    Each event's message is a template with double-braced, dotted placeholders:
+  </p>
+  <pre><code>&#123;&#123;build.status_icon&#125;&#125; &#123;&#123;app.name&#125;&#125; &#123;&#123;build.profile&#125;&#125; build &#123;&#123;build.status&#125;&#125; in &#123;&#123;build.duration&#125;&#125; — &#123;&#123;build.url&#125;&#125;</code></pre>
+  <p>
+    Which placeholders are available depends on the event. Build events expose the build; artifact
+    events expose the artifact; identifier events expose the identifier.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Group</th><th>Placeholders</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Application</td><td><code>app.name</code></td></tr>
+      <tr>
+        <td>Build</td>
+        <td>
+          <code>build.number</code>, <code>build.profile</code>, <code>build.status</code>,
+          <code>build.status_icon</code>, <code>build.duration</code>, <code>build.branch</code>,
+          <code>build.requested_by</code>, <code>build.url</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Identifier</td>
+        <td>
+          <code>identifier.name</code>, <code>identifier.value</code>,
+          <code>identifier.platform</code>, <code>identifier.version</code>,
+          <code>identifier.url</code>
+        </td>
+      </tr>
+      <tr>
+        <td>Artifact</td>
+        <td>
+          <code>artifact.name</code>, <code>artifact.type</code>, <code>artifact.size</code>,
+          <code>artifact.download_url</code>
+        </td>
+      </tr>
+      <tr><td>Tags</td><td><code>tags</code>, <code>tags_str</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    A placeholder with no value renders as <code>—</code> rather than an empty gap, so a message
+    stays readable when a build has no branch recorded.
+  </p>
+
+  <h3>Notification tags</h3>
+  <p>
+    Tags added to a destination are inserted into templates through <code>&#123;&#123;tags&#125;&#125;</code>
+    or <code>&#123;&#123;tags_str&#125;&#125;</code>. They are a property of the destination, not of the
+    build — useful for marking which channel or environment a message came from.
+  </p>
+
+  <h2>Events and the Active toggle</h2>
+  <p>
+    Each event has its own toggle, and the badge beside it — <strong>Will send</strong> — confirms the
+    combination of subscription and template is complete. The <strong>Active</strong> switch at the
+    top disables the whole destination without deleting it or losing its templates, which is what you
+    want during a noisy incident.
+  </p>
+  <p>
+    As with webhooks, there is no <code>build.failed</code> event: subscribe to
+    <code>build.completed</code> and use <code>&#123;&#123;build.status&#125;&#125;</code> in the
+    template, which is exactly what the seeded example above does.
+  </p>
+
+  <h2>Failures</h2>
+  <p>
+    Destinations track consecutive failures and the last delivery time, and those changes show up in
+    the <a href="/platform/audit-log">audit log</a> — the entries reading
+    <code>Failures: 2 → 3</code> come from here. A destination whose webhook URL was revoked in Slack
+    keeps failing silently otherwise, so that counter is the signal worth watching.
+  </p>
+
+  <h2>Console-only, by omission rather than by design</h2>
+  <p>
+    <strong>Notification destinations have no API.</strong> Their routes live in the
+    session-authenticated web application, and <code>routes/api.php</code> defines nothing for them,
+    so there is no API v1 endpoint and no CLI command — not even through
+    <code>appmctl request</code>, which is scoped to <code>/api/v1/&#123;team&#125;/</code>.
+  </p>
+  <p>
+    If you need chat notifications under version control or created by a script, use
+    <a href="/platform/integrations/webhooks">webhooks</a> and post to chat from your own receiver.
+    That trades the built-in templates for control over both the message and where its configuration
+    lives. The same point, from the CLI's side, is on
+    <a href="/guides/cli/integrations/notifications">the CLI notifications page</a>.
+  </p>
+</DocsLayout>

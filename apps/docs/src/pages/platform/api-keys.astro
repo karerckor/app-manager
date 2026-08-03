@@ -1,0 +1,115 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="API keys" activeNav="/platform/api-keys">
+  <h1>API keys</h1>
+  <p>
+    API keys are how CI runners, the CLI, and your own scripts authenticate. A key belongs to one
+    workspace and carries an explicit list of scopes — it can do exactly what it was granted and
+    nothing else.
+  </p>
+
+  <Screenshot
+    src="api-keys"
+    alt="API keys screen listing four keys with their scope counts, creation dates and last use"
+    caption="Four keys with different scope sets, each scoped to this workspace only."
+  />
+
+  <h2>A key is bound to one workspace</h2>
+  <p>
+    As the screen says: a key can access only this workspace, even when the person who created it
+    belongs to other teams. Switching workspaces in the console does not widen an existing key, and
+    a key cannot be moved between workspaces. Automation that spans two teams needs two keys.
+  </p>
+
+  <h2>Creating one</h2>
+  <p>
+    <strong>New API key</strong> asks for a name and a set of scopes. Two things about the result:
+  </p>
+  <ul>
+    <li>
+      <strong>The token is shown once.</strong> It is stored hashed, so it cannot be retrieved later
+      — if it is lost, revoke the key and issue another.
+    </li>
+    <li>
+      <strong>You cannot grant more than you hold.</strong> A key created by a contributor cannot
+      carry scopes that role lacks, which stops key creation from becoming a privilege escalation
+      path.
+    </li>
+  </ul>
+  <p>
+    Name keys after the thing that uses them, not the person who made them. <code>CI build
+    reporter</code> and <code>Fastlane runner</code> tell you what breaks if you revoke them;
+    <code>igor's key</code> does not.
+  </p>
+
+  <h2>Grant only what the client needs</h2>
+  <p>
+    Scopes are paired read and write per resource, so a key that reports build status has no reason
+    to read credentials. Some useful shapes:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Purpose</th><th>Scopes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Reporting build status and logs from CI</td>
+        <td><code>builds:read</code>, <code>builds:write</code>, <code>logs:write</code>, <code>artifacts:write</code></td>
+      </tr>
+      <tr>
+        <td>A signing runner that needs the keystore</td>
+        <td>the above plus <code>credentials:read</code> and <code>credentials:reveal</code></td>
+      </tr>
+      <tr>
+        <td>A monitor or dashboard</td>
+        <td><code>apps:read</code>, <code>builds:read</code>, <code>webhooks:read</code>, <code>deliveries:read</code></td>
+      </tr>
+      <tr>
+        <td>Triggering pipelines only</td>
+        <td><code>pipelines:run</code>, <code>builds:read</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <code>credentials:reveal</code> is the one to be deliberate about: it turns a key into something
+    that can read signing material out of the vault. A key that only reports status should never
+    have it.
+  </p>
+
+  <h2>Last used tells you what is safe to revoke</h2>
+  <p>
+    Every row shows when the key was last used, or <code>Never</code>. That column is the honest
+    answer to "is anything still using this?" — a key with no recorded use is safe to revoke, and one
+    used minutes ago is not.
+  </p>
+  <p>
+    <strong>Revoke</strong> is immediate and permanent. Requests using that key start failing with
+    <code>401</code> straight away, so roll a replacement into your CI configuration before revoking
+    the old one rather than after.
+  </p>
+
+  <h2>Team permissions still apply</h2>
+  <p>
+    Scopes and roles are two separate gates and a request must pass both. A key with
+    <code>credentials:write</code> created for a viewer still cannot write credentials, because the
+    underlying role does not allow it. If a request fails with <code>403</code> while the scope
+    looks right, check the role of the user the key belongs to on
+    <a href="/platform/team-access">Team access</a>.
+  </p>
+
+  <h2>Using a key</h2>
+  <p>
+    The CLI reads it from the environment and never accepts it as an argument:
+  </p>
+  <pre><code>export APP_MANAGER_API_KEY='1|plain-text-api-key'
+export APP_MANAGER_TEAM='acme-mobile'
+
+appmctl apps list</code></pre>
+  <p>
+    See <a href="/guides/cli/configuration">CLI configuration</a> for the full environment and for
+    which scope each command needs.
+  </p>
+</DocsLayout>

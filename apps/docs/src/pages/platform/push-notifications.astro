@@ -1,0 +1,87 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Push notifications" activeNav="/platform/push-notifications">
+  <h1>Push notifications</h1>
+  <p>
+    A debug tool for sending a push to real devices through Expo Push Service or Firebase Cloud
+    Messaging, and reading each provider's response per recipient. It is for answering "did the
+    provider accept this token, and if not, why" — not for delivering product notifications.
+  </p>
+
+  <Screenshot
+    src="push-notifications"
+    alt="Push notifications tool with provider tabs, recipient token field, message payload fields and a send panel"
+    caption="The tool is labelled DEBUG TOOL for a reason: it sends to real devices."
+  />
+
+  <h2>Choosing a provider</h2>
+  <table>
+    <thead>
+      <tr><th>Provider</th><th>Tokens</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Expo Push Service</td>
+        <td><code>ExponentPushToken[...]</code></td>
+        <td>Fields match Expo's own push tester, so payloads carry over directly. An access token is needed only when Expo push security is enabled.</td>
+      </tr>
+      <tr>
+        <td>Firebase (FCM)</td>
+        <td>FCM registration tokens</td>
+        <td>Sends over FCM HTTP v1, using the Firebase credentials stored for the workspace.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Firebase sending relies on a service account in the
+    <a href="/platform/credentials-vault">Credentials Vault</a>. Without one the FCM tab has nothing
+    to authenticate with, which is the usual reason a send fails before reaching a device.
+  </p>
+
+  <h2>Recipients</h2>
+  <p>
+    Up to 100 device tokens per send, pasted as a comma-, space-, or line-separated list. The counter
+    on the right of the field is the honest check that your paste parsed the way you expected —
+    a list that reads as one token shows <code>1/100</code>.
+  </p>
+
+  <h2>The payload</h2>
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Message title, body</td><td>What the device shows</td></tr>
+      <tr><td>Data</td><td>A JSON object delivered alongside the message, for the app to act on</td></tr>
+      <tr><td>TTL</td><td>How long the provider may keep trying, in seconds. Blank uses the provider default.</td></tr>
+      <tr><td>Priority</td><td>Provider priority hint; the default is usually right</td></tr>
+    </tbody>
+  </table>
+  <p>
+    <strong>Data</strong> must be a JSON object. It is the field worth using when you are debugging deep
+    links or in-app routing, since it is what the app receives rather than what the user sees.
+  </p>
+
+  <h2>Reading the response</h2>
+  <p>
+    Responses appear per recipient rather than as one summary, and that is the point of the tool: a send
+    can succeed for one token and fail for the next, and only a per-token result tells you which.
+    Each entry carries the provider's own status and message, so an expired token, an unregistered
+    device, and a malformed payload are distinguishable instead of all reading as "failed".
+  </p>
+
+  <h2>What this tool is not</h2>
+  <p>
+    It sends to real devices immediately — there is no dry-run — so treat a production token list
+    accordingly. It also has no API or CLI equivalent, and no scheduling: it is a console tool for
+    diagnosing delivery, not a channel for shipping notifications to users.
+  </p>
+  <p>
+    For build and release notifications to a team, use
+    <a href="/platform/integrations/notifications">notification destinations</a> or
+    <a href="/platform/integrations/webhooks">webhooks</a> instead.
+  </p>
+</DocsLayout>

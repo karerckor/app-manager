@@ -1,0 +1,98 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Files and assets" activeNav="/platform/files-and-assets">
+  <h1>Files and assets</h1>
+  <p>
+    An application's media library holds two different things. <strong>Files</strong> are arbitrary
+    attachments with metadata — mapping files, release checklists, provisioning notes.
+    <strong>App assets</strong> are the icon and splash screen, from which the platform generates
+    every per-platform size you need at build time.
+  </p>
+
+  <Screenshot
+    src="files-and-assets"
+    alt="Files and Media Library tab showing two attached files as cards with metadata, download and delete actions"
+    caption="Files and App assets are separate tabs with separate rules."
+  />
+
+  <h2>Files</h2>
+  <p>
+    Any file type, up to 100 MB each. Each card shows the extension, size, upload time, and three
+    actions: inspect <strong>Metadata</strong>, download, delete.
+  </p>
+  <p>
+    Files are addressed <strong>by name</strong>, not by id — in the URL, in the API, and in the
+    CLI. Two consequences follow:
+  </p>
+  <ul>
+    <li>
+      Uploading a name that already exists does not overwrite the existing file. The platform
+      de-duplicates by giving the new upload a distinct name. Delete the old one first if you meant
+      to replace it.
+    </li>
+    <li>
+      Names cannot contain slashes. That restriction is what keeps a name from escaping the app's
+      own collection.
+    </li>
+  </ul>
+
+  <h3>Metadata</h3>
+  <p>
+    Metadata is a free-form JSON object attached to a file. It is the practical way to record where
+    a file came from, and it is what makes an old file identifiable a year later:
+  </p>
+  <pre><code>&#123;"build_id": "019fc789-47b5-7034-9291-4cd3c57b75d5", "version": "1.4.0"&#125;</code></pre>
+  <p>
+    Saving replaces the whole object rather than merging into it, so send every key you want to
+    keep.
+  </p>
+
+  <h3>What belongs here, and what does not</h3>
+  <p>
+    Files belong to the <em>application</em> and outlive any single build. Build outputs belong to
+    the build that produced them, as <a href="/platform/builds">artifacts</a>, and disappear with
+    it. The usual split in a pipeline: the AAB or IPA goes to artifacts, the symbol mapping goes
+    here, where it stays findable after the build ages out.
+  </p>
+
+  <h2>App assets</h2>
+  <p>
+    The <strong>App assets</strong> tab holds one icon and one splash screen. Uploading replaces
+    what is there — there is no version history — and both must be images.
+  </p>
+  <p>
+    From the original, the platform generates every platform-specific size: iOS icon sizes from 40
+    to 1024 points, Android density buckets from mdpi to xxxhdpi plus the Play Store icon, and
+    splash screens for the common iOS and Android resolutions. Each generated variant is
+    downloadable on its own, so a build script can fetch exactly the size it needs instead of
+    resizing at build time.
+  </p>
+  <p>
+    Generation runs after upload rather than during it, so a variant list can briefly show fewer
+    entries than it will a moment later. A variant that never appears has not been generated, and
+    requesting it answers <code>404</code> rather than silently falling back to the original.
+  </p>
+  <p>
+    Replacing an icon also triggers an Expo sync when the app is linked to an Expo project, so the
+    two sides do not drift — see <a href="/platform/integrations/eas">EAS</a>.
+  </p>
+
+  <h2>Doing the same from the CLI</h2>
+  <ul>
+    <li>
+      <a href="/guides/cli/files"><code>appmctl files</code></a> — list, inspect, download, upload,
+      update metadata, delete
+    </li>
+    <li>
+      <a href="/guides/cli/applications"><code>appmctl assets</code></a> — list every generated
+      variant with its download URL, then fetch one
+    </li>
+  </ul>
+  <p>
+    <code>appmctl assets list</code> is the quickest way to see which variants actually exist for an
+    app, which is more reliable than assuming a size was generated.
+  </p>
+</DocsLayout>

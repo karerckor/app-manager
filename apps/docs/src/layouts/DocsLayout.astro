@@ -63,6 +63,30 @@ const navSections = [
     ],
   },
   {
+    title: 'Platform (Web UI)',
+    items: [
+      { label: 'Overview', href: '/platform' },
+      { label: 'Applications', href: '/platform/applications' },
+      { label: 'Files and assets', href: '/platform/files-and-assets' },
+      { label: 'Builds', href: '/platform/builds' },
+      { label: 'Credentials Vault', href: '/platform/credentials-vault' },
+      { label: 'API keys', href: '/platform/api-keys' },
+      { label: 'Audit log', href: '/platform/audit-log' },
+      {
+        label: 'Integrations',
+        href: '/platform/integrations',
+        children: [
+          { label: 'EAS', href: '/platform/integrations/eas' },
+          { label: 'Pipelines', href: '/platform/integrations/pipelines' },
+          { label: 'Webhooks', href: '/platform/integrations/webhooks' },
+          { label: 'Notifications', href: '/platform/integrations/notifications' },
+        ],
+      },
+      { label: 'Team access', href: '/platform/team-access' },
+      { label: 'Push notifications', href: '/platform/push-notifications' },
+    ],
+  },
+  {
     title: 'API',
     items: [
       { label: 'API Reference', href: '/api-reference' },
