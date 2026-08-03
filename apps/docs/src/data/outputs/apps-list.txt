@@ -1,3 +1,6 @@
-slug          name          created_at                 
-------------  ------------  ---------------------------
-customer-app  Customer App  2026-08-03T12:11:30.000000Z
+slug             name             created_at                 
+---------------  ---------------  ---------------------------
+delivery-driver  Delivery Driver  2026-08-03T13:26:12.000000Z
+partner-portal   Partner Portal   2026-08-03T13:26:12.000000Z
+store-kiosk      Store Kiosk      2026-08-03T13:26:12.000000Z
+customer-app     Customer App     2026-08-03T12:11:30.000000Z

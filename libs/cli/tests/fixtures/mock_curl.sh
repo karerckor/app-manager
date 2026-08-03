@@ -181,7 +181,7 @@ case "$rel_path" in
   # --- single app ---
   apps/*)
     case "$method" in
-      GET) printf '{"data":{"slug":"customer-app","name":"Customer App","description":"Mobile client","created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
+      GET) printf '{"data":{"id":"019fc789-478f-71a0-9177-0ed28c77cff2","slug":"customer-app","name":"Customer App","description":"Mobile client","created_at":"2025-01-15","updated_at":"2025-06-01"}}' >"$output" ;;
       PATCH) printf '{"data":{"slug":"customer-app","name":"Updated App"}}' >"$output" ;;
       DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
     esac

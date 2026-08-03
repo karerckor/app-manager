@@ -59,7 +59,7 @@ const SCREENS = [
   { slug: 'identifiers', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer' },
   { slug: 'files-and-assets', path: '/apps/customer-app/media', wait: 'release-checklist.md' },
   { slug: 'builds', path: '/apps/customer-app/builds', wait: 'production' },
-  { slug: 'credentials-vault', path: '/credentials', wait: 'Keystore' },
+  { slug: 'credentials-vault', path: '/credentials', wait: 'Team credentials' },
   { slug: 'api-keys', path: '/api-keys', wait: 'CI build reporter' },
   { slug: 'audit-log', path: '/audit', wait: 'Audit' },
   { slug: 'team-access', path: '/team', wait: 'Maria Lopez' },

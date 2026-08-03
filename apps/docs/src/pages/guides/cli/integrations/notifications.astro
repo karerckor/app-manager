@@ -40,8 +40,9 @@ appmctl request GET integrations/notifications
     script, send the events to your own receiver and post to chat from there:
   </p>
   <CodeBlock lang="bash" code={`appmctl webhooks create \\
+  --name 'Build notifier' \\
   --url https://hooks.acme.example/build-notifier \\
-  --events '["build.completed","build.failed"]' \\
+  --events '["build.created","build.completed"]' \\
   --app customer-app`} />
   <p>
     That trades the built-in templates for control: your receiver decides the message format, and

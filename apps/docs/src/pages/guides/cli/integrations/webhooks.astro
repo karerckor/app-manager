@@ -20,8 +20,8 @@ import CommandOutput from '../../../../components/CommandOutput.astro';
   <h2>Commands</h2>
   <CodeBlock lang="bash" code={`appmctl webhooks list
 appmctl webhooks get    WEBHOOK_ID
-appmctl webhooks create --url URL [--events JSON] [--app SLUG]
-appmctl webhooks update WEBHOOK_ID [--url URL] [--events JSON]
+appmctl webhooks create --name NAME --url URL --events JSON [filters]
+appmctl webhooks update WEBHOOK_ID [--name NAME] [--url URL] [--events JSON] [filters]
 appmctl webhooks delete WEBHOOK_ID
 appmctl webhooks test   WEBHOOK_ID
 appmctl webhooks rotate WEBHOOK_ID
@@ -41,7 +41,7 @@ appmctl webhooks redeliver --webhook-id ID DELIVERY_ID`} />
 # id:                     019fc795-6498-7243-a2ba-f97ef4cee99a
 # name:                   Release notifier
 # url:                    https://hooks.acme.example/app-manager
-# events:                 build.completed, build.failed, artifact.created
+# events:                 build.created, build.completed, artifact.created
 # enabled:                true
 # secret_hint:            whse…000
 # consecutive_failures:   0
@@ -53,20 +53,49 @@ appmctl webhooks redeliver --webhook-id ID DELIVERY_ID`} />
 
   <h3>Create and update</h3>
   <p>
-    <code>--events</code> takes a JSON array of event names. Omitting it subscribes to the
-    platform default set. <code>--app</code> scopes the endpoint to a single app, so an endpoint
-    for one team's release channel does not receive every other app's builds:
+    <code>--name</code>, <code>--url</code>, and <code>--events</code> are all required:
+    the API rejects an endpoint without a name or with an empty subscription. Event names
+    come from a fixed catalog — there is no <code>build.failed</code>, because a finished
+    build reports through <code>build.completed</code> and carries its own status.
   </p>
   <CodeBlock lang="bash" code={`appmctl webhooks create \\
+  --name 'Release notifier' \\
   --url https://hooks.acme.example/app-manager \\
-  --events '["build.completed","build.failed","artifact.created"]' \\
-  --app customer-app
+  --events '["build.created","build.completed","artifact.created"]'
 
 # Subscriptions are replaced, not merged
 appmctl webhooks update 019fc795-6498-7243-a2ba-f97ef4cee99a \\
   --events '["build.completed"]'
 
 appmctl webhooks delete 019fc795-6498-7243-a2ba-f97ef4cee99a`} />
+
+  <h3>Filtering what an endpoint receives</h3>
+  <p>
+    Without filters an endpoint receives every subscribed event in the team. Filters narrow
+    that by app, build status, or build tag, and each flag is repeatable:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl webhooks create \\
+  --name 'Android releases' \\
+  --url https://hooks.acme.example/android \\
+  --events '["build.completed"]' \\
+  --app customer-app \\
+  --build-status completed \\
+  --tag android`} />
+  <table>
+    <thead>
+      <tr><th>Filter</th><th>Effect</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--app SLUG</code></td><td>Only events for that app. The slug is resolved to an app id, which costs one extra request.</td></tr>
+      <tr><td><code>--app-id UUID</code></td><td>The same filter when you already hold the id.</td></tr>
+      <tr><td><code>--build-status STATUS</code></td><td>Only builds reaching that status</td></tr>
+      <tr><td><code>--tag TAG</code></td><td>Only builds carrying that tag</td></tr>
+    </tbody>
+  </table>
+  <p>
+    On <code>update</code>, filters replace the stored set rather than merging into it, the
+    same way <code>--events</code> does.
+  </p>
 
   <h2>Testing an endpoint</h2>
   <p>
@@ -100,7 +129,7 @@ appmctl webhooks delete 019fc795-6498-7243-a2ba-f97ef4cee99a`} />
 # id       event            status     http  attempts  delivered_at
 # -------  ---------------  ---------  ----  --------  ------------------------
 # del-001  build.completed  delivered  200   1         2026-08-03T12:30:00+00:00
-# del-002  build.failed     failed     500   3`} />
+# del-002  build.created    exhausted  500   5`} />
   <p>
     <code>status</code> is the platform's own verdict, <code>http</code> the receiver's response
     code, and <code>attempts</code> how many tries it took. A delivery with no

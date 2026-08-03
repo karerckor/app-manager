@@ -1,4 +1,6 @@
-id                                    provider  name               created_at                 
-------------------------------------  --------  -----------------  ---------------------------
-019fc795-3273-71af-94f7-96134f9d64ed  http      Release notifier   2026-08-03T12:24:31.000000Z
-019fc794-fba5-727d-85c3-69ebbf55b807  github    acme/customer-app  2026-08-03T12:24:17.000000Z
+id                                    provider  name                   created_at                 
+------------------------------------  --------  ---------------------  ---------------------------
+019fc7cd-eee3-7091-9737-60a76e94020e  discord   Discord notifications  2026-08-03T13:26:29.000000Z
+019fc7cd-ae92-73aa-b8d4-1e09be0a4792  slack     Slack notifications    2026-08-03T13:26:13.000000Z
+019fc795-3273-71af-94f7-96134f9d64ed  http      Release notifier       2026-08-03T12:24:31.000000Z
+019fc794-fba5-727d-85c3-69ebbf55b807  github    acme/customer-app      2026-08-03T12:24:17.000000Z
