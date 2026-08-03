@@ -143,6 +143,7 @@ class CredentialVerificationApiTest extends TestCase
             'team_id' => $team->id,
             'type' => CredentialType::ApnsKey,
         ]);
+        $app->appIdentifiers()->first()->credentials()->attach($local);
         $this->authenticate($user, $team, [ApiKeyScope::CredentialsVerify]);
 
         $this->postJson($this->url($team, $app, $local), ['status' => 'verified'])
@@ -156,6 +157,26 @@ class CredentialVerificationApiTest extends TestCase
 
         $this->postJson($this->url($team, $app, $credential), ['status' => 'verified'])
             ->assertForbidden();
+    }
+
+    public function test_an_external_credential_missing_its_vault_reference_row_404s_instead_of_500ing(): void
+    {
+        [$user, $team, $app, $credential] = $this->externalCredential();
+        $credential->vaultReference->delete();
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsVerify]);
+
+        $this->postJson($this->url($team, $app, $credential), ['status' => 'verified'])
+            ->assertNotFound();
+    }
+
+    public function test_a_credential_attached_only_to_a_different_app_cannot_be_verified_through_this_apps_url(): void
+    {
+        [$user, $team, , $credential] = $this->externalCredential();
+        $otherApp = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsVerify]);
+
+        $this->postJson($this->url($team, $otherApp, $credential), ['status' => 'verified'])
+            ->assertNotFound();
     }
 
     /** @return array{0: User, 1: Team, 2: MobileApp, 3: Credential} */

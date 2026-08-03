@@ -26,6 +26,13 @@ class Credential extends Model implements Auditable, HasMedia
 
     protected array $auditExclude = ['payload', 'fingerprint'];
 
+    // Mirrors the migration's `->default('local')` (NOT NULL). Credential
+    // uses HasUuids, so create() never round-trips the inserted row and the
+    // in-memory model would otherwise see this enum as null until refreshed.
+    protected $attributes = [
+        'storage_mode' => CredentialStorageMode::Local->value,
+    ];
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

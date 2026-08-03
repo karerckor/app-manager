@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Credentials\RecordVaultVerification;
 use App\Enums\CredentialVerificationStatus;
+use App\Http\Concerns\ResolvesTeamCredential;
 use App\Http\Controllers\Controller;
-use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +15,8 @@ use Illuminate\Validation\ValidationException;
 
 class CredentialVerificationController extends Controller
 {
+    use ResolvesTeamCredential;
+
     public function __construct(
         private readonly RecordVaultVerification $recordVerification,
     ) {}
@@ -25,13 +27,15 @@ class CredentialVerificationController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): JsonResponse {
-        $credential = Credential::query()->where('team_id', $team->id)->findOrFail($credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential);
 
         if (! $credential->isExternal()) {
             throw ValidationException::withMessages([
                 'status' => 'Only a credential stored in your own vault can be verified.',
             ]);
         }
+
+        abort_unless($credential->vaultReference, 404);
 
         $data = $request->validate([
             'status' => [

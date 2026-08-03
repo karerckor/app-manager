@@ -17,7 +17,7 @@ final class CredentialExpiryMonitor
         $recorded = 0;
 
         Credential::query()
-            ->with('team')
+            ->with('team', 'vaultReference')
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', $at->addDays(30))
             ->chunkById(100, function ($credentials) use ($at, &$recorded) {

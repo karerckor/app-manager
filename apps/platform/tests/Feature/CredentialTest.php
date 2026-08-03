@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Models\Credential;
 use App\Models\Team;
@@ -25,6 +26,22 @@ class CredentialTest extends TestCase
         $credential = Credential::factory()->create();
 
         $this->assertInstanceOf(Team::class, $credential->team);
+    }
+
+    public function test_a_freshly_instantiated_credential_defaults_to_local_storage_mode(): void
+    {
+        $this->assertSame(CredentialStorageMode::Local, (new Credential)->storage_mode);
+    }
+
+    public function test_a_credential_created_without_an_explicit_storage_mode_reports_local_before_any_refresh(): void
+    {
+        $credential = Team::factory()->create()->credentials()->create([
+            'type' => CredentialType::ApnsKey,
+            'name' => 'No storage mode passed',
+        ]);
+
+        $this->assertSame(CredentialStorageMode::Local, $credential->storage_mode);
+        $this->assertSame(CredentialStorageMode::Local, $credential->fresh()->storage_mode);
     }
 
     public function test_type_is_cast_to_enum(): void

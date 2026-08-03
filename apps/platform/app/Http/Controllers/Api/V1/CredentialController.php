@@ -9,6 +9,7 @@ use App\Enums\ProfileType;
 use App\Enums\VaultMetadataSource;
 use App\Enums\WebhookEventType;
 use App\Http\Concerns\ResolvesPageSize;
+use App\Http\Concerns\ResolvesTeamCredential;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\CredentialResource;
 use App\Integrations\Expo\ExpoAutoSyncDispatcher;
@@ -37,7 +38,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CredentialController extends Controller
 {
-    use ResolvesPageSize;
+    use ResolvesPageSize, ResolvesTeamCredential;
 
     public function __construct(
         private readonly WebhookEventRecorder $webhookEvents,
@@ -137,7 +138,7 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): CredentialResource {
-        return new CredentialResource($this->credential($team, $mobileApp, $credential));
+        return new CredentialResource($this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp)));
     }
 
     public function reveal(
@@ -145,7 +146,7 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): JsonResponse {
-        $credential = $this->credential($team, $mobileApp, $credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         $this->credentialAccessAudits->revealed($credential);
 
         return response()->json([
@@ -165,7 +166,7 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): CredentialResource {
-        $credential = $this->credential($team, $mobileApp, $credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         $this->credentialRules->assertModeIsUnchanged($credential, $request);
 
         $rules = [
@@ -206,7 +207,7 @@ class CredentialController extends Controller
 
     public function destroy(Request $request, Team $team, MobileApp $mobileApp, string $credential): Response
     {
-        $credential = $this->credential($team, $mobileApp, $credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         $appIds = $this->expoAutoSync->appIdsForCredential($credential);
         DB::transaction(function () use ($credential, $team) {
             $payload = WebhookPayload::credential($credential);
@@ -228,7 +229,7 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): StreamedResponse {
-        $credentialModel = $this->credential($team, $mobileApp, $credential);
+        $credentialModel = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         $media = $credentialModel->getFirstMedia('file');
         abort_unless($media, 404);
 
@@ -243,7 +244,7 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): CredentialResource {
-        $credential = $this->credential($team, $mobileApp, $credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         abort_if($credential->isExternal(), 404);
         $request->validate([
             'file' => [
@@ -269,7 +270,7 @@ class CredentialController extends Controller
 
     public function destroyFile(Request $request, Team $team, MobileApp $mobileApp, string $credential): Response
     {
-        $credential = $this->credential($team, $mobileApp, $credential);
+        $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         abort_if($credential->isExternal(), 404);
         abort_unless($credential->getFirstMedia('file'), 404);
         DB::transaction(function () use ($credential, $team) {
@@ -284,17 +285,6 @@ class CredentialController extends Controller
         });
 
         return response()->noContent();
-    }
-
-    private function credential(Team $team, MobileApp $mobileApp, string $id): Credential
-    {
-        return $team->credentials()
-            ->whereKey($id)
-            ->where(fn ($query) => $query
-                ->whereHas('appIdentifiers', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id))
-                ->orWhereHas('profiles.appIdentifier', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id)))
-            ->with($this->relationsFor($mobileApp))
-            ->firstOrFail();
     }
 
     private function ensurePlatformIsSupported(CredentialType $type, AppIdentifier $identifier): void

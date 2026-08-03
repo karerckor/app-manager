@@ -124,6 +124,14 @@ final class NotificationEventCatalog
                 self::credentialExpiryVariables('0'),
             ),
             self::event(
+                'credential.verification_failed',
+                'Credential verification failed',
+                'Credentials',
+                'A build could not resolve a credential referenced in your vault.',
+                "🚨 {{credential.name}} failed vault verification\n{{credential.url}}",
+                self::credentialVariables('Reported by'),
+            ),
+            self::event(
                 'build.created',
                 'Build requested',
                 'Builds',

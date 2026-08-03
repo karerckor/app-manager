@@ -24,18 +24,20 @@ class RecordVaultVerification
      */
     public function __invoke(Team $team, Credential $credential, array $data): CredentialVaultReference
     {
-        $reference = $credential->vaultReference;
         $status = CredentialVerificationStatus::from($data['status']);
-        $wasFailed = $reference->verification_status === CredentialVerificationStatus::Failed;
 
         return DB::transaction(function () use (
             $team,
             $credential,
-            $reference,
             $status,
-            $wasFailed,
             $data,
         ): CredentialVaultReference {
+            // Locked so two builds reporting on the same credential at once
+            // can't both read the pre-transition status and both fire the
+            // failure webhook.
+            $reference = $credential->vaultReference()->lockForUpdate()->first();
+            $wasFailed = $reference->verification_status === CredentialVerificationStatus::Failed;
+
             $attributes = [
                 'verification_status' => $status,
                 'verification_error' => $status === CredentialVerificationStatus::Failed
