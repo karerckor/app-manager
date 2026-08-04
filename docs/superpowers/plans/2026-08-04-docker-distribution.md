@@ -902,8 +902,10 @@ Append to `apps/platform/.env.example`, after the bootstrap block from Task 2:
 # Open Fortify's public /register form. Keep false on any instance reachable from the internet.
 ALLOW_PUBLIC_REGISTRATION=false
 # "*" or a comma-separated list of proxy IPs/CIDRs. Set only when a reverse proxy terminates TLS.
-TRUSTED_PROXIES=
+# TRUSTED_PROXIES=
 ```
+
+`TRUSTED_PROXIES` stays **commented out**, unlike the other variables. `TrustedProxiesTest` sets it in the environment before the application boots, and a `.env` that names the variable — even with an empty value — wins over that, so shipping it uncommented would make the suite fail for anyone who copies `.env.example`. `CredentialDashboardOnlyProfileTest` already depends on `CREDENTIALS_API_PROFILE` being absent from `.env` for the same reason. Empty and absent mean the same thing here, so commenting costs nothing.
 
 - [ ] **Step 11: Full suite, lint, commit**
 
