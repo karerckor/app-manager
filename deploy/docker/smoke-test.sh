@@ -18,6 +18,8 @@ compose() {
     APP_MANAGER_IMAGE="$IMAGE" docker compose -p "$PROJECT" "$@"
 }
 
+ENV_FILE_CREATED=0
+
 cleanup() {
     local status=$?
     if [ $status -ne 0 ]; then
@@ -25,7 +27,9 @@ cleanup() {
         compose logs --no-color --tail=100 >&2 || true
     fi
     compose down -v --remove-orphans >/dev/null 2>&1 || true
-    rm -f "$ENV_FILE"
+    # Only remove the .env file this run created — never one that was
+    # already there, including on the "refusing to overwrite" exit path.
+    [ "$ENV_FILE_CREATED" = "1" ] && rm -f "$ENV_FILE"
     exit $status
 }
 trap cleanup EXIT
@@ -36,7 +40,7 @@ if [ -e "$ENV_FILE" ]; then
 fi
 
 cat > "$ENV_FILE" <<EOF
-APP_KEY=$(docker run --rm "$IMAGE" app-manager generate-key | tail -1)
+APP_KEY=$(docker run --rm --entrypoint app-manager "$IMAGE" generate-key)
 APP_URL=http://localhost:${PORT}
 APP_PORT=${PORT}
 APP_ENV=production
@@ -61,6 +65,7 @@ ADMIN_EMAIL=${ADMIN_EMAIL}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ADMIN_TEAM_NAME=Smoke Team
 EOF
+ENV_FILE_CREATED=1
 
 echo "==> bringing up $IMAGE"
 compose up -d --wait --wait-timeout 300
@@ -104,7 +109,7 @@ dispatch(function () {
 PHP
 php artisan tinker --no-interaction --execute=\"require '/tmp/smoke-dispatch.php';\""
 for _ in $(seq 1 30); do
-    value="$(compose exec -T app php artisan tinker --no-interaction --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n')"
+    value="$(compose exec -T app php artisan tinker --no-interaction --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n' || true)"
     [ "$value" = "ok" ] && break
     sleep 2
 done
