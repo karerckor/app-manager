@@ -15,6 +15,12 @@ class EnsureSelfHostedInstallation
 
     public function handle(Request $request, Closure $next): Response
     {
+        // Registration is closed unless explicitly opened, whatever the installer
+        // flag says. Disabling the installer must not open a public sign-up form.
+        if ($request->is('register') && ! config('installer.public_registration')) {
+            abort(404);
+        }
+
         if (! $this->configuration->enabled()) {
             return $next($request);
         }
@@ -40,10 +46,6 @@ class EnsureSelfHostedInstallation
 
         if ($installerRoute) {
             return redirect('/');
-        }
-
-        if ($request->is('register')) {
-            abort(404);
         }
 
         return $next($request);

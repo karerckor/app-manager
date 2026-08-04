@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trusted proxies
+    |--------------------------------------------------------------------------
+    |
+    | "*" trusts any proxy — correct when the only way in is a reverse proxy you
+    | control, as in the Compose TLS profile. A comma-separated list of IPs or
+    | CIDRs is also accepted. Empty means no proxy is trusted, so forwarded
+    | headers are ignored.
+    |
+    */
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
