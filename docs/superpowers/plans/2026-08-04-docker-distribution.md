@@ -4,15 +4,16 @@
 
 **Goal:** Publish `apps/platform` as a multi-arch container image on GHCR and ship an example Compose stack that brings up a working App Manager, with the first-run behaviour and the credential modes driven entirely by environment variables.
 
-**Architecture:** One image built from `serversideup/php:8.3-fpm-nginx` serves four roles selected by command (web, queue, scheduler, one-shot init). A one-shot `init` service owns migrations and first-run provisioning; `app`, `queue` and `scheduler` start only after it exits 0. First-run behaviour lives in a new idempotent `php artisan app:bootstrap` command with three modes, so it is unit-testable and the container entrypoint stays a dumb shell script.
+**Architecture:** One image built from `serversideup/php:8.4-fpm-nginx` serves four roles selected by command (web, queue, scheduler, one-shot init). A one-shot `init` service owns migrations and first-run provisioning; `app`, `queue` and `scheduler` start only after it exits 0. First-run behaviour lives in a new idempotent `php artisan app:bootstrap` command with three modes, so it is unit-testable and the container entrypoint stays a dumb shell script.
 
-**Tech Stack:** Laravel 13 / PHP 8.3, `serversideup/php:8.3-fpm-nginx`, Postgres 17, Redis 8, Docker Buildx + GHCR, GitHub Actions, Astro (docs site).
+**Tech Stack:** Laravel 13 / PHP 8.4, `serversideup/php:8.4.23-fpm-nginx-bookworm`, Postgres 17, Redis 8, Docker Buildx + GHCR, GitHub Actions, Astro (docs site).
 
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-08-04-docker-distribution-design.md`. Read it before starting.
 - Image name: `ghcr.io/karerckor/app-manager-platform`.
-- Base image: `serversideup/php:8.3.32-fpm-nginx-bookworm` — the patch- and distro-pinned form of `8.3-fpm-nginx`, verified to exist. Pinned so a base rebuild cannot change our runtime silently. Verified facts about it — do not re-derive:
+- **The app requires PHP 8.4.1+, not 8.3.** Laravel 13 resolves to Symfony 8.1, whose components declare `php >= 8.4.1`, so `vendor/composer/platform_check.php` fatals on 8.3 before any application code runs. `composer.json` claiming `^8.3`, `platform-ci.yml` pinning 8.3, and the README promising 8.3+ are all wrong; Task 4 corrects them.
+- Base image: `serversideup/php:8.4.23-fpm-nginx-bookworm` — the patch- and distro-pinned form of `8.4-fpm-nginx`, verified to exist for amd64 and arm64. Pinned so a base rebuild cannot change our runtime silently. It ships Composer 2.10.2 and PHP 8.4.23, so the vendor stage builds on the same runtime the app runs on and needs no `--ignore-platform-req` flags. Verified facts about it — do not re-derive:
   - `ENTRYPOINT ["docker-php-serversideup-entrypoint"]`, `CMD ["/init"]`, `USER www-data` (uid/gid `33:33`), `WORKDIR /var/www/html`.
   - The entrypoint runs every `/etc/entrypoint.d/*.sh` in version order, **each in a subshell** (`(. "$f")`). A non-zero exit from any script aborts the container start. `export` inside such a script does **not** reach the final process. The container command is visible to those scripts as `$DOCKER_CMD`.
   - HTTP listens on `8080` (`NGINX_HTTP_PORT`), webroot `/var/www/html/public`, `NGINX_CLIENT_MAX_BODY_SIZE=100M`.
@@ -963,10 +964,29 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `apps/platform/.dockerignore`
 - Create: `apps/platform/docker/app-manager`
 - Create: `apps/platform/docker/entrypoint.d/60-app-manager.sh`
+- Modify: `apps/platform/composer.json` (the `php` requirement)
+- Modify: `.github/workflows/platform-ci.yml` (both `php-version` pins)
+- Modify: `apps/platform/README.md` (the requirements list)
 
 **Interfaces:**
 - Consumes: `app:bootstrap` (Task 2), `installer.bootstrap` semantics.
 - Produces: image with entry commands `app-manager queue`, `app-manager scheduler`, `app-manager init`, `app-manager generate-key`; default command starts the web server. Reads `APP_MANAGER_BOOTSTRAP`, `APP_KEY`, `APP_BASE_DIR`.
+
+- [ ] **Step 0: Correct the declared PHP floor**
+
+The lock file resolves Symfony 8.1, which requires `php >= 8.4.1`, so the app cannot run on 8.3 at all — `vendor/composer/platform_check.php` fatals before `artisan` prints anything. Three places claim otherwise; fix them in one commit before touching the image, so the image and CI agree on a runtime:
+
+- `apps/platform/composer.json`: `"php": "^8.3"` → `"php": "^8.4"`.
+- `.github/workflows/platform-ci.yml`: both `php-version: '8.3'` occurrences → `'8.4'`.
+- `apps/platform/README.md`: `- PHP 8.3+ and Composer 2` → `- PHP 8.4+ and Composer 2`.
+
+Then confirm the lock file still satisfies the constraint and nothing else drifted:
+
+```bash
+cd apps/platform && composer validate --no-check-publish && composer check-platform-reqs --no-dev | tail -3
+```
+
+Expected: `./composer.json is valid` and every requirement `success`. Commit as `fix(platform): declare the PHP 8.4 floor the lock file already requires`.
 
 - [ ] **Step 1: Write `.dockerignore` first**
 
@@ -1109,7 +1129,18 @@ Create `apps/platform/Dockerfile`:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM composer:2 AS vendor
+# pdo_pgsql, redis and zip ship with the base image; gd and exif do not, and
+# MobileApp::registerMediaConversions needs them for icon variants. Installed in
+# a shared stage so the vendor build resolves the lock file's platform
+# requirements against exactly the runtime the app will use — no
+# --ignore-platform-req flags, no version drift between build and run.
+FROM serversideup/php:8.4.23-fpm-nginx-bookworm AS php-base
+USER root
+RUN install-php-extensions gd exif
+USER www-data
+
+FROM php-base AS vendor
+USER root
 WORKDIR /app
 COPY composer.json composer.lock ./
 # --no-scripts: post-autoload-dump runs `artisan package:discover`, which boots
@@ -1131,13 +1162,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-FROM serversideup/php:8.3.32-fpm-nginx-bookworm AS app
-
-# pdo_pgsql, redis and zip ship with the base image; gd and exif do not, and
-# MobileApp::registerMediaConversions needs them for icon variants.
-USER root
-RUN install-php-extensions gd exif
-USER www-data
+FROM php-base AS app
 
 ENV APP_ENV=production \
     APP_DEBUG=false \
