@@ -4,7 +4,7 @@ The Laravel 13 application that powers App Manager — a self-hosted control pla
 
 ## Requirements
 
-- PHP 8.3+ and Composer 2
+- PHP 8.4+ and Composer 2
 - Node.js 22+ and npm
 - PostgreSQL 17
 - Redis 8
