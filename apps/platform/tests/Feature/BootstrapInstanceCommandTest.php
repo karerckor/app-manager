@@ -173,12 +173,17 @@ class BootstrapInstanceCommandTest extends TestCase
 
     public function test_the_web_installer_is_disabled_outside_installer_mode(): void
     {
+        // SELF_HOSTED_INSTALLER_ENABLED is forced on so the assertion isolates
+        // the bootstrap-mode condition rather than passing trivially because
+        // phpunit.xml already disables the installer by default.
         $this->setEnv('APP_MANAGER_BOOTSTRAP', 'admin');
+        $this->setEnv('SELF_HOSTED_INSTALLER_ENABLED', 'true');
 
         try {
             $config = require config_path('installer.php');
         } finally {
             $this->restoreEnv('APP_MANAGER_BOOTSTRAP');
+            $this->restoreEnv('SELF_HOSTED_INSTALLER_ENABLED');
         }
 
         $this->assertFalse($config['enabled']);
