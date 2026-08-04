@@ -153,6 +153,18 @@ class BootstrapInstanceCommandTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'demo@example.com']);
     }
 
+    public function test_demo_mode_fails_when_the_environment_forbids_seeding(): void
+    {
+        config(['installer.bootstrap' => 'demo']);
+        $this->app['env'] = 'production';
+
+        $this->artisan('app:bootstrap')
+            ->expectsOutputToContain('APP_ENV=local')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_an_unknown_mode_fails(): void
     {
         config(['installer.bootstrap' => 'nonsense']);

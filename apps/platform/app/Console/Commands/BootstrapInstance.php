@@ -89,6 +89,17 @@ class BootstrapInstance extends Command
 
     private function runDemoMode(): int
     {
+        // DemoSeeder itself refuses to seed outside local/development/testing.
+        // Failing loudly beats a container that starts up empty but healthy.
+        if (! app()->environment(['local', 'development', 'testing'])) {
+            $this->error(sprintf(
+                'Bootstrap mode "demo" requires APP_ENV=local (currently "%s"). The demo seeder is disabled outside local, development and testing.',
+                app()->environment(),
+            ));
+
+            return self::FAILURE;
+        }
+
         if (User::query()->exists()) {
             $this->info('Bootstrap mode "demo": an account already exists, skipping the demo seed.');
 
