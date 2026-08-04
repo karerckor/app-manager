@@ -32,7 +32,7 @@ APP_KEY is not set.
 Every credential in App Manager is encrypted with it: generate one, store it
 with the rest of your secrets, and pass it to every container in the stack.
 
-    docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key
+    docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key
 
 Only APP_MANAGER_BOOTSTRAP=demo generates a throwaway key by itself.
 MSG
@@ -44,16 +44,23 @@ MSG
         chmod 600 "$KEY_FILE"
     fi
 
-    # A Compose `env_file: .env` with a blank `APP_KEY=` line sets APP_KEY to
-    # an empty string, not nothing — Laravel's dotenv repository sees that as
-    # already defined and refuses to load a replacement from a file, so an
-    # `.env` fallback here is silently ignored. Exporting it instead reaches
-    # `config:cache` below directly (it's a child of this script, not of the
-    # parent that execs the role command), and it's that cached config every
-    # later process reads app.key from, so the export never needing to reach
-    # the role command itself is fine.
+    # Two handovers, for two different readers:
+    #
+    # 1. `export` reaches `config:cache` below directly — it's a child of
+    #    this script, not of the parent that execs the role command — so the
+    #    cached config gets the real key regardless of what Laravel's dotenv
+    #    does with the .env file. This is what makes *this* boot correct.
+    #
+    # 2. Writing `${APP_DIR}/.env` is what makes a *later* `config:clear`
+    #    recoverable instead of reverting to a broken instance: once the
+    #    cache is gone, Laravel re-reads the environment, and phpdotenv only
+    #    loads a replacement for a variable that's genuinely absent from it
+    #    — a `APP_KEY=` line left blank in the operator's env file already
+    #    defines it (as an empty string) and permanently shadows this file,
+    #    so this only works if APP_KEY is commented out there, not blank.
     APP_KEY="$(cat "$KEY_FILE")"
     export APP_KEY
+    printf 'APP_KEY=%s\n' "$APP_KEY" > "${APP_DIR}/.env"
 fi
 
 # Cached per container, because bootstrap/cache is not shared between them.
