@@ -2,11 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\PasswordValidationRules;
-use App\Enums\TeamRole;
-use App\Models\Installation;
-use App\Models\Team;
+use App\Actions\Installation\ProvisionFirstOwner;
 use App\Models\User;
 use App\Support\Installation\SelfHostedConfiguration;
 use App\Support\Storage\MediaStorageConfiguration;
@@ -59,7 +56,7 @@ class InstallerController extends Controller
 
     public function store(
         Request $request,
-        CreateNewUser $createNewUser,
+        ProvisionFirstOwner $provisionFirstOwner,
         SelfHostedConfiguration $configuration,
         MediaStorageConfiguration $mediaStorage,
         MediaStorageConnectionTester $storageConnectionTester,
@@ -90,7 +87,7 @@ class InstallerController extends Controller
 
         $user = Cache::lock('self-hosted-installer', 15)->block(5, function () use (
             $configuration,
-            $createNewUser,
+            $provisionFirstOwner,
             $data,
             $settings,
         ) {
@@ -100,31 +97,14 @@ class InstallerController extends Controller
                 ]);
             }
 
-            return DB::transaction(function () use ($createNewUser, $data, $settings) {
-                $user = $createNewUser->create([
-                    'name' => $data['admin_name'],
-                    'email' => $data['email'],
-                    'password' => $data['password'],
-                    'password_confirmation' => $data['password_confirmation'],
-                ]);
-                $team = Team::create([
-                    'name' => $data['team_name'],
-                    'owner_id' => $user->id,
-                ]);
-                $team->addUser($user, TeamRole::Owner);
-                $team->recordMembershipAudit($user, 'membership_added', TeamRole::Owner->value);
-                $user->update(['current_team_id' => $team->id]);
-
-                Installation::create([
-                    'id' => SelfHostedConfiguration::INSTALLATION_ID,
-                    'name' => $data['instance_name'],
-                    'settings' => $settings,
-                    'installed_by_user_id' => $user->id,
-                    'installed_at' => now(),
-                ]);
-
-                return $user;
-            });
+            return $provisionFirstOwner->provision(
+                name: $data['admin_name'],
+                email: $data['email'],
+                password: $data['password'],
+                teamName: $data['team_name'],
+                instanceName: $data['instance_name'],
+                settings: $settings,
+            );
         });
 
         $configuration->apply();
