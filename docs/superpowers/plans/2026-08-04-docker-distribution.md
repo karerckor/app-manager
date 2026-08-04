@@ -21,6 +21,7 @@
   - `PHP_OPCACHE_ENABLE` defaults to `0` and must be set to `1`.
   - Already bundled: `pdo_pgsql`, `redis`, `zip`, `opcache`, `openssl`, `sodium`, `pcntl`, `curl`. Missing and required: `gd`, `exif`. Install with `install-php-extensions` as `root`, then switch back to `www-data`.
   - `php.ini` already gives `upload_max_filesize=100M`, `post_max_size=100M`, `memory_limit=256M` — matches `MEDIA_MAX_FILE_SIZE_KB=102400`; do not override.
+- **Demo mode requires `APP_ENV=local`.** `DemoSeeder::run()` refuses to seed outside `local`/`development`/`testing`, so `app:bootstrap --mode=demo` fails loudly when the environment forbids seeding, and the Compose demo preset sets `APP_ENV=local`. Do not weaken the seeder's own guard.
 - **Never run `php artisan route:cache`.** `routes/web.php:51` registers `Route::get('/', function () { … })`, and a closure route makes route caching throw. `config:cache` and `view:cache` are safe.
 - PHP tests run against a real Postgres (`app_manager_test`); `composer test` from `apps/platform`. Test classes extend `Tests\TestCase` and use `Illuminate\Foundation\Testing\RefreshDatabase`.
 - `vendor/bin/pint` must pass on every PHP file touched.
@@ -383,6 +384,18 @@ class BootstrapInstanceCommandTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'demo@example.com']);
     }
 
+    public function test_demo_mode_fails_when_the_environment_forbids_seeding(): void
+    {
+        config(['installer.bootstrap' => 'demo']);
+        $this->app['env'] = 'production';
+
+        $this->artisan('app:bootstrap')
+            ->expectsOutputToContain('APP_ENV=local')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_an_unknown_mode_fails(): void
     {
         config(['installer.bootstrap' => 'nonsense']);
@@ -595,6 +608,17 @@ class BootstrapInstance extends Command
 
     private function runDemoMode(): int
     {
+        // DemoSeeder itself refuses to seed outside local/development/testing.
+        // Failing loudly beats a container that starts up empty but healthy.
+        if (! app()->environment(['local', 'development', 'testing'])) {
+            $this->error(sprintf(
+                'Bootstrap mode "demo" requires APP_ENV=local (currently "%s"). The demo seeder is disabled outside local, development and testing.',
+                app()->environment(),
+            ));
+
+            return self::FAILURE;
+        }
+
         if (User::query()->exists()) {
             $this->info('Bootstrap mode "demo": an account already exists, skipping the demo seed.');
 
@@ -1326,7 +1350,8 @@ ALLOW_PUBLIC_REGISTRATION=false
 # installer: create the first owner in the browser at /install (default)
 # admin:     create the first owner from the ADMIN_* variables below
 # demo:      seed the demo account demo@example.com / Demo123! (disposable data,
-#            generates its own APP_KEY when you leave APP_KEY empty)
+#            generates its own APP_KEY when you leave APP_KEY empty, and needs
+#            APP_ENV=local — the demo seeder is disabled in production)
 APP_MANAGER_BOOTSTRAP=installer
 # ADMIN_NAME="Owner"
 # ADMIN_EMAIL=owner@example.com
@@ -1496,7 +1521,7 @@ Expected: `==> smoke test passed`. Fix the stack — not the assertions — unti
 
 ```bash
 cd deploy/docker && cp .env.example .env
-# edit .env: APP_MANAGER_BOOTSTRAP=demo, leave APP_KEY empty, DB_PASSWORD=demo-secret
+# edit .env: APP_MANAGER_BOOTSTRAP=demo, APP_ENV=local, leave APP_KEY empty, DB_PASSWORD=demo-secret
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo up -d
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/login
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo exec -T postgres \
@@ -1548,7 +1573,7 @@ tls up -d` adds Caddy with automatic TLS for `APP_DOMAIN`.
 |---|---|
 | Configure in the browser (default) | `APP_MANAGER_BOOTSTRAP=installer` → open `/install` |
 | First owner straight from the environment | `APP_MANAGER_BOOTSTRAP=admin` + `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`, `ADMIN_TEAM_NAME` |
-| Throwaway demo instance | `APP_MANAGER_BOOTSTRAP=demo` → `demo@example.com` / `Demo123!`, API key `demo-api-key` |
+| Throwaway demo instance | `APP_MANAGER_BOOTSTRAP=demo` **and** `APP_ENV=local` → `demo@example.com` / `Demo123!`, API key `demo-api-key` |
 | Bring your own vault only | `CREDENTIAL_STORAGE_MODES=external` |
 | Platform-held secrets only | `CREDENTIAL_STORAGE_MODES=local` |
 | Both (default) | `CREDENTIAL_STORAGE_MODES=local,external` |
@@ -1887,7 +1912,7 @@ docker compose up -d`} />
     <tbody>
       <tr><td>Configure in the browser (default)</td><td><code>APP_MANAGER_BOOTSTRAP=installer</code></td></tr>
       <tr><td>First owner straight from the environment</td><td><code>APP_MANAGER_BOOTSTRAP=admin</code> with <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code>, <code>ADMIN_NAME</code>, <code>ADMIN_TEAM_NAME</code></td></tr>
-      <tr><td>Throwaway demo instance</td><td><code>APP_MANAGER_BOOTSTRAP=demo</code> — seeds <code>demo@example.com</code> / <code>Demo123!</code> and the <code>demo-api-key</code> API key</td></tr>
+      <tr><td>Throwaway demo instance</td><td><code>APP_MANAGER_BOOTSTRAP=demo</code> together with <code>APP_ENV=local</code> — seeds <code>demo@example.com</code> / <code>Demo123!</code> and the <code>demo-api-key</code> API key</td></tr>
       <tr><td>Bring your own vault only</td><td><code>CREDENTIAL_STORAGE_MODES=external</code></td></tr>
       <tr><td>Platform-held secrets only</td><td><code>CREDENTIAL_STORAGE_MODES=local</code></td></tr>
       <tr><td>Secrets never traverse the API</td><td><code>CREDENTIALS_API_PROFILE=dashboard_only</code></td></tr>
@@ -1896,7 +1921,9 @@ docker compose up -d`} />
   <p>
     Only <code>demo</code> generates its own <code>APP_KEY</code>; the data is disposable, so a key
     that disappears with the volume costs nothing. In the other modes the container refuses to start
-    without one, on purpose.
+    without one, on purpose. Demo mode also requires <code>APP_ENV=local</code> — the demo seeder is
+    disabled in production environments, and <code>app:bootstrap</code> fails loudly rather than
+    leaving you with an empty instance that looks healthy.
   </p>
 
   <h2>Environment reference</h2>
