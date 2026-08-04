@@ -52,7 +52,7 @@ The image ships an `app-manager` entry command that selects the role, so one ima
 | (default) | nginx + PHP-FPM |
 | `app-manager queue` | `php artisan queue:work --queue=notifications,integrations,webhooks,default --tries=3 --max-time=3600` |
 | `app-manager scheduler` | `php artisan schedule:work` |
-| `app-manager init` | one-shot: `migrate --force` → `app:bootstrap` → `config:cache route:cache view:cache`, then exit 0 |
+| `app-manager init` | one-shot: `migrate --force` → `app:bootstrap`, then exit 0 |
 | `app-manager generate-key` | prints a fresh `base64:` key to stdout and exits — no side effects |
 
 The queue list mirrors `composer run dev` and covers `MEDIA_QUEUE=default`.
@@ -61,14 +61,19 @@ The queue list mirrors `composer run dev` and covers `MEDIA_QUEUE=default`.
 
 ### Entrypoint responsibilities
 
-A single script, run before the role command:
+A single script in the base image's `/etc/entrypoint.d`, run before the role command:
 
-1. Resolve `APP_KEY`:
+1. Ensure `storage/framework/{cache,sessions,views}`, `storage/logs` and `bootstrap/cache` exist.
+2. Resolve `APP_KEY`:
    - present in the environment → use it;
-   - absent and `APP_MANAGER_BOOTSTRAP=demo` → read `storage/app/.app-key` if it exists, otherwise generate one, write it `0600`, and export it;
+   - absent and `APP_MANAGER_BOOTSTRAP=demo` → read `storage/app/.app-key` if it exists, otherwise generate one and write it `0600`, then hand it to the app by writing `APP_KEY=…` into `.env` (real environment variables outrank `.env`, so this only fills the gap);
    - absent in any other mode → exit non-zero with the exact command to fix it (`docker run --rm <image> app-manager generate-key`).
-2. Ensure `storage/framework/{cache,sessions,views}` and `storage/logs` exist and are writable.
-3. Exec the role command.
+3. Run `config:cache` and `view:cache`.
+4. Exec the role command.
+
+The handover through `.env` rather than `export` is forced by the base image: it *sources each entrypoint script in a subshell*, so exported variables never reach the final process. A non-zero exit does abort the container start, which is what makes the missing-key check a hard stop.
+
+Config and view caching happen per container, not in `init`: `bootstrap/cache` lives inside each container's own filesystem, so caching once in `init` would benefit nobody. **Route caching is impossible** — `routes/web.php` registers a closure route, and `artisan route:cache` refuses to serialise closures.
 
 The demo key lives in the shared `storage/app` volume, so `init` creates it and the other containers read the same value — they start only after `init` exits, so there is no race. Confining generated keys to `demo` is deliberate: an auto-generated key that disappears with `docker compose down -v` turns every encrypted credential in the database into garbage. Demo data is disposable, so there the convenience is free.
 
@@ -178,7 +183,9 @@ Existing deployments do not set `APP_MANAGER_BOOTSTRAP`, so the default keeps th
 
 `InstallerController::store` currently inlines the first-owner transaction: create user through `CreateNewUser`, create team, add owner membership, record the membership audit, set `current_team_id`, insert the `installations` row. `app:bootstrap admin` needs exactly that.
 
-Move it to `App\Actions\Installation\ProvisionFirstOwner`, invoked by both. The action takes the owner name, email, password, team name and instance name plus a settings array, and returns the `User`. `InstallerController` keeps its lock, its validation, its storage connection test and its `Auth::login`; the command passes settings derived from the environment. One code path creates the first owner, so the audit row and `current_team_id` cannot drift between the two entry points.
+Move it to `App\Actions\Installation\ProvisionFirstOwner`, invoked by both. The action takes the owner name, email, password and team name, plus an optional instance name and settings array, and returns the `User`. `InstallerController` keeps its lock, its validation, its storage connection test and its `Auth::login`.
+
+The `installations` row is written only when the instance name and settings are supplied — the installer supplies them, `app:bootstrap admin` does not. A container's configuration comes from its environment; writing a settings row would let a database value silently override `docker-compose.yaml` if the installer were ever re-enabled. Skipping it costs nothing, because `SelfHostedConfiguration::installed()` already returns true once the users table is populated. One code path still creates the owner, so the audit row and `current_team_id` cannot drift between the two entry points.
 
 ---
 
@@ -225,6 +232,6 @@ Add `$middleware->trustProxies(at: env('TRUSTED_PROXIES'))` with a null default 
 
 ## Risks
 
-- **`serversideup/php` tag drift.** Pin the base image to a full version tag, not a floating `8.3` alias, so a base rebuild cannot change our runtime silently.
+- **`serversideup/php` tag drift.** Pin the base image to `serversideup/php:8.3.32-fpm-nginx-bookworm` — patch and distro pinned — so a base rebuild cannot change our runtime silently.
 - **`ubuntu-24.04-arm` runner availability.** Free for public repositories; if the repository goes private the arm64 job needs a paid runner or a QEMU fallback. Documented in the workflow as a comment rather than discovered during an outage.
-- **Volume ownership.** The base image runs as `www-data`; a fresh named volume is owned by root. The entrypoint fixes ownership of `storage/app` on start, and the smoke test would catch a regression by failing to write a credential file.
+- **Volume ownership.** The base image runs unprivileged as `www-data` (uid 33), so it cannot take ownership of a root-owned mount. A fresh *named* volume inherits the image's ownership and needs nothing; a *bind mount* arrives root-owned and must be `chown -R 33:33`'d by the operator. The stack therefore uses named volumes, and the docs say this explicitly for anyone who swaps in a host path.
