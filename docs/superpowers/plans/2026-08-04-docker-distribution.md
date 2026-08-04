@@ -803,7 +803,7 @@ Expected: PASS.
 
 - [ ] **Step 6: Write the failing trusted-proxy test**
 
-Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The `Env` write happens before `parent::setUp()` because `config/app.php` is read while the application boots:
+Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The environment write happens before `parent::setUp()` because `config/app.php` is read while the application boots. Use the `putenv()`/`$_ENV`/`$_SERVER` trio that `tests/Feature/Api/V1/CredentialDashboardOnlyProfileTest.php` already uses for exactly this purpose — `Illuminate\Support\Env::getRepository()->set()` silently no-ops here, because the repository is immutable for variables phpunit.xml has already defined:
 
 ```php
 <?php
@@ -811,15 +811,21 @@ Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The `Env` write hap
 namespace Tests\Feature;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class TrustedProxiesTest extends TestCase
 {
+    /** The environment's prior value, so tearDown() restores it rather than merely unsetting it. `false` means it was not set. */
+    private string|false $priorEnvValue;
+
     protected function setUp(): void
     {
-        Env::getRepository()->set('TRUSTED_PROXIES', '*');
+        $this->priorEnvValue = getenv('TRUSTED_PROXIES');
+
+        putenv('TRUSTED_PROXIES=*');
+        $_ENV['TRUSTED_PROXIES'] = '*';
+        $_SERVER['TRUSTED_PROXIES'] = '*';
 
         parent::setUp();
 
@@ -828,7 +834,14 @@ class TrustedProxiesTest extends TestCase
 
     protected function tearDown(): void
     {
-        Env::getRepository()->clear('TRUSTED_PROXIES');
+        if ($this->priorEnvValue === false) {
+            putenv('TRUSTED_PROXIES');
+            unset($_ENV['TRUSTED_PROXIES'], $_SERVER['TRUSTED_PROXIES']);
+        } else {
+            putenv("TRUSTED_PROXIES={$this->priorEnvValue}");
+            $_ENV['TRUSTED_PROXIES'] = $this->priorEnvValue;
+            $_SERVER['TRUSTED_PROXIES'] = $this->priorEnvValue;
+        }
 
         parent::tearDown();
     }
