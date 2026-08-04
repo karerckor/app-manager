@@ -1102,7 +1102,7 @@ APP_KEY is not set.
 Every credential in App Manager is encrypted with it: generate one, store it
 with the rest of your secrets, and pass it to every container in the stack.
 
-    docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key
+    docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key
 
 Only APP_MANAGER_BOOTSTRAP=demo generates a throwaway key by itself.
 MSG
@@ -1197,7 +1197,7 @@ Expected: build succeeds. If `npm run build` fails on a missing file, the culpri
 - [ ] **Step 6: Verify the image's contents and its refusal to start without a key**
 
 ```bash
-docker run --rm app-manager-platform:dev app-manager generate-key
+docker run --rm --entrypoint app-manager app-manager-platform:dev generate-key
 docker run --rm --entrypoint php app-manager-platform:dev -m | tr '\n' ' ' | grep -o -E 'gd|exif|pdo_pgsql|redis|zip'
 docker run --rm --entrypoint sh app-manager-platform:dev -c 'test -f public/build/manifest.json && echo assets-ok; test ! -f .env && echo no-dotenv-ok; ls vendor/autoload.php'
 docker run --rm app-manager-platform:dev app-manager scheduler 2>&1 | head -5
@@ -1353,7 +1353,7 @@ volumes:
 # Required
 # ==============================================================================
 # Generate once and keep it safe — every credential is encrypted with it:
-#   docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key
+#   docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key
 APP_KEY=
 # The URL users open. Must match the scheme they actually use.
 APP_URL=http://localhost:8000
@@ -1390,7 +1390,9 @@ ALLOW_PUBLIC_REGISTRATION=false
 # installer: create the first owner in the browser at /install (default)
 # admin:     create the first owner from the ADMIN_* variables below
 # demo:      seed the demo account demo@example.com / Demo123! (disposable data,
-#            generates its own APP_KEY when you leave APP_KEY empty, and needs
+#            generates its own APP_KEY when the APP_KEY line is commented out
+#            entirely — a blank value is not the same as an absent one and would
+#            shadow the generated key forever — and needs
 #            APP_ENV=local — the demo seeder is disabled in production)
 APP_MANAGER_BOOTSTRAP=installer
 # ADMIN_NAME="Owner"
@@ -1457,6 +1459,7 @@ IMAGE="${APP_MANAGER_IMAGE:-ghcr.io/karerckor/app-manager-platform:latest}"
 PORT="${SMOKE_PORT:-8099}"
 PROJECT="am-smoke-$$"
 ENV_FILE=".env"
+ENV_FILE_CREATED=0
 ADMIN_EMAIL="smoke@example.com"
 ADMIN_PASSWORD="Sm0keTest!Pass"
 
@@ -1471,7 +1474,9 @@ cleanup() {
         compose logs --no-color --tail=100 >&2 || true
     fi
     compose down -v --remove-orphans >/dev/null 2>&1 || true
-    rm -f "$ENV_FILE"
+    # Only ever delete the file this script created — the refusal path below
+    # exits through this trap while an operator's real .env is still on disk.
+    [ "$ENV_FILE_CREATED" = "1" ] && rm -f "$ENV_FILE"
     exit $status
 }
 trap cleanup EXIT
@@ -1482,7 +1487,7 @@ if [ -e "$ENV_FILE" ]; then
 fi
 
 cat > "$ENV_FILE" <<EOF
-APP_KEY=$(docker run --rm "$IMAGE" app-manager generate-key)
+APP_KEY=$(docker run --rm --entrypoint app-manager "$IMAGE" generate-key)
 APP_URL=http://localhost:${PORT}
 APP_PORT=${PORT}
 APP_ENV=production
@@ -1507,6 +1512,7 @@ ADMIN_EMAIL=${ADMIN_EMAIL}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ADMIN_TEAM_NAME=Smoke Team
 EOF
+ENV_FILE_CREATED=1
 
 echo "==> bringing up $IMAGE"
 compose up -d --wait --wait-timeout 300
@@ -1540,7 +1546,7 @@ register_code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT
 echo "==> the queue worker drains a job"
 compose exec -T app php artisan tinker --execute="dispatch(function () { \Illuminate\Support\Facades\Cache::put('smoke', 'ok', 300); });"
 for _ in $(seq 1 30); do
-    value="$(compose exec -T app php artisan tinker --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n')"
+    value="$(compose exec -T app php artisan tinker --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n' || true)"
     [ "$value" = "ok" ] && break
     sleep 2
 done
@@ -1561,7 +1567,7 @@ Expected: `==> smoke test passed`. Fix the stack — not the assertions — unti
 
 ```bash
 cd deploy/docker && cp .env.example .env
-# edit .env: APP_MANAGER_BOOTSTRAP=demo, APP_ENV=local, leave APP_KEY empty, DB_PASSWORD=demo-secret
+# edit .env: APP_MANAGER_BOOTSTRAP=demo, APP_ENV=local, comment out the APP_KEY line, DB_PASSWORD=demo-secret
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo up -d
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/login
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo exec -T postgres \
@@ -1596,7 +1602,7 @@ curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/dock
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
 
 # APP_KEY encrypts every credential in the instance. Generate it once, keep it.
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 
 docker compose up -d
 ```
@@ -1917,7 +1923,7 @@ import CodeBlock from '../components/CodeBlock.astro';
 curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
 
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 
 docker compose up -d`} />
   <p>
@@ -1959,8 +1965,10 @@ docker compose up -d`} />
     </tbody>
   </table>
   <p>
-    Only <code>demo</code> generates its own <code>APP_KEY</code>; the data is disposable, so a key
-    that disappears with the volume costs nothing. In the other modes the container refuses to start
+    Only <code>demo</code> generates its own <code>APP_KEY</code>, and only when the
+    <code>APP_KEY</code> line is commented out entirely — a blank value is not the same as an absent
+    one, and it would shadow the generated key forever. The data is disposable, so a key that
+    disappears with the volume costs nothing. In the other modes the container refuses to start
     without one, on purpose. Demo mode also requires <code>APP_ENV=local</code> — the demo seeder is
     disabled in production environments, and <code>app:bootstrap</code> fails loudly rather than
     leaving you with an empty instance that looks healthy.
@@ -2029,7 +2037,7 @@ In the root `README.md`, above the existing local-development instructions, add:
 mkdir app-manager && cd app-manager
 curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 docker compose up -d
 ```
 
