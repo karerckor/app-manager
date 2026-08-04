@@ -1007,6 +1007,8 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 storage/logs/*
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
 .git
 .github
 .claude
