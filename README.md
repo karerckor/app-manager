@@ -22,7 +22,54 @@ docker compose up -d
 ```
 
 Open <http://localhost:8000>. See [`deploy/docker`](deploy/docker/README.md) for the startup
-presets — installer, env-provided admin, or demo data — and the credential storage modes.
+presets and the full [deployment modes and Installer guide](apps/docs/src/pages/deployment-modes.astro).
+
+### Choose how credentials are handled
+
+Credential storage and API access are separate settings. Pick one value from each column:
+
+| Setting | Values | Effect |
+| --- | --- | --- |
+| `CREDENTIAL_STORAGE_MODES` | `local`, `external`, or `local,external` (default) | Sets the instance-wide ceiling. `local` stores encrypted fields in PostgreSQL and encrypted files in the configured private media store. `external` stores only a provider/resource reference; the build runner resolves it from your vault. A team may narrow this list in Team settings, but cannot widen it. |
+| `CREDENTIALS_API_PROFILE` | `full` (default) or `dashboard_only` | `full` lets authorized API clients upload, reveal, download, and provision secret material. `dashboard_only` removes those API routes and the `credentials:reveal` scope, and rejects local credential payload/file writes while leaving metadata, external-reference, and verification APIs available. The authenticated web dashboard can still manage and download local credentials. |
+
+Common combinations:
+
+| Goal | Configuration |
+| --- | --- |
+| Fully functional, App Manager-managed vault | `CREDENTIAL_STORAGE_MODES=local` and `CREDENTIALS_API_PROFILE=full` |
+| Bring your own external secret manager | `CREDENTIAL_STORAGE_MODES=external`; choose `full` or `dashboard_only` for the remaining credential API surface |
+| Let each team choose local or external storage | `CREDENTIAL_STORAGE_MODES=local,external` (default) |
+| Keep local secrets usable only through the web UI | `CREDENTIAL_STORAGE_MODES=local` and `CREDENTIALS_API_PROFILE=dashboard_only` |
+
+`external` supports references for AWS Secrets Manager, HashiCorp Vault, Azure Key Vault,
+Google Secret Manager, fastlane match, and custom providers. App Manager never connects to those
+vaults or copies their secret values; your CI/CD runner resolves the reference and reports its
+verification result. `MEDIA_STORAGE_DRIVER=local|s3` is a different setting: it selects where
+App Manager keeps uploaded private files when the credential storage mode is `local`.
+
+### Choose the first-run bootstrap
+
+The Compose `init` service runs migrations, initializes credential envelope encryption, and then
+runs `php artisan app:bootstrap`. The command is safe to run again.
+
+| Bootstrap | Configuration | Result |
+| --- | --- | --- |
+| Web Installer (default) | `APP_MANAGER_BOOTSTRAP=installer` | Open `/install` and create the first owner interactively. |
+| Environment-provisioned owner | `APP_MANAGER_BOOTSTRAP=admin`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`; optionally `ADMIN_NAME` and `ADMIN_TEAM_NAME` | Creates the first owner and team without a browser. If any account already exists, it leaves the database untouched, so `ADMIN_PASSWORD` can be removed after the first successful start. |
+| Demo fixtures | `APP_MANAGER_BOOTSTRAP=demo` and `APP_ENV=local` | Creates `demo@example.com` / `Demo123!`, team slug `demo-users-team`, app `example-app`, and API key `demo-api-key`. Demo signing files are fixtures, not production credentials. |
+
+The Installer checks PHP, OpenSSL, the database and migrations, `APP_KEY`, and writable storage.
+It then creates the owner and team, verifies either local or S3-compatible private media storage,
+and can configure GitHub, GitLab, and outbound webhooks. Its stored configuration is encrypted with
+`APP_KEY`. Before installation, normal pages redirect to `/install` and non-GET/API requests return
+`503`; afterwards `/install` is locked, including on older databases that already contain a user.
+Leave `APP_MANAGER_BOOTSTRAP=installer` in place after completing the Installer—the installation
+record performs the lockout and supplies the persisted settings on later requests.
+
+For repository development, `php artisan db:seed` is another local-only option. It creates
+`test@example.com` / `password` and then the complete demo workspace above. By contrast,
+`APP_MANAGER_BOOTSTRAP=demo` invokes only `DemoSeeder`, so it does not create the test account.
 
 ## What it provides
 

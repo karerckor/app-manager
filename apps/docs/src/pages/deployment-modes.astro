@@ -1,0 +1,269 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Deployment modes and Installer" activeNav="/deployment-modes">
+  <h1>Deployment modes and Installer</h1>
+  <p>
+    An App Manager deployment has three independent decisions: how the first account is created,
+    where credential material is stored, and whether secret material is exposed to authenticated
+    API clients. Keeping those choices separate lets an interactive installation use an external
+    vault, or an automatically provisioned installation keep secrets available only in the web UI.
+  </p>
+
+  <h2>Configuration at a glance</h2>
+  <table>
+    <thead>
+      <tr><th>Decision</th><th>Variable</th><th>Values</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>First account</td>
+        <td><code>APP_MANAGER_BOOTSTRAP</code></td>
+        <td><code>installer</code> (default), <code>admin</code>, or <code>demo</code></td>
+      </tr>
+      <tr>
+        <td>Credential storage</td>
+        <td><code>CREDENTIAL_STORAGE_MODES</code></td>
+        <td><code>local,external</code> (default), <code>local</code>, or <code>external</code></td>
+      </tr>
+      <tr>
+        <td>Credential API</td>
+        <td><code>CREDENTIALS_API_PROFILE</code></td>
+        <td><code>full</code> (default) or <code>dashboard_only</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    These variables are read when the application boots. With Compose, edit <code>.env</code> and
+    run <code>docker compose up -d</code> so all application containers are recreated with the same
+    configuration.
+  </p>
+
+  <h2>Credential storage modes</h2>
+  <h3>Local: App Manager stores the secret</h3>
+  <p>
+    With <code>CREDENTIAL_STORAGE_MODES=local</code>, secure fields are encrypted in PostgreSQL and
+    credential files are application-encrypted before being written to the configured private media
+    store. “Local” describes who owns the secret, not necessarily the physical filesystem:
+    <code>MEDIA_STORAGE_DRIVER=local</code> uses the persistent <code>storage-app</code> volume, while
+    <code>MEDIA_STORAGE_DRIVER=s3</code> uses a private S3-compatible bucket.
+  </p>
+  <CodeBlock
+    lang="dotenv"
+    code={`CREDENTIAL_STORAGE_MODES=local
+CREDENTIALS_API_PROFILE=full
+
+# Where locally managed credential files and other private media are stored:
+MEDIA_STORAGE_DRIVER=local`}
+  />
+  <p>
+    This is the fully functional App Manager-managed vault: authorized API clients can prepare
+    signing material for builds, and the web dashboard can manage the same credentials. Keep
+    <code>APP_KEY</code> stable and back it up with the database and media store.
+  </p>
+
+  <h3>External: bring your own vault</h3>
+  <p>
+    With <code>CREDENTIAL_STORAGE_MODES=external</code>, App Manager stores a provider, resource
+    reference, and optional non-secret metadata. It does not hold credentials for the external
+    vault, resolve the reference, or copy the referenced secret. Your build runner fetches the
+    secret directly and can report whether resolution succeeded with
+    <a href="/cli/credentials"><code>appmctl credentials verify</code></a>.
+  </p>
+  <p>
+    Supported reference types are AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, Google
+    Secret Manager, fastlane match, and a custom provider. See
+    <a href="/platform/credentials-vault">Credentials Vault</a> for resource formats and the
+    verification lifecycle.
+  </p>
+  <CodeBlock
+    lang="dotenv"
+    code={`CREDENTIAL_STORAGE_MODES=external
+# This controls the API surface; it does not make App Manager read the external vault.
+CREDENTIALS_API_PROFILE=full`}
+  />
+
+  <h3>Both: let a team choose</h3>
+  <p>
+    <code>CREDENTIAL_STORAGE_MODES=local,external</code> is the default. It is the instance-wide
+    ceiling: an owner can narrow a workspace to one of those modes under <strong>Team access →
+    Permitted credential storage</strong>, but a workspace cannot enable a mode the instance has
+    excluded. A credential's mode cannot be changed after creation; create a replacement and
+    reattach it when moving between vaults.
+  </p>
+
+  <h2>Credential API profiles</h2>
+  <table>
+    <thead>
+      <tr><th>Profile</th><th>API behavior</th><th>Web dashboard</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>full</code></td>
+        <td>Credential metadata, verification, payload reveal, file upload/download/delete, and Expo credential provisioning routes are available subject to API-key scopes and team permissions.</td>
+        <td>Full credential management.</td>
+      </tr>
+      <tr>
+        <td><code>dashboard_only</code></td>
+        <td>Routes that reveal, upload, download, delete, or send secret material to Expo are not registered. Creating a local credential or changing its payload/file through the API is rejected. Metadata CRUD, external-reference CRUD, and verification remain available. New API keys cannot receive <code>credentials:reveal</code>.</td>
+        <td>Authenticated users keep the normal credential UI, including local credential downloads.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    In <code>dashboard_only</code>, credential webhook and notification events are also suppressed so
+    credential activity does not leave through those channels. Other event types continue to work.
+    The profile is resolved at application boot, so restart every web, queue, and scheduler container
+    after changing it.
+  </p>
+  <p>
+    “Dashboard only” is an API security profile, not a read-only application mode. It can be paired
+    with <code>local</code>, <code>external</code>, or both storage modes.
+  </p>
+
+  <h2>Recommended combinations</h2>
+  <table>
+    <thead>
+      <tr><th>Goal</th><th>Storage modes</th><th>API profile</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>App Manager is the complete credential vault for CI</td><td><code>local</code></td><td><code>full</code></td></tr>
+      <tr><td>All secrets remain in an external manager</td><td><code>external</code></td><td><code>full</code> or <code>dashboard_only</code></td></tr>
+      <tr><td>Teams decide per credential</td><td><code>local,external</code></td><td><code>full</code></td></tr>
+      <tr><td>Secrets may be downloaded only by signed-in dashboard users</td><td><code>local</code></td><td><code>dashboard_only</code></td></tr>
+      <tr><td>Inventory and verify external references through the API, never transfer secrets</td><td><code>external</code></td><td><code>dashboard_only</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>First-run bootstrap modes</h2>
+  <p>
+    In the published Compose stack, the one-shot <code>init</code> service waits for PostgreSQL and
+    Redis, runs database migrations, runs <code>encryption:migrate</code>, and finally executes
+    <code>php artisan app:bootstrap</code>. The long-running app, queue, and scheduler services start
+    only after <code>init</code> succeeds.
+  </p>
+
+  <h3>Web Installer (default)</h3>
+  <CodeBlock
+    lang="dotenv"
+    code={`APP_MANAGER_BOOTSTRAP=installer
+APP_KEY=base64:replace-with-a-generated-key
+ALLOW_PUBLIC_REGISTRATION=false`}
+  />
+  <p>
+    Installer mode does not create database records during <code>app:bootstrap</code>. Instead, it
+    makes <code>/install</code> the only usable application screen until setup is complete. Normal
+    browser GET requests redirect there; API and non-GET requests return <code>503</code> with the
+    installer URL.
+  </p>
+
+  <h4>What the Installer checks</h4>
+  <ul>
+    <li>PHP 8.4 or newer and the OpenSSL extension;</li>
+    <li>a working PDO database connection and the required migrated tables;</li>
+    <li>a configured application encryption key;</li>
+    <li>writable application and framework storage directories.</li>
+  </ul>
+
+  <h4>What the Installer configures</h4>
+  <ul>
+    <li>the instance name, first owner account, owner team, and current team;</li>
+    <li>local private media storage or an S3-compatible bucket;</li>
+    <li>optional GitHub App, GitLab OAuth, and outbound webhook integrations.</li>
+  </ul>
+  <p>
+    Before committing anything, it tests write, read, and delete access to the selected media
+    storage. S3 access keys are optional when the runtime supplies credentials through an IAM role;
+    when supplied explicitly, the access key and secret key must be provided together. GitHub and
+    GitLab secrets are required only when that provider is enabled.
+  </p>
+  <p>
+    The owner, team, and installation record are created in one transaction. Instance settings and
+    any supplied integration or S3 credentials are encrypted with <code>APP_KEY</code>. The owner is
+    signed in and sent to the Integrations page after a successful installation.
+  </p>
+
+  <h4>One-time safety</h4>
+  <p>
+    Installer submissions are rate-limited and serialized with a lock. As soon as the installation
+    record exists, <code>/install</code> redirects away. The presence of any user also closes it, so
+    an older populated database cannot be taken over by reopening the setup URL. Public registration
+    remains disabled unless <code>ALLOW_PUBLIC_REGISTRATION=true</code> is explicitly set.
+  </p>
+  <p>
+    Keep <code>APP_MANAGER_BOOTSTRAP=installer</code> after installation. You do not need to set
+    <code>SELF_HOSTED_INSTALLER_ENABLED=false</code>: the installation record performs the lockout,
+    while installer mode also ensures the encrypted installation settings are applied on later
+    requests.
+  </p>
+
+  <h3>Admin from environment variables</h3>
+  <CodeBlock
+    lang="dotenv"
+    code={`APP_MANAGER_BOOTSTRAP=admin
+ADMIN_EMAIL=owner@example.com
+ADMIN_PASSWORD=replace-with-a-strong-password
+ADMIN_NAME=Owner
+ADMIN_TEAM_NAME=My Team`}
+  />
+  <p>
+    Admin mode is intended for automated or headless provisioning. <code>ADMIN_EMAIL</code> and
+    <code>ADMIN_PASSWORD</code> are required on an empty database; the password is validated by the
+    same rules as an account created through the UI. The name defaults to <code>Owner</code> and the
+    team name to <code>My Team</code>.
+  </p>
+  <p>
+    The command is idempotent at the instance level: if any user exists, it creates nothing and
+    succeeds without requiring the <code>ADMIN_*</code> values. Remove <code>ADMIN_PASSWORD</code>
+    from the deployment environment after the first successful start, but leave
+    <code>APP_MANAGER_BOOTSTRAP=admin</code>. This mode does not create an installation-settings
+    record; configure media storage and integrations with their environment variables.
+  </p>
+
+  <h3>Demo bootstrap</h3>
+  <CodeBlock
+    lang="dotenv"
+    code={`APP_MANAGER_BOOTSTRAP=demo
+APP_ENV=local`}
+  />
+  <p>
+    Demo mode is deliberately rejected outside <code>local</code>, <code>development</code>, and
+    <code>testing</code>. It creates the demo owner <code>demo@example.com</code> with password
+    <code>Demo123!</code>, team slug <code>demo-users-team</code>, sample app
+    <code>example-app</code>, and API key <code>demo-api-key</code>, plus Android/iOS identifiers,
+    profiles, assets, integrations, and signing fixtures. Those certificates, profiles, keys, and
+    service accounts are structurally useful test data but are not trusted by Apple, Google, or
+    application stores.
+  </p>
+  <p>
+    The container may generate a disposable <code>APP_KEY</code> for this mode only and persist it in
+    the <code>storage-app</code> volume. Demo bootstrap skips seeding when any user already exists.
+  </p>
+
+  <h3>Database seed for repository development</h3>
+  <CodeBlock lang="bash" code={`cd apps/platform
+php artisan db:seed`} />
+  <p>
+    The default database seeder is also limited to local, development, and testing environments. It
+    creates <code>test@example.com</code> with password <code>password</code>, then invokes
+    <code>DemoSeeder</code> to add the complete demo workspace. This differs from
+    <code>APP_MANAGER_BOOTSTRAP=demo</code>, which calls only <code>DemoSeeder</code> and therefore
+    does not create the test account. Both seeders are idempotent, but their credentials must never
+    be exposed on an internet-facing instance.
+  </p>
+
+  <h2>Changing modes later</h2>
+  <p>
+    Storage-mode and API-profile changes affect what can be created or accessed after the next
+    restart; they do not migrate existing credentials. A narrower storage ceiling can leave existing
+    credentials visible while preventing new credentials in that mode. Plan migrations by creating
+    replacements and reattaching build profiles before removing the old credentials.
+  </p>
+  <p>
+    Bootstrap modes are first-run mechanisms, not account migration tools. Do not switch a completed
+    Installer deployment to <code>admin</code> or <code>demo</code>. For ongoing account management,
+    invite team members or use the authenticated dashboard.
+  </p>
+</DocsLayout>

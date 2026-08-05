@@ -28,6 +28,10 @@ docker compose up -d`} />
     encrypted with it. Store it wherever you keep production secrets and back it up with the
     database — a dump without the key cannot be decrypted.
   </p>
+  <p>
+    Before starting a real instance, choose its bootstrap, credential storage, and credential API
+    profile in <a href="/deployment-modes">Deployment modes and Installer</a>.
+  </p>
 
   <h2>What runs</h2>
   <table>
@@ -44,13 +48,17 @@ docker compose up -d`} />
     </tbody>
   </table>
   <p>
-    <code>queue</code> and <code>scheduler</code> have no healthcheck — there's no web server in
-    either role for one to check — so <code>docker compose ps</code> always shows them without a
-    health column. Confirm they're actually working with
-    <code>docker compose logs queue scheduler</code>.
+    <code>queue</code> and <code>scheduler</code> use process healthchecks. Confirm both are healthy
+    with <code>docker compose ps</code>; use <code>docker compose logs queue scheduler</code> when
+    either process is restarting or unhealthy.
   </p>
 
   <h2>Startup presets</h2>
+  <p>
+    These settings are independent, so a bootstrap mode can be combined with any credential
+    storage/API profile. See <a href="/deployment-modes">Deployment modes and Installer</a> for the
+    exact behavior, examples, and the difference between demo bootstrap and database seeding.
+  </p>
   <table>
     <thead>
       <tr><th>Goal</th><th>Variables</th></tr>

@@ -65,10 +65,9 @@ plaintext port to loopback buys you. With that port on `0.0.0.0`, a client can
 choose the IP that App Manager rate-limits logins by and records as the actor in
 the credential-access audit log.
 
-`queue` and `scheduler` have no healthcheck (there's no web server in either
-role for one to check), so `docker compose ps` always shows them without a
-health column. Confirm they're actually working with
-`docker compose logs queue scheduler`.
+`queue` and `scheduler` use process healthchecks. Confirm both are healthy with
+`docker compose ps`; use `docker compose logs queue scheduler` when either
+process is restarting or unhealthy.
 
 ## Upgrading
 

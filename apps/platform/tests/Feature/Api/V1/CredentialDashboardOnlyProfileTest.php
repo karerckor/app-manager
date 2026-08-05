@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Models\WebhookEndpoint;
 use App\Models\WebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class CredentialDashboardOnlyProfileTest extends TestCase
@@ -83,6 +84,54 @@ class CredentialDashboardOnlyProfileTest extends TestCase
             ->assertNotFound();
         $this->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/expo/identifiers/{$identifier->id}/credentials/{$credential->id}")
             ->assertNotFound();
+    }
+
+    public function test_local_secret_material_cannot_enter_through_create_or_update(): void
+    {
+        [$user, $team, $app] = $this->workspace();
+        $this->authenticate($user, $team, [ApiKeyScope::CredentialsWrite]);
+        $identifier = $app->appIdentifiers()->firstOrFail();
+
+        $this->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/credentials", [
+            'app_identifier_id' => $identifier->id,
+            'name' => 'Local API credential',
+            'type' => CredentialType::ApnsKey->value,
+            'storage_mode' => 'local',
+            'payload' => ['key_id' => 'SECRET'],
+        ])->assertUnprocessable()->assertJsonValidationErrors('storage_mode');
+
+        $this->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/credentials", [
+            'app_identifier_id' => $identifier->id,
+            'name' => 'External API credential',
+            'type' => CredentialType::ApnsKey->value,
+            'storage_mode' => 'external',
+            'payload' => [
+                'key_id' => 'KEYID12345',
+                'team_id' => 'TEAMID1234',
+            ],
+            'vault' => [
+                'provider' => 'aws_secrets_manager',
+                'resource' => 'arn:aws:secretsmanager:eu:1:secret:apns',
+                'metadata' => ['region' => 'eu-central-1'],
+            ],
+        ])->assertCreated()->assertJsonPath('data.storage_mode', 'external');
+
+        $local = Credential::factory()->create([
+            'team_id' => $team->id,
+            'type' => CredentialType::ApnsKey,
+        ]);
+        $identifier->credentials()->attach($local);
+        $base = "/api/v1/{$team->slug}/apps/{$app->slug}/credentials/{$local->id}";
+
+        $this->patchJson($base, [
+            'payload' => ['key_id' => 'SECRET'],
+        ])->assertUnprocessable()->assertJsonValidationErrors('payload');
+
+        $this->patch($base, [
+            'file' => UploadedFile::fake()->create('AuthKey.p8', 1, 'application/x-pem-file'),
+        ], ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('file');
     }
 
     public function test_metadata_endpoints_still_work(): void

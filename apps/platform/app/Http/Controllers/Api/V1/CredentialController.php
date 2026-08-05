@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Credentials\SyncVaultReference;
+use App\Enums\CredentialApiProfile;
 use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
 use App\Enums\ProfileType;
@@ -66,6 +67,13 @@ class CredentialController extends Controller
     {
         $type = CredentialType::tryFrom((string) $request->input('type'));
         $mode = $this->credentialRules->resolveMode($team, $request);
+
+        if (! CredentialApiProfile::current()->exposesSecretMaterial()
+            && $mode === CredentialStorageMode::Local) {
+            throw ValidationException::withMessages([
+                'storage_mode' => 'Local credential material can only be managed in the dashboard on this instance.',
+            ]);
+        }
 
         $rules = [
             'app_identifier_id' => [
@@ -168,6 +176,23 @@ class CredentialController extends Controller
     ): CredentialResource {
         $credential = $this->resolveTeamCredential($team, $mobileApp, $credential, $this->relationsFor($mobileApp));
         $this->credentialRules->assertModeIsUnchanged($credential, $request);
+
+        if (! CredentialApiProfile::current()->exposesSecretMaterial() && ! $credential->isExternal()) {
+            $message = 'Local credential material can only be managed in the dashboard on this instance.';
+            $secretFields = [];
+
+            if ($request->has('payload')) {
+                $secretFields['payload'] = $message;
+            }
+
+            if ($request->hasFile('file')) {
+                $secretFields['file'] = $message;
+            }
+
+            if ($secretFields !== []) {
+                throw ValidationException::withMessages($secretFields);
+            }
+        }
 
         $rules = [
             'name' => ['sometimes', 'string', 'max:255'],
