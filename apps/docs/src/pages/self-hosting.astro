@@ -43,6 +43,12 @@ docker compose up -d`} />
       <tr><td><code>caddy</code></td><td>Optional. <code>docker compose --profile tls up -d</code> terminates TLS for <code>APP_DOMAIN</code>.</td></tr>
     </tbody>
   </table>
+  <p>
+    <code>queue</code> and <code>scheduler</code> have no healthcheck — there's no web server in
+    either role for one to check — so <code>docker compose ps</code> always shows them without a
+    health column. Confirm they're actually working with
+    <code>docker compose logs queue scheduler</code>.
+  </p>
 
   <h2>Startup presets</h2>
   <table>
@@ -55,6 +61,7 @@ docker compose up -d`} />
       <tr><td>Throwaway demo instance</td><td><code>APP_MANAGER_BOOTSTRAP=demo</code> together with <code>APP_ENV=local</code> — seeds <code>demo@example.com</code> / <code>Demo123!</code> and the <code>demo-api-key</code> API key</td></tr>
       <tr><td>Bring your own vault only</td><td><code>CREDENTIAL_STORAGE_MODES=external</code></td></tr>
       <tr><td>Platform-held secrets only</td><td><code>CREDENTIAL_STORAGE_MODES=local</code></td></tr>
+      <tr><td>Both (default)</td><td><code>CREDENTIAL_STORAGE_MODES=local,external</code></td></tr>
       <tr><td>Secrets never traverse the API</td><td><code>CREDENTIALS_API_PROFILE=dashboard_only</code></td></tr>
     </tbody>
   </table>
@@ -77,6 +84,7 @@ docker compose up -d`} />
       <tr><td><code>APP_KEY</code></td><td>—</td><td>Required. Encrypts credentials, sessions and stored integration secrets.</td></tr>
       <tr><td><code>APP_URL</code></td><td><code>http://localhost:8000</code></td><td>Public URL. Must match the scheme users actually use.</td></tr>
       <tr><td><code>APP_PORT</code></td><td><code>8000</code></td><td>Host port for the console.</td></tr>
+      <tr><td><code>DB_PASSWORD</code></td><td>—</td><td>Required. Password for the bundled PostgreSQL user; Compose refuses to start without it.</td></tr>
       <tr><td><code>APP_MANAGER_BOOTSTRAP</code></td><td><code>installer</code></td><td><code>installer</code>, <code>admin</code> or <code>demo</code>. Anything but <code>installer</code> disables the web installer.</td></tr>
       <tr><td><code>CREDENTIAL_STORAGE_MODES</code></td><td><code>local,external</code></td><td>Instance-wide ceiling on credential storage modes. A team may narrow it, never widen it.</td></tr>
       <tr><td><code>CREDENTIALS_API_PROFILE</code></td><td><code>full</code></td><td><code>dashboard_only</code> removes every endpoint that moves secret material.</td></tr>
