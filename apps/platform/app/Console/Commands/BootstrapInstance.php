@@ -46,6 +46,16 @@ class BootstrapInstance extends Command
 
     private function runAdminMode(ProvisionFirstOwner $provisionFirstOwner): int
     {
+        // Checked before ADMIN_EMAIL/ADMIN_PASSWORD, not after: removing the
+        // plaintext owner password from the host once the owner exists is the
+        // right hygiene move, and it must not turn the next `docker compose up`
+        // into a failing `init` that blocks the whole stack from starting.
+        if (User::query()->exists()) {
+            $this->info('Bootstrap mode "admin": an account already exists, leaving it untouched.');
+
+            return self::SUCCESS;
+        }
+
         $email = (string) config('installer.admin.email');
         $password = (string) config('installer.admin.password');
 
@@ -59,12 +69,6 @@ class BootstrapInstance extends Command
             $this->error('ADMIN_PASSWORD is required when APP_MANAGER_BOOTSTRAP=admin.');
 
             return self::FAILURE;
-        }
-
-        if (User::query()->exists()) {
-            $this->info('Bootstrap mode "admin": an account already exists, leaving it untouched.');
-
-            return self::SUCCESS;
         }
 
         try {
@@ -108,7 +112,13 @@ class BootstrapInstance extends Command
 
         // DemoSeeder is called directly: DatabaseSeeder refuses to seed outside
         // local/development/testing, and a container runs APP_ENV=production.
-        $this->call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]);
+        $seeded = $this->call('db:seed', ['--class' => DemoSeeder::class, '--force' => true]);
+
+        if ($seeded !== self::SUCCESS) {
+            $this->error('Bootstrap mode "demo": seeding the demo account failed.');
+
+            return self::FAILURE;
+        }
 
         $this->info('Seeded the demo account: demo@example.com / Demo123! (API key: demo-api-key).');
 

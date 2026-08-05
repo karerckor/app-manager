@@ -105,6 +105,32 @@ class BootstrapInstanceCommandTest extends TestCase
         $this->assertDatabaseCount('teams', 1);
     }
 
+    public function test_admin_mode_still_succeeds_after_the_admin_password_is_removed(): void
+    {
+        // The hygienic move once the owner exists is to delete ADMIN_PASSWORD
+        // from the host's .env. That must not make `init` fail, because the
+        // whole stack waits on `service_completed_successfully`.
+        $this->useAdminMode();
+        $this->artisan('app:bootstrap')->assertExitCode(0);
+
+        $userId = User::query()->sole()->id;
+        $teamId = Team::query()->sole()->id;
+
+        config([
+            'installer.admin.email' => null,
+            'installer.admin.password' => null,
+        ]);
+
+        $this->artisan('app:bootstrap')
+            ->expectsOutputToContain('an account already exists')
+            ->assertExitCode(0);
+
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('teams', 1);
+        $this->assertSame($userId, User::query()->sole()->id);
+        $this->assertSame($teamId, Team::query()->sole()->id);
+    }
+
     public function test_admin_mode_fails_when_the_email_is_missing(): void
     {
         $this->useAdminMode();
