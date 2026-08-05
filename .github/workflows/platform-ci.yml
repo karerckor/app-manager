@@ -108,5 +108,8 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
+      - name: Create test environment file
+        run: touch .env
+
       - name: Run tests
         run: composer test
