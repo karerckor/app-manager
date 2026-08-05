@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - apps/platform/**
+      - .github/workflows/platform-ci.yml
   push:
     branches:
       - main
     paths:
       - apps/platform/**
+      - .github/workflows/platform-ci.yml
 
 concurrency:
   group: platform-${{ github.head_ref || github.ref_name }}

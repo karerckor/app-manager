@@ -61,17 +61,22 @@ services:
   queue:
     <<: *app
     command: ["app-manager", "queue"]
-    # The image's baked-in HEALTHCHECK curls the web server; queue doesn't run
-    # one, so the check would never pass and `--wait` would hang forever.
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "pgrep -f 'artisan queue:work' >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
 
   scheduler:
     <<: *app
     command: ["app-manager", "scheduler"]
-    # Same reasoning as queue: no web server in this role, so no HTTP healthcheck.
     healthcheck:
-      disable: true
+      test: ["CMD-SHELL", "pgrep -f 'artisan schedule:work' >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
 
   # docker compose --profile tls up -d
   caddy:
