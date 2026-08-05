@@ -5,7 +5,7 @@ App Manager is a self-hosted control plane for application configuration, signin
 The project is aimed at teams that maintain multiple mobile applications, environments, or white-label variants and want to keep build configuration out of individual repositories and CI-provider-specific scripts.
 
 > [!IMPORTANT]
-> App Manager is under active development. It has a substantial domain model and test suite, but it does not yet ship a production application image or a stable release contract. Review the [production notes](#production-notes) before using it with real signing material.
+> App Manager is under active development. It ships a container image and a Compose stack you can run, but not a stable release contract. Review the [production notes](#production-notes) before using it with real signing material.
 
 ## Run with Docker
 
@@ -33,7 +33,7 @@ presets — installer, env-provided admin, or demo data — and the credential s
 
 ## Repository status
 
-App Manager currently works best as a development installation, an internal tool, or a foundation for a hosted product. The implemented surface is broader than a prototype, but releases, upgrade guarantees, production deployment automation, backup guidance, and end-user support policy are not established yet.
+App Manager currently works best as an internal tool or a foundation for a hosted product. [`deploy/docker`](deploy/docker/README.md) covers deployment, upgrades, and backups, but versioned releases, upgrade guarantees, and an end-user support policy are not established yet.
 
 Interfaces may change while the API and clients are still pre-1.0.
 
@@ -70,6 +70,7 @@ The platform is the source of truth. CI clients never need direct database or st
 | [`libs/fastlane-plugin`](libs/fastlane-plugin) | Fastlane actions for metadata, assets, credentials, build reporting, and artifacts |
 | [`demos/expo-hello-world`](demos/expo-hello-world) | Expo app demonstrating configuration and credential preparation plus Fastlane integration |
 | [`.github/workflows`](.github/workflows) | Android and iOS plugin smoke workflows |
+| [`deploy/docker`](deploy/docker/README.md) | Self-hosting Compose stack, environment reference, and stack smoke test |
 | [`docker-compose.yml`](docker-compose.yml) | Local PostgreSQL and Redis services |
 | [`docs/superpowers`](docs/superpowers) | Historical implementation designs and plans, not the public user guide |
 
@@ -419,15 +420,14 @@ npm test
 
 ## Production notes
 
-This repository currently provides local infrastructure, not a production deployment. A production operator still needs to supply:
+[`deploy/docker`](deploy/docker/README.md) provides the runnable parts of a deployment: durable PostgreSQL, Redis and file storage volumes, long-running web, queue and scheduler processes, optional TLS termination through Caddy, an upgrade command, and backup commands for the database and the storage volume.
 
-- a reverse proxy and TLS termination;
-- durable PostgreSQL, Redis, and private/object storage;
-- long-running web, queue, and scheduler processes;
+An operator still has to supply:
+
 - transactional mail for verification, password reset, and invitations;
-- database and file backups with restore testing;
+- offsite retention for those backups, and restore testing;
 - monitoring for queue failures, webhook delivery, provider API errors, disk usage, and credential expiry;
-- an upgrade and rollback process.
+- a rollback path — pin an image tag rather than tracking `latest`, and take a database dump before every upgrade.
 
 Security-sensitive considerations:
 

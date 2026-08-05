@@ -35,7 +35,7 @@ docker compose up -d`} />
       <tr><th>Service</th><th>Role</th></tr>
     </thead>
     <tbody>
-      <tr><td><code>init</code></td><td>One-shot: runs migrations and the first-run bootstrap, then exits. Everything else waits for it.</td></tr>
+      <tr><td><code>init</code></td><td>One-shot: runs migrations, then <code>encryption:migrate</code> to ensure the instance has an active credential encryption key, then the first-run bootstrap, then exits. Everything else waits for it.</td></tr>
       <tr><td><code>app</code></td><td>nginx + PHP-FPM serving the console and the REST API.</td></tr>
       <tr><td><code>queue</code></td><td>Worker for the <code>notifications</code>, <code>integrations</code>, <code>webhooks</code> and <code>default</code> queues.</td></tr>
       <tr><td><code>scheduler</code></td><td>Build reconciliation, log archiving, credential expiry checks.</td></tr>
@@ -66,13 +66,43 @@ docker compose up -d`} />
     </tbody>
   </table>
   <p>
-    Only <code>demo</code> generates its own <code>APP_KEY</code>, and only when the
-    <code>APP_KEY</code> line is commented out entirely — a blank value is not the same as an absent
-    one, and it would shadow the generated key forever. The data is disposable, so a key that
-    disappears with the volume costs nothing. In the other modes the container refuses to start
-    without one, on purpose. Demo mode also requires <code>APP_ENV=local</code> — the demo seeder is
-    disabled in production environments, and <code>app:bootstrap</code> fails loudly rather than
-    leaving you with an empty instance that looks healthy.
+    Only <code>demo</code> generates its own <code>APP_KEY</code> when you haven't supplied one. It
+    stores that key in the <code>storage-app</code> volume, so restarts and upgrades reuse it, and
+    the data is disposable anyway. The key reaches the application through the config cache the
+    entrypoint builds at startup — so if you run <code>php artisan config:clear</code> inside a
+    running container, restart it afterwards instead of leaving it up. Every other mode refuses to
+    start without <code>APP_KEY</code>, on purpose. Demo mode also requires
+    <code>APP_ENV=local</code> — the demo seeder is disabled in production environments, and
+    <code>app:bootstrap</code> fails loudly rather than leaving you with an empty instance that looks
+    healthy.
+  </p>
+
+  <h2>TLS</h2>
+  <CodeBlock lang="bash" code={`docker compose --profile tls up -d`} />
+  <p>
+    Caddy obtains and renews a certificate for <code>APP_DOMAIN</code> and proxies to
+    <code>app:8080</code>. Uncomment the whole TLS block in <code>.env</code>, not only
+    <code>APP_DOMAIN</code> — the later definitions override the defaults higher up in the file:
+  </p>
+  <CodeBlock lang="dotenv" code={`APP_DOMAIN=appmanager.example.com
+APP_URL=https://appmanager.example.com
+APP_PORT=127.0.0.1:8000
+SESSION_SECURE_COOKIE=true
+TRUSTED_PROXIES=*`} />
+  <p>
+    <code>APP_URL</code> has to move with the scheme and host. Left at
+    <code>http://localhost:8000</code> it breaks signed URLs, password-reset and invitation links,
+    and the GitHub App redirect URI.
+  </p>
+  <p>
+    <strong><code>APP_PORT=127.0.0.1:8000</code> is part of the security posture, not a
+    convenience.</strong> <code>TRUSTED_PROXIES=*</code> tells App Manager to believe the
+    <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code> headers of whoever connected, so
+    it is only acceptable while Caddy is the only thing that can reach the app. Binding the
+    plaintext port to loopback is what makes that true. Publish it on
+    <code>0.0.0.0</code> alongside <code>TRUSTED_PROXIES=*</code> and a client can pick the IP
+    address App Manager throttles its login attempts by and records as the actor in the
+    credential-access audit log.
   </p>
 
   <h2>Environment reference</h2>
@@ -98,7 +128,8 @@ docker compose up -d`} />
   <h2>Upgrading</h2>
   <CodeBlock lang="bash" code={`docker compose pull && docker compose up -d`} />
   <p>
-    <code>init</code> re-runs migrations before the new containers start serving. Pin a version
+    <code>init</code> re-runs migrations and <code>encryption:migrate</code> before the new
+    containers start serving; both are idempotent. Pin a version
     instead of <code>latest</code> — <code>ghcr.io/karerckor/app-manager-platform:1.4</code> — if you
     want upgrades to be a deliberate edit.
   </p>
