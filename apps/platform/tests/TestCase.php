@@ -12,6 +12,8 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        $this->withoutVite();
+
         try {
             if (EncryptionKey::count() === 0) {
                 EncryptionKeyManager::createKey();
