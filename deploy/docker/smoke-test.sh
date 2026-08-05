@@ -74,6 +74,26 @@ echo "==> init exited cleanly"
 init_exit="$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -aq init)")"
 [ "$init_exit" = "0" ] || { echo "init exited with $init_exit" >&2; exit 1; }
 
+echo "==> init left an active encryption key behind"
+# Credentials are envelope encrypted with a DEK wrapped by APP_KEY. With an
+# empty encryption_keys table every credential write throws, and nothing else
+# in this test would notice: migrations having run is not the same as the
+# instance being usable.
+active_keys="$(compose exec -T postgres psql -U app_manager -d app_manager -tAc \
+    "select count(*) from encryption_keys where status = 'active'")"
+[ "$active_keys" = "1" ] || { echo "expected 1 active encryption key, found '$active_keys'" >&2; exit 1; }
+
+# encryption:status is what an operator runs to check this, so it has to agree.
+# It exits 0 either way, so assert on what it prints.
+key_status="$(compose exec -T app php artisan encryption:status)"
+case "$key_status" in
+    *'No encryption keys found'*)
+        echo "encryption:status reports no keys:" >&2
+        echo "$key_status" >&2
+        exit 1
+        ;;
+esac
+
 echo "==> /up responds"
 for _ in $(seq 1 60); do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}/up" || true)"
