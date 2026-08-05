@@ -13,6 +13,16 @@ class AccountFeaturesTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Registration is closed by default, matching production. This class is
+        // the one place that exercises the sign-up form, so it opens it here
+        // rather than inverting the default for the whole suite.
+        config(['installer.public_registration' => true]);
+    }
+
     public function test_registration_requires_the_user_to_create_a_team(): void
     {
         $this->post('/register', [

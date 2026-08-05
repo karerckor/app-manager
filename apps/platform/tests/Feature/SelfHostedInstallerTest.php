@@ -23,10 +23,6 @@ class SelfHostedInstallerTest extends TestCase
 
         config([
             'installer.enabled' => true,
-            // phpunit.xml opens registration globally for AccountFeaturesTest, but
-            // this class exercises the installer-driven flow, which must keep
-            // /register closed on its own regardless of that global default.
-            'installer.public_registration' => false,
             'app.key' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
             'integrations.enabled' => false,
             'integrations.github.enabled' => false,

@@ -18,6 +18,10 @@ bootstrap/cache/*
 .github
 .claude
 .playwright-mcp
+# The image is built with --no-dev, so nothing in it can run the suite. Both
+# are safe to drop: `composer dump-autoload --no-dev` skips the Tests\ namespace.
+tests
+phpunit.xml
 .phpunit.result.cache
 docs
 pnpm-lock.yaml

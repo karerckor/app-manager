@@ -21,6 +21,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # github.repository_owner keeps the owner's original case, and GHCR rejects an
+  # uppercase repository path. Every job that pushes or tags therefore runs the
+  # "Normalise the image name" step below before using this value.
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/app-manager-platform
 
 jobs:
@@ -44,6 +47,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Normalise the image name
+        run: echo "IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -93,6 +99,9 @@ jobs:
       packages: write
 
     steps:
+      - name: Normalise the image name
+        run: echo "IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
       - name: Download digests
         uses: actions/download-artifact@v5
         with:
