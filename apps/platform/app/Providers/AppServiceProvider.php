@@ -47,8 +47,25 @@ class AppServiceProvider extends ServiceProvider
         MediaStorageConfiguration $mediaStorageConfiguration,
         SelfHostedConfiguration $selfHostedConfiguration,
     ): void {
-        $mediaStorageConfiguration->apply();
-        $selfHostedConfiguration->apply();
+        // `config:cache` var_exports the whole config repository to
+        // bootstrap/cache/config.php. SelfHostedConfiguration::apply() pushes
+        // the installer's settings into that repository, and those settings are
+        // an `encrypted:array` cast — they arrive decrypted, so caching them
+        // would write the GitHub App private key, the OAuth client secrets, the
+        // webhook secret and the S3 credentials to a plaintext file next to an
+        // encrypted database that holds the same values. Skip both appliers
+        // while the cache is being built; the cached file then holds only
+        // environment-derived configuration.
+        //
+        // Do not "clean this up": these calls still run on every real boot
+        // (including a boot that reads the cached config) and before every
+        // queued job, so nothing about runtime behaviour depends on them
+        // being baked into the cache.
+        if (! $this->app->runningConsoleCommand('config:cache', 'optimize')) {
+            $mediaStorageConfiguration->apply();
+            $selfHostedConfiguration->apply();
+        }
+
         Queue::before(fn (JobProcessing $event) => $selfHostedConfiguration->apply());
         Sanctum::usePersonalAccessTokenModel(ApiKey::class);
     }
