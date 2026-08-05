@@ -140,7 +140,7 @@ The audit log records actor, source, team, request context, and model changes wh
 
 For the platform:
 
-- PHP 8.3 or later and Composer 2;
+- PHP 8.4 or later and Composer 2;
 - Node.js 22.13 or later and npm;
 - PostgreSQL 17 and Redis 8, or Docker with Compose;
 - PHP extensions required by Laravel, PostgreSQL, and Redis.
