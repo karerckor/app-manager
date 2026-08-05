@@ -45,6 +45,40 @@ class AppIdentifierTest extends TestCase
         $this->assertNull($ios->fresh()->version_code);
     }
 
+    public function test_build_number_is_only_stored_for_ios(): void
+    {
+        $ios = AppIdentifier::factory()->create([
+            'platform' => Platform::Ios,
+            'build_number' => '20300',
+        ]);
+        $android = AppIdentifier::factory()->create([
+            'platform' => Platform::Android,
+            'build_number' => '20300',
+        ]);
+
+        $this->assertSame('20300', $ios->fresh()->build_number);
+        $this->assertNull($android->fresh()->build_number);
+    }
+
+    public function test_only_one_identifier_can_be_default_per_app_and_platform(): void
+    {
+        $app = MobileApp::factory()->create();
+        AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.app',
+            'is_default' => true,
+        ]);
+
+        $this->expectException(QueryException::class);
+        AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.app.beta',
+            'is_default' => true,
+        ]);
+    }
+
     public function test_identifier_is_unique_per_app_and_platform(): void
     {
         $app = MobileApp::factory()->create();

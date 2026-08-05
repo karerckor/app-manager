@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\AppIdentifierController;
 use App\Http\Controllers\Api\V1\AppTelemetryController;
 use App\Http\Controllers\Api\V1\ArtifactController;
 use App\Http\Controllers\Api\V1\BuildController;
+use App\Http\Controllers\Api\V1\BuildContextController;
 use App\Http\Controllers\Api\V1\BuildLogController;
 use App\Http\Controllers\Api\V1\CiCdPipelineController;
 use App\Http\Controllers\Api\V1\CredentialController;
@@ -102,6 +103,14 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.destroy');
+        Route::get('/apps/{mobileApp:slug}/build-context', BuildContextController::class)
+            ->middleware([
+                CredentialApiProfile::current()->exposesSecretMaterial()
+                    ? 'abilities:apps:read,identifiers:read,assets:read,credentials:read,credentials:reveal'
+                    : 'abilities:apps:read,identifiers:read,assets:read,credentials:read',
+                'team.permission:view',
+            ])
+            ->name('apps.build-context.show');
         Route::get('/apps/{mobileApp:slug}/telemetry/issues', [AppTelemetryController::class, 'issues'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.issues.index');
         Route::get('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}', [AppTelemetryController::class, 'issue'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.issues.show');
         Route::get('/apps/{mobileApp:slug}/telemetry/traces', [AppTelemetryController::class, 'traces'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.traces.index');

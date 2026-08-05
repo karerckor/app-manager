@@ -1,0 +1,30 @@
+{
+  "context": {
+    "schema_version": 1,
+    "app": {
+      "slug": "example-app",
+      "name": "Example App"
+    },
+    "target": {
+      "platform": "ios",
+      "identifier": "com.example.app",
+      "version": "1.0.0",
+      "build_number": "1"
+    },
+    "profile": {
+      "platform": "ios",
+      "value": "appstore"
+    }
+  },
+  "files": {
+    "certificate": {
+      "path": "test/fixtures/certificate.p12",
+      "payload": {
+        "password": "fixture-password"
+      }
+    },
+    "provisioning_profile": {
+      "path": "test/fixtures/profile.mobileprovision"
+    }
+  }
+}

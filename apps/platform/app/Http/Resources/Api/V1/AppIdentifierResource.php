@@ -16,6 +16,8 @@ class AppIdentifierResource extends JsonResource
             'name' => $this->name,
             'version' => $this->version,
             'version_code' => $this->version_code,
+            'build_number' => $this->build_number,
+            'is_default' => $this->is_default,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

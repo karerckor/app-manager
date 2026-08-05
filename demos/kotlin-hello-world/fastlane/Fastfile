@@ -1,0 +1,222 @@
+require "fileutils"
+require "json"
+require "pathname"
+require "rbconfig"
+require "fastlane/plugin/app_manager"
+
+PROJECT_ROOT = File.expand_path("..", __dir__)
+GENERATED_ROOT = File.join(PROJECT_ROOT, ".app-manager")
+CONTEXT_PATH = File.join(GENERATED_ROOT, "context.json")
+ADAPTER_INPUT_PATH = File.join(GENERATED_ROOT, "adapter-input.json")
+FIREBASE_PATH = File.join(PROJECT_ROOT, "app", "google-services.json")
+
+def hash_value(hash, key)
+  return nil unless hash.respond_to?(:[])
+
+  hash[key] || hash[key.to_s] || hash[key.to_sym]
+end
+
+def requested_platform(options)
+  platform = (options[:platform] || ENV["APP_MANAGER_PLATFORM"] || "android").to_s
+  UI.user_error!("Kotlin demo supports only APP_MANAGER_PLATFORM=android") unless platform == "android"
+  platform
+end
+
+def requested_profile(options)
+  value = options[:profile_type] || ENV["APP_MANAGER_PROFILE_TYPE"]
+  value.to_s.strip.empty? ? "production" : value
+end
+
+def requested_identifier(options)
+  options[:identifier] || ENV["APP_MANAGER_IDENTIFIER"] || ENV["APP_MANAGER_ANDROID_IDENTIFIER"]
+end
+
+def configure_app_manager
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY", "demo-api-key"),
+    base_url: ENV.fetch("APP_MANAGER_BASE_URL", "http://localhost:8000"),
+    team: ENV.fetch("APP_MANAGER_TEAM", "demo-users-team"),
+    app: ENV.fetch("APP_MANAGER_APP", "example-app"),
+  )
+end
+
+def credential_present?(context, type)
+  Array(context[:credentials]).any? { |credential| hash_value(credential, :type) == type }
+end
+
+def asset_extension(context, name)
+  asset = hash_value(context[:assets], name)
+  mime_type = hash_value(asset, :mime_type)
+  { "image/jpeg" => "jpg", "image/png" => "png", "image/webp" => "webp" }.fetch(mime_type, "png")
+end
+
+def app_slug(context)
+  hash_value(context[:app], :slug).to_s.gsub(/[^a-zA-Z0-9._-]/, "_")
+end
+
+def download_path(context, *segments)
+  File.join(GENERATED_ROOT, "downloads", app_slug(context), *segments)
+end
+
+def project_relative_path(path)
+  Pathname.new(File.expand_path(path)).relative_path_from(Pathname.new(PROJECT_ROOT)).to_s
+end
+
+def adapter_file(result)
+  { path: project_relative_path(result.fetch(:path)), payload: result[:payload] || {} }
+end
+
+def prepare_assets(context)
+  files = {}
+  assets = context[:assets] || {}
+  if hash_value(assets, :icon)
+    extension = asset_extension(context, :icon)
+    path = File.join(GENERATED_ROOT, "res", "drawable", "app_manager_icon.#{extension}")
+    files[:icon] = project_relative_path(app_manager_download_icon(output_path: path))
+  end
+  if hash_value(assets, :splashscreen)
+    extension = asset_extension(context, :splashscreen)
+    path = File.join(GENERATED_ROOT, "res", "drawable", "app_manager_splash.#{extension}")
+    files[:splashscreen] = project_relative_path(app_manager_download_splashscreen(output_path: path))
+  end
+  files
+end
+
+def write_adapter_input(value)
+  FileUtils.mkdir_p(GENERATED_ROOT)
+  temporary = "#{ADAPTER_INPUT_PATH}.tmp"
+  File.write(temporary, "#{JSON.pretty_generate(value)}\n")
+  File.chmod(0o600, temporary)
+  File.rename(temporary, ADAPTER_INPUT_PATH)
+ensure
+  File.delete(temporary) if temporary && File.exist?(temporary)
+end
+
+def load_context
+  UI.user_error!(".app-manager/context.json is missing. Run `prepare` first.") unless File.exist?(CONTEXT_PATH)
+  JSON.parse(File.read(CONTEXT_PATH))
+end
+
+def prepared_for?(options)
+  return false unless File.exist?(CONTEXT_PATH)
+
+  context = load_context
+  expected_identifier = requested_identifier(options)
+  context["platform"] == "android" &&
+    context["app"] == ENV.fetch("APP_MANAGER_APP", "example-app") &&
+    context.dig("android", "profileType") == requested_profile(options) &&
+    (expected_identifier.to_s.empty? || context.dig("android", "package") == expected_identifier)
+end
+
+def deploy_allowed?(options)
+  options[:submit] == true || ENV["APP_MANAGER_ALLOW_DEPLOY"] == "1"
+end
+
+desc "Prepare the Kotlin Android project from App Manager"
+lane :prepare do |options|
+  requested_platform(options)
+  profile_type = requested_profile(options)
+  identifier = requested_identifier(options)
+
+  FileUtils.rm_rf(GENERATED_ROOT)
+  File.delete(FIREBASE_PATH) if File.exist?(FIREBASE_PATH)
+  configure_app_manager
+  context = app_manager_build_context(
+    platform: "android",
+    profile_type: profile_type,
+    app_identifier: identifier,
+  )
+  selected_identifier = context.dig(:target, :identifier)
+  files = prepare_assets(context)
+  files[:keystore] = adapter_file(
+    app_manager_download_android_keystore(
+      app_identifier: selected_identifier,
+      profile_type: profile_type,
+      credential_id: ENV["APP_MANAGER_ANDROID_CREDENTIAL_ID"],
+      output_path: download_path(context, "release.jks"),
+    ),
+  )
+
+  if credential_present?(context, "google_services_json")
+    result = app_manager_download_google_services_json(
+      app_identifier: selected_identifier,
+      credential_id: ENV["APP_MANAGER_ANDROID_GOOGLE_SERVICES_ID"],
+      output_path: FIREBASE_PATH,
+    )
+    files[:google_services] = project_relative_path(result.fetch(:path))
+  end
+  if credential_present?(context, "google_play_service_account")
+    result = app_manager_download_google_play_service_account(
+      app_identifier: selected_identifier,
+      credential_id: ENV["APP_MANAGER_GOOGLE_PLAY_CREDENTIAL_ID"],
+      output_path: download_path(context, "google-play-service-account.json"),
+    )
+    files[:google_play] = project_relative_path(result.fetch(:path))
+  end
+
+  write_adapter_input(context: context, files: files)
+  begin
+    sh(
+      RbConfig.ruby,
+      File.join(PROJECT_ROOT, "scripts", "prepare.rb"),
+      "--input",
+      ADAPTER_INPUT_PATH,
+      "--project-root",
+      PROJECT_ROOT,
+    )
+  ensure
+    File.delete(ADAPTER_INPUT_PATH) if File.exist?(ADAPTER_INPUT_PATH)
+  end
+
+  UI.success("Prepared #{context.dig(:app, :name)} for Android (#{selected_identifier}).")
+end
+
+desc "Build a signed Android App Bundle"
+lane :build do |options|
+  requested_platform(options)
+  prepare(
+    platform: "android",
+    profile_type: options[:profile_type],
+    identifier: options[:identifier],
+  ) unless prepared_for?(options)
+
+  gradle_command = ENV.fetch("GRADLE_PATH", "gradle")
+  Dir.chdir(PROJECT_ROOT) { sh(gradle_command, ":app:bundleRelease") }
+  aab = Dir[File.join(PROJECT_ROOT, "app", "build", "outputs", "bundle", "release", "*.aab")].first
+  UI.user_error!("Gradle did not produce a release AAB") unless aab
+  lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH] = aab
+  UI.success("Built #{load_context.dig('android', 'package')} at #{aab}.")
+  aab
+end
+
+desc "Build and optionally deploy to the Google Play internal track"
+lane :deploy do |options|
+  aab = build(options)
+  context = load_context
+  json_key = context.dig("android", "googlePlayJsonKeyPath")
+
+  if json_key.nil?
+    UI.important("No Google Play service account; stopping at the signed artifact.")
+    next
+  end
+  unless deploy_allowed?(options)
+    UI.important("Deploy not requested; pass submit:true or APP_MANAGER_ALLOW_DEPLOY=1.")
+    next
+  end
+
+  upload_to_play_store(
+    package_name: context.dig("android", "package"),
+    json_key: File.expand_path(json_key, PROJECT_ROOT),
+    track: "internal",
+    aab: aab,
+  )
+end
+
+desc "Remove generated App Manager and Gradle build output"
+lane :clean do
+  [GENERATED_ROOT, File.join(PROJECT_ROOT, ".gradle"), File.join(PROJECT_ROOT, "build"), File.join(PROJECT_ROOT, "app", "build")].each do |path|
+    FileUtils.rm_rf(path)
+  end
+  File.delete(FIREBASE_PATH) if File.exist?(FIREBASE_PATH)
+  UI.success("Removed generated Kotlin demo files.")
+end

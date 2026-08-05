@@ -3,6 +3,7 @@ require "json"
 require "net/http"
 require "openssl"
 require "tempfile"
+require "time"
 require "uri"
 
 module Fastlane
@@ -23,12 +24,9 @@ module Fastlane
           raise Error, "App Manager returned an invalid app identifiers response"
         end
 
-        seen_platforms = {}
         normalized_identifiers = identifiers.map do |identifier|
-          platform = required_response_value(identifier, "platform", "app identifier")
-          value = required_response_value(identifier, "identifier", "app identifier")
-          default = !seen_platforms.key?(platform)
-          seen_platforms[platform] = true
+            platform = required_response_value(identifier, "platform", "app identifier")
+            value = required_response_value(identifier, "identifier", "app identifier")
 
           {
             id: identifier["id"],
@@ -37,11 +35,21 @@ module Fastlane
             name: identifier["name"],
             version: identifier["version"],
             version_code: identifier["version_code"],
-            default: default,
+            build_number: identifier["build_number"],
+            is_default: identifier["is_default"] == true,
+            default_declared: identifier.key?("is_default"),
+            default: identifier["is_default"] == true,
             created_at: identifier["created_at"],
             updated_at: identifier["updated_at"]
           }
         end
+        normalized_identifiers.group_by { |identifier| identifier[:platform] }.each_value do |platform_identifiers|
+          next if platform_identifiers.any? { |identifier| identifier[:default] }
+
+          legacy_response = platform_identifiers.none? { |identifier| identifier[:default_declared] }
+          platform_identifiers.first[:default] = true if legacy_response || platform_identifiers.length == 1
+        end
+        normalized_identifiers.each { |identifier| identifier.delete(:default_declared) }
         defaults = normalized_identifiers
                    .select { |identifier| identifier[:default] }
                    .to_h { |identifier| [identifier[:platform], identifier] }
@@ -57,6 +65,56 @@ module Fastlane
           default_app_identifiers: defaults,
           created_at: app["created_at"],
           updated_at: app["updated_at"]
+        }
+      end
+
+      def build_context(platform:, profile_type:, app_identifier: nil)
+        query = URI.encode_www_form({
+          platform: platform,
+          profile_type: profile_type,
+          identifier: app_identifier
+        }.compact)
+        data = get_json("#{app_endpoint('build-context')}?#{query}")["data"]
+        raise Error, "App Manager returned an invalid build context response" unless data.is_a?(Hash)
+        raise Error, "App Manager returned an unsupported build context schema" unless data["schema_version"] == 1
+
+        app = data["app"]
+        target = data["target"]
+        profile = data["profile"]
+        credentials = data["credentials"]
+        unless app.is_a?(Hash) && target.is_a?(Hash) && profile.is_a?(Hash) && credentials.is_a?(Array)
+          raise Error, "App Manager returned an invalid build context response"
+        end
+
+        {
+          schema_version: 1,
+          app: {
+            id: app["id"],
+            slug: app["slug"],
+            name: required_response_value(app, "name", "build context app"),
+            description: app["description"]
+          },
+          target: {
+            id: target["id"],
+            platform: required_response_value(target, "platform", "build context target").to_sym,
+            identifier: required_response_value(target, "identifier", "build context target"),
+            name: target["name"],
+            version: target["version"],
+            version_code: target["version_code"],
+            build_number: target["build_number"],
+            is_default: target["is_default"] == true
+          },
+          profile: {
+            id: profile["id"],
+            value: required_response_value(profile, "value", "build context profile"),
+            platform: required_response_value(profile, "platform", "build context profile").to_sym,
+            name: profile["name"],
+            label: profile["label"],
+            artifact: profile["artifact"],
+            description: profile["description"]
+          },
+          assets: data["assets"] || {},
+          credentials: credentials
         }
       end
 
@@ -220,6 +278,7 @@ module Fastlane
         profile_type: nil,
         credential_id: nil,
         credential_name: nil,
+        allow_expired: false,
         overwrite: true
       )
         resolved_app_identifier = app_identifier || first_app_identifier(platform)
@@ -229,7 +288,8 @@ module Fastlane
           platform: platform,
           profile_type: profile_type,
           credential_id: credential_id,
-          credential_name: credential_name
+          credential_name: credential_name,
+          allow_expired: allow_expired
         )
         secret = json_request(
           app_endpoint("credentials", credential.fetch("id"), "reveal"),
@@ -264,7 +324,8 @@ module Fastlane
         platform: nil,
         profile_type: nil,
         credential_id: nil,
-        credential_name: nil
+        credential_name: nil,
+        allow_expired: false
       )
         app_identifier ||= first_app_identifier(platform)
         credentials = list_credentials
@@ -275,6 +336,8 @@ module Fastlane
             optional_match?(credential["id"], credential_id) &&
             optional_match?(credential["name"], credential_name)
         end
+
+        matches = reject_expired_credentials(matches) unless allow_expired
 
         if matches.empty?
           filters = ["type=#{type}", "app_identifier=#{app_identifier}"]
@@ -453,6 +516,23 @@ module Fastlane
 
       def optional_match?(actual, expected)
         !present?(expected) || actual.to_s == expected.to_s
+      end
+
+      def reject_expired_credentials(credentials)
+        active, expired = credentials.partition { |credential| !credential_expired?(credential) }
+        return active unless active.empty? && expired.any?
+
+        choices = expired.map { |credential| "#{credential['name']} (#{credential['id']})" }.join(", ")
+        raise Error, "All matching App Manager credentials are expired: #{choices}"
+      end
+
+      def credential_expired?(credential)
+        value = credential["expires_at"]
+        return false unless present?(value)
+
+        Time.iso8601(value.to_s) <= Time.now
+      rescue ArgumentError
+        raise Error, "App Manager returned an invalid credential expiration for #{credential['id']}"
       end
 
       def present?(value)

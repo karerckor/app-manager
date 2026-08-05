@@ -44,6 +44,14 @@ trait ValidatesAppIdentifier
                 'integer',
                 'min:1',
             ],
+            'build_number' => [
+                $required === 'required' ? 'nullable' : 'sometimes',
+                'nullable',
+                Rule::prohibitedIf($platformValue !== Platform::Ios->value),
+                'string',
+                'max:255',
+            ],
+            'is_default' => ['sometimes', 'boolean'],
         ];
     }
 }

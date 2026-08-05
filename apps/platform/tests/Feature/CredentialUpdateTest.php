@@ -196,7 +196,7 @@ class CredentialUpdateTest extends TestCase
         Storage::fake('public');
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $identifier = AppIdentifier::factory()->create([
@@ -234,7 +234,7 @@ class CredentialUpdateTest extends TestCase
         Storage::fake('public');
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
         $identifier = AppIdentifier::factory()->create([
@@ -284,7 +284,7 @@ class CredentialUpdateTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
 

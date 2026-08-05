@@ -1,0 +1,70 @@
+{
+  "data": {
+    "schema_version": 1,
+    "app": {
+      "id": "app-1",
+      "slug": "customer-app",
+      "name": "Customer App",
+      "description": "White-label customer application"
+    },
+    "target": {
+      "id": "ios-1",
+      "platform": "ios",
+      "identifier": "com.example.ios",
+      "name": "App Store",
+      "version": "2.3.0",
+      "version_code": null,
+      "build_number": "42",
+      "is_default": true,
+      "created_at": "2026-07-17T00:00:00.000000Z",
+      "updated_at": "2026-07-17T00:00:00.000000Z"
+    },
+    "profile": {
+      "value": "appstore",
+      "platform": "ios",
+      "label": "App Store",
+      "artifact": ".ipa",
+      "description": "For TestFlight and App Store distribution.",
+      "id": "profile-1",
+      "name": "App Store"
+    },
+    "assets": {
+      "icon": {
+        "name": "icon.png",
+        "mime_type": "image/png",
+        "size": 4096,
+        "url": "https://manager.example/api/v1/mobile-team/apps/customer-app/assets/icon"
+      },
+      "splashscreen": null
+    },
+    "credentials": [
+      {
+        "id": "certificate-1",
+        "type": "ios_certificate",
+        "name": "App Store certificate",
+        "expires_at": "2027-07-17T00:00:00.000000Z",
+        "app_identifiers": [],
+        "profiles": [
+          {
+            "id": "profile-1",
+            "type": "appstore",
+            "name": "App Store",
+            "app_identifier": {
+              "id": "ios-1",
+              "platform": "ios",
+              "identifier": "com.example.ios"
+            }
+          }
+        ],
+        "file": {
+          "name": "distribution.p12",
+          "mime_type": "application/x-pkcs12",
+          "size": 4096,
+          "url": "https://manager.example/api/v1/mobile-team/apps/customer-app/credentials/certificate-1/file"
+        },
+        "created_at": "2026-07-17T00:00:00.000000Z",
+        "updated_at": "2026-07-17T00:00:00.000000Z"
+      }
+    ]
+  }
+}

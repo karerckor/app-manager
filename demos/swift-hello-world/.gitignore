@@ -1,0 +1,9 @@
+.app-manager/
+build/
+DerivedData/
+fastlane/report.xml
+fastlane/Preview.html
+vendor/bundle/
+.bundle/
+*.xcuserstate
+xcuserdata/

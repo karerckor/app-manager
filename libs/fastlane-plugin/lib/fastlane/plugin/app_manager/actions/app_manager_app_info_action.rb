@@ -20,7 +20,7 @@ module Fastlane
       end
 
       def self.details
-        "Marks the first identifier for each platform as default and exposes the result through APP_MANAGER_APP_INFO."
+        "Uses server-declared platform defaults and exposes the result through APP_MANAGER_APP_INFO."
       end
 
       def self.available_options

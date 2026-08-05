@@ -26,6 +26,12 @@ module Fastlane
           UI.user_error!(e.message)
         end
 
+        def build_context(**options)
+          client.build_context(**options)
+        rescue Fastlane::AppManager::Error => e
+          UI.user_error!(e.message)
+        end
+
         def list_builds(**options)
           client.list_builds(**options)
         rescue Fastlane::AppManager::Error => e

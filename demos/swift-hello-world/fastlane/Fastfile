@@ -1,0 +1,310 @@
+require "fileutils"
+require "json"
+require "pathname"
+require "rbconfig"
+require "fastlane_core/provisioning_profile"
+require "fastlane/plugin/app_manager"
+
+PROJECT_ROOT = File.expand_path("..", __dir__)
+GENERATED_ROOT = File.join(PROJECT_ROOT, ".app-manager")
+CONTEXT_PATH = File.join(GENERATED_ROOT, "context.json")
+CREDENTIALS_PATH = File.join(GENERATED_ROOT, "credentials.json")
+ADAPTER_INPUT_PATH = File.join(GENERATED_ROOT, "adapter-input.json")
+XCODE_PROJECT = File.join(PROJECT_ROOT, "AppManagerSwift.xcodeproj")
+SCHEME = "AppManagerSwift"
+
+IOS_KEYCHAIN_NAME = "appmanager-swift-build.keychain"
+IOS_KEYCHAIN_PASSWORD = "appmanager-swift-build"
+IOS_EXPORT_SETTINGS = {
+  "development" => { method: "development", identity: "Apple Development" },
+  "adhoc" => { method: "ad-hoc", identity: "Apple Distribution" },
+  "appstore" => { method: "app-store", identity: "Apple Distribution" },
+  "enterprise" => { method: "enterprise", identity: "Apple Distribution" },
+}.freeze
+
+def hash_value(hash, key)
+  return nil unless hash.respond_to?(:[])
+
+  hash[key] || hash[key.to_s] || hash[key.to_sym]
+end
+
+def requested_platform(options)
+  platform = (options[:platform] || ENV["APP_MANAGER_PLATFORM"] || "ios").to_s
+  UI.user_error!("Swift demo supports only APP_MANAGER_PLATFORM=ios") unless platform == "ios"
+  platform
+end
+
+def requested_profile(options)
+  value = options[:profile_type] || ENV["APP_MANAGER_PROFILE_TYPE"]
+  value.to_s.strip.empty? ? "appstore" : value
+end
+
+def requested_identifier(options)
+  options[:identifier] || ENV["APP_MANAGER_IDENTIFIER"] || ENV["APP_MANAGER_IOS_IDENTIFIER"]
+end
+
+def configure_app_manager
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY", "demo-api-key"),
+    base_url: ENV.fetch("APP_MANAGER_BASE_URL", "http://localhost:8000"),
+    team: ENV.fetch("APP_MANAGER_TEAM", "demo-users-team"),
+    app: ENV.fetch("APP_MANAGER_APP", "example-app"),
+  )
+end
+
+def credential_present?(context, type)
+  Array(context[:credentials]).any? { |credential| hash_value(credential, :type) == type }
+end
+
+def asset_extension(context, name)
+  asset = hash_value(context[:assets], name)
+  mime_type = hash_value(asset, :mime_type)
+  { "image/jpeg" => "jpg", "image/png" => "png", "image/webp" => "webp" }.fetch(mime_type, "png")
+end
+
+def app_slug(context)
+  hash_value(context[:app], :slug).to_s.gsub(/[^a-zA-Z0-9._-]/, "_")
+end
+
+def download_path(context, *segments)
+  File.join(GENERATED_ROOT, "downloads", app_slug(context), *segments)
+end
+
+def project_relative_path(path)
+  Pathname.new(File.expand_path(path)).relative_path_from(Pathname.new(PROJECT_ROOT)).to_s
+end
+
+def adapter_file(result)
+  { path: project_relative_path(result.fetch(:path)), payload: result[:payload] || {} }
+end
+
+def prepare_assets(context)
+  files = {}
+  assets = context[:assets] || {}
+  if hash_value(assets, :icon)
+    extension = asset_extension(context, :icon)
+    result = app_manager_download_icon(output_path: download_path(context, "icon.#{extension}"))
+    files[:icon] = project_relative_path(result)
+  end
+  if hash_value(assets, :splashscreen)
+    extension = asset_extension(context, :splashscreen)
+    result = app_manager_download_splashscreen(output_path: download_path(context, "splash.#{extension}"))
+    files[:splashscreen] = project_relative_path(result)
+  end
+  files
+end
+
+def write_adapter_input(value)
+  FileUtils.mkdir_p(GENERATED_ROOT)
+  temporary = "#{ADAPTER_INPUT_PATH}.tmp"
+  File.write(temporary, "#{JSON.pretty_generate(value)}\n")
+  File.chmod(0o600, temporary)
+  File.rename(temporary, ADAPTER_INPUT_PATH)
+ensure
+  File.delete(temporary) if temporary && File.exist?(temporary)
+end
+
+def load_json(path, missing_message)
+  UI.user_error!(missing_message) unless File.exist?(path)
+  JSON.parse(File.read(path))
+end
+
+def load_context
+  load_json(CONTEXT_PATH, ".app-manager/context.json is missing. Run `prepare` first.")
+end
+
+def load_credentials
+  load_json(CREDENTIALS_PATH, ".app-manager/credentials.json is missing. Run `prepare` first.")
+end
+
+def prepared_for?(options)
+  return false unless File.exist?(CONTEXT_PATH)
+
+  context = load_context
+  expected_identifier = requested_identifier(options)
+  context["platform"] == "ios" &&
+    context["app"] == ENV.fetch("APP_MANAGER_APP", "example-app") &&
+    context.dig("ios", "profileType") == requested_profile(options) &&
+    (expected_identifier.to_s.empty? || context.dig("ios", "bundleIdentifier") == expected_identifier)
+end
+
+def deploy_allowed?(options)
+  options[:submit] == true || ENV["APP_MANAGER_ALLOW_DEPLOY"] == "1"
+end
+
+def setup_ios_signing(credentials, signing)
+  certificate = credentials.fetch("certificate")
+  certificate_path = File.expand_path(certificate.fetch("path"), PROJECT_ROOT)
+  profile_path = File.expand_path(credentials.fetch("provisioningProfilePath"), PROJECT_ROOT)
+  UI.user_error!("iOS provisioning profile is missing") unless File.exist?(profile_path)
+
+  keychain_db = File.expand_path("~/Library/Keychains/#{IOS_KEYCHAIN_NAME}-db")
+  delete_keychain(name: IOS_KEYCHAIN_NAME) if File.exist?(keychain_db)
+  create_keychain(
+    name: IOS_KEYCHAIN_NAME,
+    password: IOS_KEYCHAIN_PASSWORD,
+    default_keychain: false,
+    unlock: true,
+    timeout: 0,
+    add_to_search_list: true,
+  )
+  signing[:keychain] = IOS_KEYCHAIN_NAME
+  import_certificate(
+    certificate_path: certificate_path,
+    certificate_password: certificate.fetch("password"),
+    keychain_name: IOS_KEYCHAIN_NAME,
+    keychain_password: IOS_KEYCHAIN_PASSWORD,
+  )
+  signing[:installed_profile] = FastlaneCore::ProvisioningProfile.install(profile_path)
+  parsed = FastlaneCore::ProvisioningProfile.parse(profile_path)
+  { profile_name: parsed.fetch("Name"), team: parsed.fetch("TeamIdentifier").first }
+end
+
+def teardown_ios_signing(signing)
+  return unless signing
+
+  delete_keychain(name: signing[:keychain]) if signing[:keychain]
+  File.delete(signing[:installed_profile]) if signing[:installed_profile] && File.exist?(signing[:installed_profile])
+end
+
+desc "Prepare the native Swift project from App Manager"
+lane :prepare do |options|
+  requested_platform(options)
+  profile_type = requested_profile(options)
+  identifier = requested_identifier(options)
+
+  FileUtils.rm_rf(GENERATED_ROOT)
+  configure_app_manager
+  context = app_manager_build_context(
+    platform: "ios",
+    profile_type: profile_type,
+    app_identifier: identifier,
+  )
+  selected_identifier = context.dig(:target, :identifier)
+  files = prepare_assets(context)
+  files[:certificate] = adapter_file(
+    app_manager_download_ios_certificate(
+      app_identifier: selected_identifier,
+      profile_type: profile_type,
+      credential_id: ENV["APP_MANAGER_IOS_CERTIFICATE_ID"],
+      output_path: download_path(context, "distribution.p12"),
+    ),
+  )
+  files[:provisioning_profile] = adapter_file(
+    app_manager_download_provisioning_profile(
+      app_identifier: selected_identifier,
+      profile_type: profile_type,
+      credential_id: ENV["APP_MANAGER_IOS_PROVISIONING_PROFILE_ID"],
+      output_path: download_path(context, "profile.mobileprovision"),
+    ),
+  )
+
+  if credential_present?(context, "google_service_info_plist")
+    result = app_manager_download_google_service_info_plist(
+      app_identifier: selected_identifier,
+      credential_id: ENV["APP_MANAGER_IOS_GOOGLE_SERVICES_ID"],
+      output_path: File.join(GENERATED_ROOT, "GoogleService-Info.plist"),
+    )
+    files[:google_service_info] = project_relative_path(result.fetch(:path))
+  end
+  if credential_present?(context, "apple_api_key")
+    result = app_manager_download_apple_api_key(
+      app_identifier: selected_identifier,
+      credential_id: ENV["APP_MANAGER_APPLE_API_KEY_CREDENTIAL_ID"],
+      output_path: download_path(context, "appstore-api-key.p8"),
+    )
+    files[:apple_api_key] = adapter_file(result)
+  end
+
+  write_adapter_input(context: context, files: files)
+  begin
+    sh(
+      RbConfig.ruby,
+      File.join(PROJECT_ROOT, "scripts", "prepare.rb"),
+      "--input",
+      ADAPTER_INPUT_PATH,
+      "--project-root",
+      PROJECT_ROOT,
+    )
+  ensure
+    File.delete(ADAPTER_INPUT_PATH) if File.exist?(ADAPTER_INPUT_PATH)
+  end
+  UI.success("Prepared #{context.dig(:app, :name)} for iOS (#{selected_identifier}).")
+end
+
+desc "Build a signed native Swift IPA"
+lane :build do |options|
+  requested_platform(options)
+  prepare(
+    platform: "ios",
+    profile_type: options[:profile_type],
+    identifier: options[:identifier],
+  ) unless prepared_for?(options)
+
+  context = load_context
+  credentials = load_credentials
+  bundle_id = context.dig("ios", "bundleIdentifier")
+  profile_type = context.dig("ios", "profileType")
+  export = IOS_EXPORT_SETTINGS[profile_type]
+  UI.user_error!("Unsupported iOS profile type: #{profile_type}") unless export
+
+  signing = {}
+  begin
+    info = setup_ios_signing(credentials, signing)
+    build_app(
+      project: XCODE_PROJECT,
+      scheme: SCHEME,
+      export_method: export[:method],
+      output_directory: File.join(PROJECT_ROOT, "build"),
+      derived_data_path: File.join(PROJECT_ROOT, "build", "DerivedData"),
+      xcargs: %Q(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{info[:team]} ) +
+              %Q(PROVISIONING_PROFILE_SPECIFIER="#{info[:profile_name]}" ) +
+              %Q(CODE_SIGN_IDENTITY="#{export[:identity]}"),
+      export_options: {
+        method: export[:method],
+        signingStyle: "manual",
+        teamID: info[:team],
+        provisioningProfiles: { bundle_id => info[:profile_name] },
+        signingCertificate: export[:identity],
+      },
+    )
+  ensure
+    teardown_ios_signing(signing)
+  end
+
+  ipa = lane_context[SharedValues::IPA_OUTPUT_PATH]
+  UI.success("Built #{bundle_id} at #{ipa}.")
+  ipa
+end
+
+desc "Build and optionally upload the native Swift app to TestFlight"
+lane :deploy do |options|
+  ipa = build(options)
+  context = load_context
+  api_key = context.dig("ios", "appStoreApiKey")
+
+  if api_key.nil?
+    UI.important("No App Store Connect API key; stopping at the signed artifact.")
+    next
+  end
+  unless deploy_allowed?(options)
+    UI.important("Deploy not requested; pass submit:true or APP_MANAGER_ALLOW_DEPLOY=1.")
+    next
+  end
+  UI.user_error!("TestFlight deployment requires the appstore profile") unless context.dig("ios", "profileType") == "appstore"
+
+  key = app_store_connect_api_key(
+    key_id: api_key.fetch("keyId"),
+    issuer_id: api_key.fetch("issuerId"),
+    key_filepath: File.expand_path(api_key.fetch("path"), PROJECT_ROOT),
+  )
+  upload_to_testflight(api_key: key, ipa: ipa)
+end
+
+desc "Remove generated App Manager and Xcode build output"
+lane :clean do
+  [GENERATED_ROOT, File.join(PROJECT_ROOT, "build"), File.join(PROJECT_ROOT, "DerivedData")].each do |path|
+    FileUtils.rm_rf(path)
+  end
+  UI.success("Removed generated Swift demo files.")
+end

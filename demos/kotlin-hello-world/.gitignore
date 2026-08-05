@@ -1,0 +1,10 @@
+.app-manager/
+.gradle/
+build/
+app/build/
+app/google-services.json
+fastlane/report.xml
+fastlane/Preview.html
+vendor/bundle/
+.bundle/
+local.properties

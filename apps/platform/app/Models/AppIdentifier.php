@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 
-#[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code'])]
+#[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code', 'build_number', 'is_default'])]
 class AppIdentifier extends Model implements Auditable
 {
     use AuditableTrait, HasFactory, HasUuids;
@@ -48,14 +48,42 @@ class AppIdentifier extends Model implements Auditable
         return [
             'platform' => Platform::class,
             'version_code' => 'integer',
+            'is_default' => 'boolean',
         ];
     }
 
     protected static function booted(): void
     {
         static::saving(function (AppIdentifier $appIdentifier) {
-            if ($appIdentifier->platform !== Platform::Android) {
+            if (! $appIdentifier->exists
+                && ! array_key_exists('is_default', $appIdentifier->getAttributes())) {
+                $appIdentifier->is_default = ! self::query()
+                    ->where('mobile_app_id', $appIdentifier->mobile_app_id)
+                    ->where('platform', $appIdentifier->platform)
+                    ->exists();
+            }
+
+            if ($appIdentifier->platform === Platform::Android) {
+                $appIdentifier->build_number = null;
+            } else {
                 $appIdentifier->version_code = null;
+            }
+
+            if ($appIdentifier->platform === Platform::Web) {
+                $appIdentifier->build_number = null;
+            }
+
+            if ($appIdentifier->is_default) {
+                $siblings = self::query()
+                    ->where('mobile_app_id', $appIdentifier->mobile_app_id)
+                    ->where('platform', $appIdentifier->platform)
+                    ->where('is_default', true);
+
+                if ($appIdentifier->exists) {
+                    $siblings->whereKeyNot($appIdentifier->id);
+                }
+
+                $siblings->update(['is_default' => false]);
             }
         });
 

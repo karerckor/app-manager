@@ -19,7 +19,7 @@ return new class extends Migration
             $table->id();
             $table->foreignUuid('team_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
-            $table->string('role')->default('member');
+            $table->string('role')->default('viewer');
             $table->timestamps();
             $table->unique(['team_id', 'user_id']);
         });
