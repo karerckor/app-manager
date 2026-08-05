@@ -17,6 +17,7 @@ The project is aimed at teams that maintain multiple mobile applications, enviro
 mkdir app-manager && cd app-manager
 curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
+echo "DB_PASSWORD=$(openssl rand -hex 32)" >> .env
 echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 docker compose up -d
 ```
