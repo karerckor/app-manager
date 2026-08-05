@@ -15,6 +15,7 @@ module Fastlane
           profile_type: profile_type,
           credential_id: params[:credential_id],
           credential_name: params[:credential_name],
+          allow_expired: params.fetch(:allow_expired, false),
           output_path: params[:output_path],
           overwrite: params.fetch(:overwrite, true)
         )
@@ -26,7 +27,7 @@ module Fastlane
         options = [
           string_option(
             :app_identifier,
-            "Bundle ID or Android package name; defaults to the first identifier for the action platform",
+            "Bundle ID or Android package name; defaults to the declared identifier for the action platform",
             optional: true
           ),
           string_option(:output_path, "Exact local path where the file will be saved"),
@@ -37,6 +38,12 @@ module Fastlane
             description: "Overwrite an existing file at output_path",
             type: Boolean,
             default_value: true
+          ),
+          FastlaneCore::ConfigItem.new(
+            key: :allow_expired,
+            description: "Allow an expired credential to be downloaded",
+            type: Boolean,
+            default_value: false
           )
         ]
 

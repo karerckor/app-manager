@@ -1,7 +1,7 @@
 require "json"
 
-context_path = File.expand_path("context.json", __dir__)
+context_path = File.expand_path("../.app-manager/context.json", __dir__)
 context = File.exist?(context_path) ? JSON.parse(File.read(context_path)) : {}
 
-app_identifier(context.dig("ios", "bundleIdentifier"))
-package_name(context.dig("android", "package"))
+app_identifier(context.dig("ios", "bundleIdentifier")) if context["ios"]
+package_name(context.dig("android", "package")) if context["android"]

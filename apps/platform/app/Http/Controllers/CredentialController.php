@@ -23,7 +23,7 @@ class CredentialController extends Controller
 {
     public function store(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageCredentials', $team);
 
         $type = CredentialType::tryFrom((string) $request->input('type'));
         $rules = [
@@ -92,7 +92,7 @@ class CredentialController extends Controller
 
     public function update(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageCredentials', $team);
         abort_unless($credential->team_id === $team->id, 404);
 
         $type = CredentialType::tryFrom((string) $request->input('type'));
@@ -195,7 +195,7 @@ class CredentialController extends Controller
 
     public function upload(Request $request, Team $team, Credential $credential): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageCredentials', $team);
         abort_unless($credential->team_id === $team->id, 404);
         $request->validate([
             'file' => [
@@ -212,17 +212,12 @@ class CredentialController extends Controller
 
     public function download(Request $request, Team $team, Credential $credential): BinaryFileResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('view', $team);
         abort_unless($credential->team_id === $team->id, 404);
         $media = $credential->getFirstMedia('file');
         abort_unless($media, 404);
 
         return response()->download($media->getPath(), $media->file_name);
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 
     private function isAttachedToApp(Credential $credential, MobileApp $mobileApp): bool

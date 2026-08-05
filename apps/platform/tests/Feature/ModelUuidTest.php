@@ -20,7 +20,7 @@ class ModelUuidTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $user->teams()->attach($team, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
 
         $mobileApp = MobileApp::factory()->create(['team_id' => $team->id]);

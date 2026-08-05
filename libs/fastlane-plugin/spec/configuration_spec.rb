@@ -26,6 +26,17 @@ RSpec.describe Fastlane::AppManager::Configuration do
       expect(configuration.api_root).to eq("https://manager.example/api/v1")
     end
 
+    it "supports a self-hosted instance mounted below a URL path" do
+      configuration = described_class.configure(
+        api_key: "secret",
+        base_url: "https://example.net/internal/app-manager",
+        team: "mobile-team",
+        app: "customer-app"
+      )
+
+      expect(configuration.api_root).to eq("https://example.net/internal/app-manager/api/v1")
+    end
+
     it "rejects missing values and invalid URLs" do
       expect do
         described_class.configure(api_key: "", base_url: "localhost:8000", team: "", app: "")

@@ -38,7 +38,7 @@ module Fastlane
           FastlaneCore::ConfigItem.new(
             key: :base_url,
             env_name: "APP_MANAGER_BASE_URL",
-            description: "App Manager server URL or API v1 URL",
+            description: "Self-hosted App Manager instance URL or exact API v1 URL",
             type: String,
             default_value: Fastlane::AppManager::Configuration::DEFAULT_BASE_URL
           ),

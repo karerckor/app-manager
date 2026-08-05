@@ -13,11 +13,8 @@ class EnsureTeamMember
     {
         $team = $request->route('team');
 
-        abort_unless(
-            $team instanceof Team
-            && $request->user()?->teams()->whereKey($team->id)->exists(),
-            403,
-        );
+        abort_unless($team instanceof Team, 403);
+        abort_if($request->user()?->cannot('view', $team) ?? true, 403);
 
         return $next($request);
     }

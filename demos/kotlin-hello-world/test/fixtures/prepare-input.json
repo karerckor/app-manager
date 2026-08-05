@@ -1,0 +1,29 @@
+{
+  "context": {
+    "schema_version": 1,
+    "app": {
+      "slug": "example-app-blue",
+      "name": "Blue Example App"
+    },
+    "target": {
+      "platform": "android",
+      "identifier": "com.example.blue",
+      "version": "2.0.0",
+      "version_code": 20000
+    },
+    "profile": {
+      "platform": "android",
+      "value": "production"
+    }
+  },
+  "files": {
+    "keystore": {
+      "path": "test/fixtures/release.jks",
+      "payload": {
+        "store_password": "fixture-store",
+        "key_alias": "fixture",
+        "key_password": "fixture-key"
+      }
+    }
+  }
+}

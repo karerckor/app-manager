@@ -26,6 +26,11 @@ class MobileApp extends Model implements HasMedia
         return $this->hasMany(AppIdentifier::class);
     }
 
+    public function buildRecords(): HasMany
+    {
+        return $this->hasMany(BuildRecord::class);
+    }
+
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('app_icon')->singleFile();

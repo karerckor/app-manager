@@ -13,7 +13,7 @@ class AppAssetController extends Controller
 {
     public function upload(Request $request, Team $team, MobileApp $mobileApp, string $collection): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageApplications', $team);
         validator(['collection' => $collection], [
             'collection' => ['required', Rule::in(['app_icon', 'splash_icon'])],
         ])->validate();
@@ -25,7 +25,7 @@ class AppAssetController extends Controller
 
     public function download(Request $request, Team $team, MobileApp $mobileApp, string $collection): BinaryFileResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('view', $team);
         abort_unless(in_array($collection, ['app_icon', 'splash_icon'], true), 404);
         $media = $mobileApp->getFirstMedia($collection);
         abort_unless($media, 404);
@@ -35,7 +35,7 @@ class AppAssetController extends Controller
 
     public function preview(Request $request, Team $team, MobileApp $mobileApp, string $collection): BinaryFileResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('view', $team);
         abort_unless(in_array($collection, ['app_icon', 'splash_icon'], true), 404);
         $media = $mobileApp->getFirstMedia($collection);
         abort_unless($media, 404);
@@ -45,10 +45,5 @@ class AppAssetController extends Controller
             'Cache-Control' => 'private, max-age=3600',
             'X-Content-Type-Options' => 'nosniff',
         ]);
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 }

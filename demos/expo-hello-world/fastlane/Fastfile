@@ -1,21 +1,219 @@
+require "fileutils"
 require "json"
+require "pathname"
 require "fastlane_core/provisioning_profile"
+require "fastlane/plugin/app_manager"
 
-CONTEXT_PATH = File.expand_path("context.json", __dir__)
-CREDENTIALS_PATH = File.expand_path("../credentials.json", __dir__)
 PROJECT_ROOT = File.expand_path("..", __dir__)
+GENERATED_ROOT = File.join(PROJECT_ROOT, ".app-manager")
+CONTEXT_PATH = File.join(GENERATED_ROOT, "context.json")
+CREDENTIALS_PATH = File.join(GENERATED_ROOT, "credentials.json")
+ADAPTER_INPUT_PATH = File.join(GENERATED_ROOT, "adapter-input.json")
 
 IOS_KEYCHAIN_NAME = "appmanager-build.keychain"
 IOS_KEYCHAIN_PASSWORD = "appmanager-build"
+IOS_EXPORT_SETTINGS = {
+  "development" => { method: "development", identity: "Apple Development" },
+  "adhoc" => { method: "ad-hoc", identity: "Apple Distribution" },
+  "appstore" => { method: "app-store", identity: "Apple Distribution" },
+  "enterprise" => { method: "enterprise", identity: "Apple Distribution" },
+}.freeze
+
+def hash_value(hash, key)
+  return nil unless hash.respond_to?(:[])
+
+  hash[key] || hash[key.to_s] || hash[key.to_sym]
+end
+
+def load_json(path, missing_message)
+  UI.user_error!(missing_message) unless File.exist?(path)
+  JSON.parse(File.read(path))
+end
 
 def load_context
-  UI.user_error!("fastlane/context.json is missing. Run `npm run prepare` first.") unless File.exist?(CONTEXT_PATH)
-  JSON.parse(File.read(CONTEXT_PATH))
+  load_json(CONTEXT_PATH, ".app-manager/context.json is missing. Run the `prepare` lane first.")
 end
 
 def load_credentials
-  UI.user_error!("credentials.json is missing. Run `npm run prepare` first.") unless File.exist?(CREDENTIALS_PATH)
-  JSON.parse(File.read(CREDENTIALS_PATH))
+  load_json(CREDENTIALS_PATH, ".app-manager/credentials.json is missing. Run the `prepare` lane first.")
+end
+
+def prepared_for?(platform, options)
+  return false unless File.exist?(CONTEXT_PATH)
+
+  context = load_context
+  expected_identifier = requested_identifier(platform, options)
+  platform_context = context[platform]
+  context["platform"] == platform &&
+    context["app"] == ENV.fetch("APP_MANAGER_APP", "example-app") &&
+    platform_context&.fetch("profileType", nil) == requested_profile(platform, options) &&
+    (expected_identifier.to_s.empty? ||
+      platform_context&.fetch(platform == "android" ? "package" : "bundleIdentifier", nil) == expected_identifier)
+end
+
+def requested_platform(options)
+  platform = (options[:platform] || ENV["APP_MANAGER_PLATFORM"]).to_s.strip
+  UI.user_error!("Set platform:android|ios or APP_MANAGER_PLATFORM=android|ios") unless %w[android ios].include?(platform)
+  platform
+end
+
+def requested_profile(platform, options)
+  value = options[:profile_type] || ENV["APP_MANAGER_PROFILE_TYPE"]
+  value = platform == "android" ? "production" : "appstore" if value.to_s.strip.empty?
+  value
+end
+
+def requested_identifier(platform, options)
+  options[:identifier] ||
+    ENV["APP_MANAGER_IDENTIFIER"] ||
+    ENV[platform == "android" ? "APP_MANAGER_ANDROID_IDENTIFIER" : "APP_MANAGER_IOS_IDENTIFIER"]
+end
+
+def configure_app_manager
+  app_manager_configure(
+    api_key: ENV.fetch("APP_MANAGER_API_KEY", "demo-api-key"),
+    base_url: ENV.fetch("APP_MANAGER_BASE_URL", "http://localhost:8000"),
+    team: ENV.fetch("APP_MANAGER_TEAM", "demo-users-team"),
+    app: ENV.fetch("APP_MANAGER_APP", "example-app"),
+  )
+end
+
+def credential_present?(context, type)
+  Array(context[:credentials]).any? { |credential| hash_value(credential, :type) == type }
+end
+
+def first_environment_value(*names)
+  names.each do |name|
+    value = ENV[name]
+    return value unless value.to_s.strip.empty?
+  end
+  nil
+end
+
+def asset_extension(context, name)
+  asset = hash_value(context[:assets], name)
+  mime_type = hash_value(asset, :mime_type)
+  {
+    "image/jpeg" => "jpg",
+    "image/png" => "png",
+    "image/webp" => "webp",
+  }.fetch(mime_type, "png")
+end
+
+def app_slug(context)
+  hash_value(context[:app], :slug).to_s.gsub(/[^a-zA-Z0-9._-]/, "_")
+end
+
+def download_path(context, *segments)
+  File.join(GENERATED_ROOT, "downloads", app_slug(context), *segments)
+end
+
+def project_relative_path(path)
+  Pathname.new(File.expand_path(path)).relative_path_from(Pathname.new(PROJECT_ROOT)).to_s
+end
+
+def adapter_file(result)
+  {
+    path: project_relative_path(result.fetch(:path)),
+    payload: result[:payload] || {},
+  }
+end
+
+def prepare_assets(context)
+  files = {}
+  assets = context[:assets] || {}
+
+  if hash_value(assets, :icon)
+    path = download_path(context, "icon.#{asset_extension(context, :icon)}")
+    files[:icon] = project_relative_path(app_manager_download_icon(output_path: path))
+  end
+  if hash_value(assets, :splashscreen)
+    path = download_path(context, "splash.#{asset_extension(context, :splashscreen)}")
+    files[:splashscreen] = project_relative_path(app_manager_download_splashscreen(output_path: path))
+  end
+
+  files
+end
+
+def prepare_android_files(context, identifier, profile_type)
+  files = prepare_assets(context)
+  files[:keystore] = adapter_file(
+    app_manager_download_android_keystore(
+      app_identifier: identifier,
+      profile_type: profile_type,
+      credential_id: first_environment_value("APP_MANAGER_ANDROID_CREDENTIAL_ID", "APP_MANAGER_CREDENTIAL_ID"),
+      credential_name: first_environment_value("APP_MANAGER_ANDROID_CREDENTIAL_NAME", "APP_MANAGER_CREDENTIAL_NAME"),
+      output_path: download_path(context, "production.keystore"),
+    ),
+  )
+
+  if credential_present?(context, "google_services_json")
+    result = app_manager_download_google_services_json(
+      app_identifier: identifier,
+      credential_id: ENV["APP_MANAGER_ANDROID_GOOGLE_SERVICES_ID"],
+      output_path: download_path(context, "google-services.json"),
+    )
+    files[:google_services] = project_relative_path(result.fetch(:path))
+  end
+  if credential_present?(context, "google_play_service_account")
+    result = app_manager_download_google_play_service_account(
+      app_identifier: identifier,
+      credential_id: ENV["APP_MANAGER_GOOGLE_PLAY_CREDENTIAL_ID"],
+      output_path: download_path(context, "google-play-service-account.json"),
+    )
+    files[:google_play] = project_relative_path(result.fetch(:path))
+  end
+
+  files
+end
+
+def prepare_ios_files(context, identifier, profile_type)
+  files = prepare_assets(context)
+  files[:certificate] = adapter_file(
+    app_manager_download_ios_certificate(
+      app_identifier: identifier,
+      profile_type: profile_type,
+      credential_id: ENV["APP_MANAGER_IOS_CERTIFICATE_ID"],
+      output_path: download_path(context, "distribution.p12"),
+    ),
+  )
+  files[:provisioning_profile] = adapter_file(
+    app_manager_download_provisioning_profile(
+      app_identifier: identifier,
+      profile_type: profile_type,
+      credential_id: ENV["APP_MANAGER_IOS_PROVISIONING_PROFILE_ID"],
+      output_path: download_path(context, "profile.mobileprovision"),
+    ),
+  )
+
+  if credential_present?(context, "google_service_info_plist")
+    result = app_manager_download_google_service_info_plist(
+      app_identifier: identifier,
+      credential_id: ENV["APP_MANAGER_IOS_GOOGLE_SERVICES_ID"],
+      output_path: download_path(context, "GoogleService-Info.plist"),
+    )
+    files[:google_service_info] = project_relative_path(result.fetch(:path))
+  end
+  if credential_present?(context, "apple_api_key")
+    result = app_manager_download_apple_api_key(
+      app_identifier: identifier,
+      credential_id: ENV["APP_MANAGER_APPLE_API_KEY_CREDENTIAL_ID"],
+      output_path: download_path(context, "appstore-api-key.p8"),
+    )
+    files[:apple_api_key] = adapter_file(result)
+  end
+
+  files
+end
+
+def write_adapter_input(value)
+  FileUtils.mkdir_p(File.dirname(ADAPTER_INPUT_PATH))
+  temporary_path = "#{ADAPTER_INPUT_PATH}.tmp"
+  File.write(temporary_path, "#{JSON.pretty_generate(value)}\n")
+  File.chmod(0o600, temporary_path)
+  File.rename(temporary_path, ADAPTER_INPUT_PATH)
+ensure
+  File.delete(temporary_path) if temporary_path && File.exist?(temporary_path)
 end
 
 def deploy_allowed?(options)
@@ -24,7 +222,7 @@ end
 
 def setup_ios_signing(credentials, signing)
   cert = credentials.dig("ios", "distributionCertificate")
-  UI.user_error!("No iOS distribution certificate in credentials.json") unless cert
+  UI.user_error!("No iOS distribution certificate in .app-manager/credentials.json") unless cert
   cert_path = File.expand_path(cert["path"], PROJECT_ROOT)
   profile_path = File.expand_path(credentials.dig("ios", "provisioningProfilePath"), PROJECT_ROOT)
   UI.user_error!("iOS provisioning profile is missing") unless File.exist?(profile_path)
@@ -55,22 +253,50 @@ end
 
 def teardown_ios_signing(signing)
   return unless signing
+
   delete_keychain(name: signing[:keychain]) if signing[:keychain]
   File.delete(signing[:installed_profile]) if signing[:installed_profile] && File.exist?(signing[:installed_profile])
 end
 
-before_all do
-  unless Dir.exist?(File.join(PROJECT_ROOT, "android")) && Dir.exist?(File.join(PROJECT_ROOT, "ios"))
-    UI.message("Native projects missing; running `expo prebuild`.")
-    Dir.chdir(PROJECT_ROOT) { sh("npx", "expo", "prebuild") }
+desc "Prepare one Expo platform from App Manager (platform:android|ios)"
+lane :prepare do |options|
+  platform = requested_platform(options)
+  profile_type = requested_profile(platform, options)
+  requested = requested_identifier(platform, options)
+
+  FileUtils.rm_rf(GENERATED_ROOT)
+  configure_app_manager
+  context = app_manager_build_context(
+    platform: platform,
+    profile_type: profile_type,
+    app_identifier: requested,
+  )
+  identifier = context.dig(:target, :identifier)
+  files = platform == "android" ?
+    prepare_android_files(context, identifier, profile_type) :
+    prepare_ios_files(context, identifier, profile_type)
+
+  write_adapter_input(platform: platform, context: context, files: files)
+  begin
+    sh("node", File.join(PROJECT_ROOT, "scripts", "prepare.mjs"), "--input", ADAPTER_INPUT_PATH, "--cwd", PROJECT_ROOT)
+  ensure
+    File.delete(ADAPTER_INPUT_PATH) if File.exist?(ADAPTER_INPUT_PATH)
   end
+
+  sh("npx", "expo", "prebuild", "--platform", platform, "--clean")
+  UI.success("Prepared #{context.dig(:app, :name)} for #{platform} (#{identifier}).")
 end
 
 desc "Build a signed Android release AAB"
-lane :build_android do
+lane :build_android do |options|
+  prepare(
+    platform: "android",
+    profile_type: options[:profile_type],
+    identifier: options[:identifier],
+  ) unless prepared_for?("android", options)
   context = load_context
   keystore = load_credentials.dig("android", "keystore")
-  UI.user_error!("No Android keystore in credentials.json") unless keystore
+  UI.user_error!("No Android keystore in .app-manager/credentials.json") unless keystore
 
   gradle(
     project_dir: File.join(PROJECT_ROOT, "android"),
@@ -86,9 +312,9 @@ lane :build_android do
   UI.success("Built #{context.dig('android', 'package')} release bundle.")
 end
 
-desc "Build and (optionally) upload Android to Google Play internal track"
+desc "Build and optionally upload Android to Google Play internal track"
 lane :deploy_android do |options|
-  build_android
+  build_android(options)
   context = load_context
   json_key = context.dig("android", "googlePlayJsonKeyPath")
 
@@ -110,30 +336,38 @@ lane :deploy_android do |options|
 end
 
 desc "Build a signed iOS release IPA"
-lane :build_ios do
+lane :build_ios do |options|
+  prepare(
+    platform: "ios",
+    profile_type: options[:profile_type],
+    identifier: options[:identifier],
+  ) unless prepared_for?("ios", options)
   context = load_context
   credentials = load_credentials
   workspace = Dir[File.join(PROJECT_ROOT, "ios", "*.xcworkspace")].first
-  UI.user_error!("No Xcode workspace found; run `expo prebuild` first.") if workspace.nil?
+  UI.user_error!("No Xcode workspace found; run the `prepare` lane first.") if workspace.nil?
 
   bundle_id = context.dig("ios", "bundleIdentifier")
+  profile_type = context.dig("ios", "profileType")
+  export = IOS_EXPORT_SETTINGS[profile_type]
+  UI.user_error!("Unsupported iOS profile type: #{profile_type}") unless export
   signing = {}
   begin
     info = setup_ios_signing(credentials, signing)
     build_app(
       workspace: workspace,
       scheme: File.basename(workspace, ".xcworkspace"),
-      export_method: "app-store",
+      export_method: export[:method],
       output_directory: File.join(PROJECT_ROOT, "build"),
       xcargs: %Q(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{info[:team]} ) +
               %Q(PROVISIONING_PROFILE_SPECIFIER="#{info[:profile_name]}" ) +
-              %Q(CODE_SIGN_IDENTITY="Apple Distribution"),
+              %Q(CODE_SIGN_IDENTITY="#{export[:identity]}"),
       export_options: {
-        method: "app-store",
+        method: export[:method],
         signingStyle: "manual",
         teamID: info[:team],
         provisioningProfiles: { bundle_id => info[:profile_name] },
-        signingCertificate: "Apple Distribution",
+        signingCertificate: export[:identity],
       },
     )
     UI.success("Built #{bundle_id} signed release IPA.")
@@ -142,9 +376,9 @@ lane :build_ios do
   end
 end
 
-desc "Build and (optionally) upload iOS to TestFlight"
+desc "Build and optionally upload iOS to TestFlight"
 lane :deploy_ios do |options|
-  build_ios
+  build_ios(options)
   context = load_context
   api_key = context.dig("ios", "appStoreApiKey")
 
@@ -165,16 +399,22 @@ lane :deploy_ios do |options|
   upload_to_testflight(api_key: key)
 end
 
-desc "Build one or more platforms (platforms:\"ios,android\")"
+desc "Build one platform (platform:android|ios)"
 lane :build do |options|
-  platforms = (options[:platforms] || "ios,android").split(",").map(&:strip)
-  build_android if platforms.include?("android")
-  build_ios if platforms.include?("ios")
+  platform = requested_platform(options)
+  platform == "android" ? build_android(options) : build_ios(options)
 end
 
-desc "Deploy one or more platforms (platforms:\"ios,android\" submit:true)"
+desc "Deploy one platform (platform:android|ios, submit:true)"
 lane :deploy do |options|
-  platforms = (options[:platforms] || "ios,android").split(",").map(&:strip)
-  deploy_android(options) if platforms.include?("android")
-  deploy_ios(options) if platforms.include?("ios")
+  platform = requested_platform(options)
+  platform == "android" ? deploy_android(options) : deploy_ios(options)
+end
+
+desc "Remove all generated Expo, signing and build output"
+lane :clean do
+  [GENERATED_ROOT, File.join(PROJECT_ROOT, "android"), File.join(PROJECT_ROOT, "ios"), File.join(PROJECT_ROOT, "build")].each do |path|
+    FileUtils.rm_rf(path)
+  end
+  UI.success("Removed generated Expo projects, App Manager files and build output.")
 end

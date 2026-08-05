@@ -17,7 +17,7 @@ class MobileAppController extends Controller
 {
     public function store(Request $request, Team $team): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageApplications', $team);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -50,7 +50,7 @@ class MobileAppController extends Controller
 
     public function show(Request $request, Team $team, MobileApp $mobileApp): Response
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('view', $team);
 
         $mobileApp->load([
             'appIdentifiers' => fn ($query) => $query
@@ -105,6 +105,8 @@ class MobileAppController extends Controller
                 'identifier' => $identifier->identifier,
                 'version' => $identifier->version,
                 'version_code' => $identifier->version_code,
+                'build_number' => $identifier->build_number,
+                'is_default' => $identifier->is_default,
                 'update_url' => route('accounts.apps.identifiers.update', [
                     'team' => $team,
                     'mobileApp' => $mobileApp,
@@ -119,13 +121,48 @@ class MobileAppController extends Controller
                     + $identifier->profiles->sum(fn ($profile) => $profile->credentials->count()),
             ]),
             'credentials' => $credentials,
+            'builds' => $mobileApp->buildRecords()
+                ->withCount('logs')
+                ->latest()
+                ->limit(20)
+                ->get()
+                ->map(fn ($build) => [
+                    'id' => $build->id,
+                    'external_id' => $build->external_id,
+                    'status' => $build->status->value,
+                    'profile_type' => $build->profile_type->value,
+                    'commit_sha' => $build->commit_sha,
+                    'ci' => [
+                        'provider' => $build->ci_provider,
+                        'run_id' => $build->ci_run_id,
+                        'run_url' => $build->ci_run_url,
+                    ],
+                    'artifact_url' => $build->artifact_url,
+                    'target' => $build->context_snapshot['target'] ?? null,
+                    'registered_at' => $build->created_at,
+                    'started_at' => $build->started_at,
+                    'finished_at' => $build->finished_at,
+                    'logs_count' => $build->logs_count,
+                    'logs_url' => route('accounts.apps.builds.logs.index', [
+                        'team' => $team,
+                        'mobileApp' => $mobileApp,
+                        'buildRecord' => $build,
+                    ]),
+                    'cancel_url' => $build->status->canBeCancelled()
+                        ? route('accounts.apps.builds.cancel', [
+                            'team' => $team,
+                            'mobileApp' => $mobileApp,
+                            'buildRecord' => $build,
+                        ])
+                        : null,
+                ]),
             'credentialTypes' => CredentialSchema::definitions(),
         ]);
     }
 
     public function update(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageApplications', $team);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -144,7 +181,7 @@ class MobileAppController extends Controller
 
     public function destroy(Request $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        $this->authorizeTeam($request, $team);
+        $this->authorize('manageApplications', $team);
 
         $mobileApp->delete();
 
@@ -184,10 +221,5 @@ class MobileAppController extends Controller
                 'download_url' => route('accounts.credentials.download', ['team' => $team, 'credential' => $credential]),
             ] : null,
         ];
-    }
-
-    private function authorizeTeam(Request $request, Team $team): void
-    {
-        abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);
     }
 }

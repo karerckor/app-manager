@@ -31,6 +31,8 @@ class AppAssetController extends Controller
 
     public function store(Request $request, Team $team, MobileApp $mobileApp, string $asset): MobileAppResource
     {
+        $this->authorize('manageApplications', $team);
+
         $request->validate([
             'file' => ['required', 'image', 'max:10240'],
         ]);
@@ -42,6 +44,8 @@ class AppAssetController extends Controller
 
     public function destroy(Team $team, MobileApp $mobileApp, string $asset): Response
     {
+        $this->authorize('manageApplications', $team);
+
         abort_unless($mobileApp->getFirstMedia(self::COLLECTIONS[$asset]), 404);
         $mobileApp->clearMediaCollection(self::COLLECTIONS[$asset]);
 

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Team;
 use App\Models\User;
+use App\Support\ApiTokenAbilities;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -37,8 +38,42 @@ class AccountFeaturesTest extends TestCase
 
         $this->actingAs($user)->post('/api-tokens', ['name' => 'CI'])->assertSessionHas('token');
         $token = $user->tokens()->firstOrFail();
+        $this->assertSame(ApiTokenAbilities::build(), $token->abilities);
         $this->actingAs($user)->delete("/api-tokens/{$token->id}")->assertRedirect();
         $this->assertDatabaseMissing('personal_access_tokens', ['id' => $token->id]);
+    }
+
+    public function test_api_key_abilities_are_normalized_and_can_expire(): void
+    {
+        $user = User::factory()->create();
+        $expiresAt = now()->addDays(30)->startOfSecond();
+
+        $this->actingAs($user)->post('/api-tokens', [
+            'name' => 'Release automation',
+            'abilities' => [ApiTokenAbilities::SECRETS_WRITE],
+            'expires_at' => $expiresAt->toIso8601String(),
+        ])->assertSessionHas('token');
+
+        $token = $user->tokens()->firstOrFail();
+        $this->assertSame([
+            ApiTokenAbilities::APPS_READ,
+            ApiTokenAbilities::SECRETS_READ,
+            ApiTokenAbilities::SECRETS_WRITE,
+        ], $token->abilities);
+        $this->assertTrue($token->expires_at->equalTo($expiresAt));
+    }
+
+    public function test_api_key_rejects_unknown_abilities_and_past_expiration(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post('/api-tokens', [
+            'name' => 'Invalid',
+            'abilities' => ['root'],
+            'expires_at' => now()->subMinute()->toIso8601String(),
+        ])->assertSessionHasErrors(['abilities.0', 'expires_at']);
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
     public function test_user_can_only_switch_to_a_team_they_belong_to(): void
@@ -53,7 +88,7 @@ class AccountFeaturesTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
 
         $this->actingAs($user)

@@ -1,0 +1,101 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    name: Platform (PHP and Svelte)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, dom, fileinfo, sqlite3
+          coverage: none
+      - uses: ramsey/composer-install@v3
+        with:
+          working-directory: apps/platform
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/platform/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: composer test
+
+  fastlane-plugin:
+    name: Fastlane plugin
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: libs/fastlane-plugin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: libs/fastlane-plugin
+      - run: bundle exec rspec
+
+  adapters:
+    name: Adapter tests (${{ matrix.demo }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        demo: [expo, kotlin, swift]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: matrix.demo == 'expo'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: demos/expo-hello-world/package-lock.json
+      - name: Install Expo dependencies
+        if: matrix.demo == 'expo'
+        working-directory: demos/expo-hello-world
+        run: npm ci
+      - name: Test Expo adapter
+        if: matrix.demo == 'expo'
+        working-directory: demos/expo-hello-world
+        run: npm test
+      - name: Test Kotlin adapter
+        if: matrix.demo == 'kotlin'
+        working-directory: demos/kotlin-hello-world
+        run: ruby -Itest test/prepare_test.rb
+      - name: Test Swift adapter
+        if: matrix.demo == 'swift'
+        working-directory: demos/swift-hello-world
+        run: ruby -Itest test/prepare_test.rb
+
+  ios-project:
+    name: iOS project configuration
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Swift adapter
+        working-directory: demos/swift-hello-world
+        run: ruby -Itest test/prepare_test.rb
+      - name: Validate Xcode project and simulator build settings
+        working-directory: demos/swift-hello-world
+        run: |
+          xcodebuild -list -project AppManagerSwift.xcodeproj
+          xcodebuild -showBuildSettings \
+            -project AppManagerSwift.xcodeproj \
+            -scheme AppManagerSwift \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO

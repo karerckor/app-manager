@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TeamRole;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'slug', 'owner_id'])]
@@ -34,6 +36,44 @@ class Team extends Model
     public function credentials(): HasMany
     {
         return $this->hasMany(Credential::class);
+    }
+
+    public function buildRecords(): HasMany
+    {
+        return $this->hasMany(BuildRecord::class);
+    }
+
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(TeamInvitation::class);
+    }
+
+    public function addUser(User $user, TeamRole|string $role): void
+    {
+        $role = $role instanceof TeamRole ? $role : TeamRole::from($role);
+
+        DB::transaction(function () use ($user, $role) {
+            $this->users()->syncWithoutDetaching([
+                $user->id => ['role' => $role->value],
+            ]);
+            $user->syncTeamRole($this, $role);
+        });
+    }
+
+    public function updateUserRole(User $user, TeamRole $role): void
+    {
+        DB::transaction(function () use ($user, $role) {
+            $this->users()->updateExistingPivot($user->id, ['role' => $role->value]);
+            $user->syncTeamRole($this, $role);
+        });
+    }
+
+    public function removeUser(User $user): void
+    {
+        DB::transaction(function () use ($user) {
+            $user->removeTeamRoles($this);
+            $this->users()->detach($user->id);
+        });
     }
 
     public function getRouteKeyName(): string

@@ -12,21 +12,44 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AppIdentifierController extends Controller
 {
     public function index(Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
         return AppIdentifierResource::collection(
-            $mobileApp->appIdentifiers()->orderBy('platform')->orderBy('name')->get(),
+            $mobileApp->appIdentifiers()
+                ->orderBy('platform')
+                ->orderByDesc('is_default')
+                ->orderBy('name')
+                ->orderBy('id')
+                ->get(),
         );
     }
 
     public function store(Request $request, Team $team, MobileApp $mobileApp): JsonResponse
     {
+        $this->authorize('manageApplications', $team);
+
         $data = $request->validate($this->rules($request, $mobileApp));
-        $appIdentifier = $mobileApp->appIdentifiers()->create($data);
+        $appIdentifier = DB::transaction(function () use ($mobileApp, $data) {
+            $platform = Platform::from($data['platform']);
+
+            if (! array_key_exists('is_default', $data)) {
+                $data['is_default'] = ! $mobileApp->appIdentifiers()
+                    ->where('platform', $platform)
+                    ->exists();
+            }
+
+            if ($data['is_default']) {
+                $this->clearDefault($mobileApp, $platform);
+            }
+
+            return $mobileApp->appIdentifiers()->create($data);
+        });
 
         return (new AppIdentifierResource($appIdentifier))
             ->response()
@@ -44,14 +67,41 @@ class AppIdentifierController extends Controller
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
     ): AppIdentifierResource {
+        $this->authorize('manageApplications', $team);
+
         $data = $request->validate($this->rules($request, $mobileApp, $appIdentifier));
-        $appIdentifier->update($data);
+        $destinationPlatform = Platform::from($data['platform'] ?? $appIdentifier->platform->value);
+        $willBeDefault = $data['is_default'] ?? $appIdentifier->is_default;
+
+        if (
+            $destinationPlatform !== $appIdentifier->platform
+            && $willBeDefault
+            && $mobileApp->appIdentifiers()
+                ->where('platform', $destinationPlatform)
+                ->where('is_default', true)
+                ->whereKeyNot($appIdentifier->id)
+                ->exists()
+        ) {
+            throw ValidationException::withMessages([
+                'is_default' => 'The destination platform already has a default identifier.',
+            ]);
+        }
+
+        DB::transaction(function () use ($mobileApp, $appIdentifier, $data, $destinationPlatform) {
+            if (($data['is_default'] ?? false) === true) {
+                $this->clearDefault($mobileApp, $destinationPlatform, $appIdentifier);
+            }
+
+            $appIdentifier->update($data);
+        });
 
         return new AppIdentifierResource($appIdentifier->refresh());
     }
 
     public function destroy(Team $team, MobileApp $mobileApp, AppIdentifier $appIdentifier): Response
     {
+        $this->authorize('manageApplications', $team);
+
         $appIdentifier->delete();
 
         return response()->noContent();
@@ -85,6 +135,30 @@ class AppIdentifierController extends Controller
                 'integer',
                 'min:1',
             ],
+            'build_number' => [
+                'sometimes',
+                'nullable',
+                Rule::prohibitedIf($platform !== Platform::Ios->value),
+                'string',
+                'max:255',
+            ],
+            'is_default' => ['sometimes', 'boolean'],
         ];
+    }
+
+    private function clearDefault(
+        MobileApp $mobileApp,
+        Platform $platform,
+        ?AppIdentifier $except = null,
+    ): void {
+        $query = $mobileApp->appIdentifiers()
+            ->where('platform', $platform)
+            ->where('is_default', true);
+
+        if ($except) {
+            $query->whereKeyNot($except->id);
+        }
+
+        $query->update(['is_default' => false]);
     }
 }

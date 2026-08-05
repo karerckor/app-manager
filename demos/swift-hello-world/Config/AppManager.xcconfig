@@ -1,0 +1,9 @@
+// Tracked fallbacks make the Xcode project inspectable before prepare.
+PRODUCT_BUNDLE_IDENTIFIER = com.example.appmanager.swift
+MARKETING_VERSION = 1.0.0
+CURRENT_PROJECT_VERSION = 1
+APP_DISPLAY_NAME = App Manager Swift
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+
+// App Manager prepare writes brand-specific overrides here.
+#include? "../.app-manager/AppManager.xcconfig"

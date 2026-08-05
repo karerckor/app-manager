@@ -2,10 +2,12 @@
 
 use App\Http\Middleware\EnsureTeamMember;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SetTeamPermissions;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,11 +18,17 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
+            'abilities' => CheckAbilities::class,
             'team.member' => EnsureTeamMember::class,
         ]);
 
         $middleware->web(append: [
+            SetTeamPermissions::class,
             HandleInertiaRequests::class,
+        ]);
+
+        $middleware->api(append: [
+            SetTeamPermissions::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -7,9 +7,13 @@
     export let app;
     export let identifiers = [];
     export let credentials = [];
+    export let builds = [];
     export let credentialTypes = [];
     export let navigationTeams = [];
     export let navigationTeam = null;
+
+    const canManageApplications = auth?.team?.permissions?.manage_applications ?? false;
+    const canManageCredentials = auth?.team?.permissions?.manage_credentials ?? false;
 
     let tab = 'overview';
     let showIdentifier = false;
@@ -19,6 +23,10 @@
     let showEdit = false;
     let confirmingDelete = false;
     let deleting = false;
+    let expandedBuildId = null;
+    let buildLogs = {};
+    let buildLogsLoading = false;
+    let buildLogsError = '';
 
     const editForm = useForm({ name: app.name, description: app.description ?? '' });
 
@@ -36,8 +44,38 @@
     };
     const saveEdit = () => editForm.patch(app.urls.update, { preserveScroll: true, onSuccess: closeEdit });
     const deleteApp = () => router.delete(app.urls.destroy, { onStart: () => deleting = true, onFinish: () => deleting = false });
+    const cancelBuild = (build) => {
+        if (build.cancel_url && window.confirm(`Cancel build ${build.external_id || build.id}?`)) {
+            router.patch(build.cancel_url, {}, { preserveScroll: true });
+        }
+    };
+    const toggleBuildLogs = async (build) => {
+        if (expandedBuildId === build.id) {
+            expandedBuildId = null;
+            return;
+        }
 
-    const identifierForm = useForm({ platform: 'ios', identifier: '', name: '', version: '', version_code: '' });
+        expandedBuildId = build.id;
+        buildLogsError = '';
+        if (buildLogs[build.id]) return;
+
+        buildLogsLoading = true;
+        try {
+            const response = await fetch(`${build.logs_url}?limit=500`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error(`Unable to load logs (HTTP ${response.status})`);
+            const payload = await response.json();
+            buildLogs = { ...buildLogs, [build.id]: payload.data ?? [] };
+        } catch (error) {
+            buildLogsError = error.message;
+        } finally {
+            buildLogsLoading = false;
+        }
+    };
+
+    const identifierForm = useForm({ platform: 'ios', identifier: '', name: '', version: '', version_code: '', build_number: '', is_default: true });
     const initialIdentifier = identifiers[0] ?? null;
     const initialType = credentialTypes.find((type) => type.platforms.includes(initialIdentifier?.platform)) ?? credentialTypes[0];
     const payloadFor = (type) => Object.fromEntries((type?.fields ?? []).map((field) => [field.name, '']));
@@ -71,6 +109,7 @@
     const openCreateIdentifier = () => {
         editingIdentifier = null;
         identifierForm.reset();
+        identifierForm.is_default = !identifiers.some((identifier) => identifier.platform === identifierForm.platform && identifier.is_default);
         identifierForm.clearErrors();
         showIdentifier = true;
     };
@@ -81,6 +120,8 @@
         identifierForm.name = identifier.name ?? '';
         identifierForm.version = identifier.version ?? '';
         identifierForm.version_code = identifier.version_code ?? '';
+        identifierForm.build_number = identifier.build_number ?? '';
+        identifierForm.is_default = identifier.is_default;
         identifierForm.clearErrors();
         showIdentifier = true;
     };
@@ -96,6 +137,10 @@
     const changeIdentifierPlatform = (event) => {
         identifierForm.platform = event.currentTarget.value;
         if (identifierForm.platform !== 'android') identifierForm.version_code = '';
+        if (identifierForm.platform !== 'ios') identifierForm.build_number = '';
+        if (!editingIdentifier) {
+            identifierForm.is_default = !identifiers.some((identifier) => identifier.platform === identifierForm.platform && identifier.is_default);
+        }
     };
     const saveCredential = () => credentialForm.post(editingCredential?.update_url ?? app.urls.credentials, {
         forceFormData: true,
@@ -190,6 +235,14 @@
     const typeLabel = (type) => schemaFor(type)?.label ?? type.replaceAll('_', ' ');
     const formatBytes = (bytes) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     const formatDate = (value) => value ? new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) : 'No expiration';
+    const formatDateTime = (value) => value ? new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
+    const buildStatusClass = (status) => ({
+        pending: 'bg-amber-50 text-amber-700',
+        running: 'bg-sky-50 text-sky-700',
+        completed: 'bg-emerald-50 text-emerald-700',
+        failed: 'bg-rose-50 text-rose-700',
+        cancelled: 'bg-slate-100 text-slate-600',
+    }[status] ?? 'bg-slate-100 text-slate-600');
     const isExpiring = (value) => value && new Date(value).getTime() < Date.now() + 1000 * 60 * 60 * 24 * 30;
 </script>
 
@@ -205,14 +258,18 @@
                 <div class="min-w-0"><div class="flex items-center gap-2"><h1 class="truncate text-2xl font-bold tracking-tight">{app.name}</h1><span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">Active</span></div><p class="mt-1 text-sm text-slate-500">{app.description || app.slug}</p></div>
             </div>
             <div class="flex items-center gap-2">
-                <button type="button" class="secondary flex items-center gap-2" on:click={openEdit}>
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                    Edit
-                </button>
-                <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
-                    {identifiers.length ? 'Add credential' : 'Add identifier'}
-                </button>
+                {#if canManageApplications}
+                    <button type="button" class="secondary flex items-center gap-2" on:click={openEdit}>
+                        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        Edit
+                    </button>
+                {/if}
+                {#if (identifiers.length && canManageCredentials) || (!identifiers.length && canManageApplications)}
+                    <button class="flex items-center gap-2" on:click={() => identifiers.length ? openCreateCredential() : openCreateIdentifier()}>
+                        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+                        {identifiers.length ? 'Add credential' : 'Add identifier'}
+                    </button>
+                {/if}
             </div>
         </header>
 
@@ -221,19 +278,20 @@
         <div class="mb-7 flex gap-1 border-b border-slate-200">
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'overview' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'overview'}>Overview</button>
             <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'credentials' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'credentials'}>Credentials <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{credentials.length}</span></button>
+            <button class="rounded-none border-b-2 px-4 py-3 shadow-none {tab === 'builds' ? 'border-indigo-600 bg-transparent text-indigo-700' : 'border-transparent bg-transparent text-slate-500 hover:bg-transparent hover:text-slate-900'}" on:click={() => tab = 'builds'}>Builds <span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600">{builds.length}</span></button>
         </div>
 
         {#if tab === 'overview'}
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.8fr)]">
                 <section class="card p-0">
-                    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">App identifiers</h2><p class="mt-0.5 text-xs text-slate-500">Bundle IDs and package names for each platform.</p></div><button class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={openCreateIdentifier}><span class="text-base leading-none">+</span> Add</button></div>
+                    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">App identifiers</h2><p class="mt-0.5 text-xs text-slate-500">Bundle IDs and package names for each platform.</p></div>{#if canManageApplications}<button class="secondary flex items-center gap-1.5 px-3 py-2 text-xs" on:click={openCreateIdentifier}><span class="text-base leading-none">+</span> Add</button>{/if}</div>
                     {#if identifiers.length}
                         <div class="divide-y divide-slate-100">
                             {#each identifiers as identifier}
                                 <div class="px-5 py-4">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
                                         <div class="flex min-w-0 items-center gap-3"><span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl {identifier.platform === 'ios' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700'}">{#if identifier.platform === 'ios'}<svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="currentColor"><path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7a4.5 4.5 0 0 0-3.5-1.9c-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.1-.8a4.7 4.7 0 0 0-4 2.4c-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4a10.7 10.7 0 0 0 1.4-2.9 4.2 4.2 0 0 1-3-3.8ZM14.3 5.8A4.2 4.2 0 0 0 15.4 3a4.3 4.3 0 0 0-2.8 1.4 4 4 0 0 0-1.1 2.7 3.6 3.6 0 0 0 2.8-1.3Z"/></svg>{:else}<svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="m7.2 8.4-1.7-3a.5.5 0 0 1 .2-.7.5.5 0 0 1 .7.2l1.8 3A9 9 0 0 1 12 7c1.4 0 2.7.3 3.8.9l1.8-3a.5.5 0 1 1 .9.5l-1.7 3a7 7 0 0 1 3.2 5.3H4a7 7 0 0 1 3.2-5.3ZM8.3 11a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Zm7.4 0a.8.8 0 1 0 0-1.5.8.8 0 0 0 0 1.5Z"/></svg>{/if}</span><div class="min-w-0"><div class="flex items-center gap-2"><h3 class="truncate text-sm font-semibold">{identifier.name || (identifier.platform === 'ios' ? 'iOS application' : 'Android application')}</h3><span class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase">{identifier.platform}</span>{#if identifier.version || identifier.version_code}<span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}</span>{/if}</div><code class="mt-1 block truncate text-xs text-slate-500">{identifier.identifier}</code></div></div>
-                                        <div class="flex items-center gap-2"><span class="text-xs text-slate-400">{identifier.credentials_count} credential{identifier.credentials_count === 1 ? '' : 's'}</span><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditIdentifier(identifier)}>Edit</button></div>
+                                        <div class="flex items-center gap-2"><span class="text-xs text-slate-400">{identifier.credentials_count} credential{identifier.credentials_count === 1 ? '' : 's'}</span>{#if canManageApplications}<button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditIdentifier(identifier)}>Edit</button>{/if}</div>
                                     </div>
                                     {#if identifier.profiles.length}
                                         <div class="mt-3 flex flex-wrap gap-2 pl-12">
@@ -251,7 +309,7 @@
                             {/each}
                         </div>
                     {:else}
-                        <div class="px-6 py-12 text-center"><p class="text-sm font-semibold">No identifiers yet</p><p class="mt-1 text-xs text-slate-500">Add an iOS bundle ID or Android package name.</p><button class="mt-4 px-3 py-2 text-xs" on:click={openCreateIdentifier}>Add identifier</button></div>
+                        <div class="px-6 py-12 text-center"><p class="text-sm font-semibold">No identifiers yet</p><p class="mt-1 text-xs text-slate-500">Add an iOS bundle ID or Android package name.</p>{#if canManageApplications}<button class="mt-4 px-3 py-2 text-xs" on:click={openCreateIdentifier}>Add identifier</button>{/if}</div>
                     {/if}
                 </section>
 
@@ -267,16 +325,16 @@
                             {#each [['app_icon', 'App icon', 'Square PNG or JPG'], ['splash_icon', 'Splash icon', 'PNG or JPG up to 10 MB']] as asset}
                                 <div class="rounded-xl border border-slate-200 p-3">
                                     <div class="flex items-center gap-3"><span class="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-500"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg></span><div class="min-w-0 flex-1"><p class="text-xs font-semibold">{asset[1]}</p><p class="mt-0.5 truncate text-[10px] text-slate-400">{app.assets[asset[0]]?.name || asset[2]}</p></div></div>
-                                    <div class="mt-3 flex gap-2"><label for={`asset-${asset[0]}`} class="flex-1 cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50">{app.assets[asset[0]] ? 'Replace' : 'Upload'}</label><input id={`asset-${asset[0]}`} class="hidden" type="file" accept="image/*" on:change={(event) => uploadAsset(asset[0], event)} />{#if app.assets[asset[0]]}<a href={app.assets[asset[0]].download_url} class="flex-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 hover:bg-slate-200">Download</a>{/if}</div>
+                                    <div class="mt-3 flex gap-2">{#if canManageApplications}<label for={`asset-${asset[0]}`} class="flex-1 cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50">{app.assets[asset[0]] ? 'Replace' : 'Upload'}</label><input id={`asset-${asset[0]}`} class="hidden" type="file" accept="image/*" on:change={(event) => uploadAsset(asset[0], event)} />{/if}{#if app.assets[asset[0]]}<a href={app.assets[asset[0]].download_url} class="flex-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-center text-[10px] font-semibold text-slate-600 hover:bg-slate-200">Download</a>{/if}</div>
                                 </div>
                             {/each}
                         </div>
                     </section>
                 </aside>
             </div>
-        {:else}
+        {:else if tab === 'credentials'}
             <section class="card overflow-hidden p-0">
-                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">Signing & service credentials</h2><p class="mt-0.5 text-xs text-slate-500">Signing files are assigned to a build target and expected artifact.</p></div><button class="flex items-center gap-1.5 px-3 py-2 text-xs" disabled={!identifiers.length} on:click={openCreateCredential}><span class="text-base leading-none">+</span> Add credential</button></div>
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><h2 class="text-sm font-bold">Signing & service credentials</h2><p class="mt-0.5 text-xs text-slate-500">Signing files are assigned to a build target and expected artifact.</p></div>{#if canManageCredentials}<button class="flex items-center gap-1.5 px-3 py-2 text-xs" disabled={!identifiers.length} on:click={openCreateCredential}><span class="text-base leading-none">+</span> Add credential</button>{/if}</div>
                 {#if credentials.length}
                     <div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left"><thead class="bg-slate-50/80 text-[10px] font-bold tracking-wider text-slate-400 uppercase"><tr><th class="px-5 py-3">Credential</th><th class="px-4 py-3">Build target</th><th class="px-4 py-3">Attached to</th><th class="px-4 py-3">Expiration</th><th class="px-4 py-3">File</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">
                         {#each credentials as credential}
@@ -294,19 +352,43 @@
                                 <td class="px-4 py-4"><p class="max-w-48 truncate text-xs font-medium">{credential.identifier}</p><p class="mt-0.5 text-[10px] text-slate-400 uppercase">{credential.platform}</p></td>
                                 <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-semibold {isExpiring(credential.expires_at) ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">{formatDate(credential.expires_at)}</span></td>
                                 <td class="px-4 py-4">{#if credential.file}<div><p class="max-w-40 truncate text-xs font-medium">{credential.file.name}</p><p class="mt-0.5 text-[10px] text-slate-400">{formatBytes(credential.file.size)}</p></div>{:else}<span class="text-xs text-slate-400">No file</span>{/if}</td>
-                                <td class="px-5 py-4"><div class="flex justify-end gap-2"><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>{#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}<label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label><input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} /></div></td>
+                                <td class="px-5 py-4"><div class="flex justify-end gap-2">{#if canManageCredentials}<button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => openEditCredential(credential)}>Edit</button>{/if}{#if credential.file}<a href={credential.file.download_url} class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">Download</a>{/if}{#if canManageCredentials}<label for={`credential-${credential.id}`} class="cursor-pointer rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">{credential.file ? 'Replace' : 'Upload'}</label><input id={`credential-${credential.id}`} type="file" accept={schemaFor(credential.type)?.file.accept} class="hidden" on:change={(event) => uploadCredential(credential, event)} />{/if}</div></td>
                             </tr>
                         {/each}
                     </tbody></table></div>
                 {:else}
-                    <div class="px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span><h3 class="text-sm font-bold">No credentials yet</h3><p class="mt-2 text-sm text-slate-500">Add a signing key, service account, or platform configuration.</p><button class="mt-5" disabled={!identifiers.length} on:click={openCreateCredential}>Add credential</button></div>
+                    <div class="px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 1 1-2 2-1-1-3 3"/></svg></span><h3 class="text-sm font-bold">No credentials yet</h3><p class="mt-2 text-sm text-slate-500">Add a signing key, service account, or platform configuration.</p>{#if canManageCredentials}<button class="mt-5" disabled={!identifiers.length} on:click={openCreateCredential}>Add credential</button>{/if}</div>
+                {/if}
+            </section>
+        {:else}
+            <section class="card overflow-hidden p-0">
+                <div class="border-b border-slate-100 px-5 py-4"><h2 class="text-sm font-bold">Build history</h2><p class="mt-0.5 text-xs text-slate-500">Immutable release traces reported by CI. The latest 20 builds are shown.</p></div>
+                {#if builds.length}
+                    <div class="overflow-x-auto"><table class="w-full min-w-[980px] text-left"><thead class="bg-slate-50/80 text-[10px] font-bold tracking-wider text-slate-400 uppercase"><tr><th class="px-5 py-3">Build</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Source</th><th class="px-4 py-3">Timeline</th><th class="px-5 py-3 text-right">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">
+                        {#each builds as build}
+                            <tr class="hover:bg-slate-50/60">
+                                <td class="px-5 py-4"><div class="flex items-center gap-3"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold capitalize {buildStatusClass(build.status)}">{build.status}</span><div><p class="text-xs font-semibold capitalize">{build.profile_type.replaceAll('_', ' ')}</p><code class="mt-0.5 block max-w-44 truncate text-[10px] text-slate-400">{build.external_id || build.id}</code></div></div></td>
+                                <td class="px-4 py-4"><p class="max-w-56 truncate text-xs font-medium">{build.target?.identifier || 'Unknown target'}</p><p class="mt-0.5 text-[10px] text-slate-400 uppercase">{build.target?.platform || '—'}{build.target?.version ? ` · v${build.target.version}` : ''}</p></td>
+                                <td class="px-4 py-4"><p class="text-xs font-medium">{build.ci.provider || 'Manual report'}{build.ci.run_id ? ` #${build.ci.run_id}` : ''}</p><code class="mt-0.5 block text-[10px] text-slate-400">{build.commit_sha ? build.commit_sha.slice(0, 12) : 'No commit SHA'}</code></td>
+                                <td class="px-4 py-4"><p class="text-xs font-medium">{build.started_at ? `Started ${formatDateTime(build.started_at)}` : `Registered ${formatDateTime(build.registered_at)}`}</p>{#if build.finished_at}<p class="mt-0.5 text-[10px] text-slate-400">Finished {formatDateTime(build.finished_at)}</p>{/if}</td>
+                                <td class="px-5 py-4"><div class="flex justify-end gap-2"><button type="button" class="ghost px-2.5 py-1.5 text-[10px]" on:click={() => toggleBuildLogs(build)}>Logs{build.logs_count ? ` (${build.logs_count})` : ''}</button>{#if build.ci.run_url}<a href={build.ci.run_url} target="_blank" rel="noreferrer" class="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50">CI</a>{/if}{#if build.artifact_url}<a href={build.artifact_url} target="_blank" rel="noreferrer" class="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200">Artifact</a>{/if}{#if canManageCredentials && build.cancel_url}<button type="button" class="ghost px-2.5 py-1.5 text-[10px] text-rose-600 hover:text-rose-700" on:click={() => cancelBuild(build)}>Cancel</button>{/if}</div></td>
+                            </tr>
+                            {#if expandedBuildId === build.id}
+                                <tr class="bg-slate-950"><td colspan="5" class="px-5 py-4">
+                                    {#if buildLogsLoading}<p class="text-xs text-slate-400">Loading logs…</p>{:else if buildLogsError}<p class="text-xs text-rose-400">{buildLogsError}</p>{:else if buildLogs[build.id]?.length}<div class="max-h-96 overflow-auto font-mono text-[11px] leading-5">{#each buildLogs[build.id] as entry}<div class="flex gap-3 {entry.stream === 'stderr' ? 'text-rose-300' : entry.stream === 'system' ? 'text-sky-300' : 'text-slate-200'}"><span class="select-none text-slate-600">{String(entry.sequence).padStart(4, '0')}</span><pre class="whitespace-pre-wrap">{entry.message}</pre></div>{/each}</div>{:else}<p class="text-xs text-slate-400">No logs have been reported for this build.</p>{/if}
+                                </td></tr>
+                            {/if}
+                        {/each}
+                    </tbody></table></div>
+                {:else}
+                    <div class="px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-sky-50 text-sky-600"><svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 17 10 6l4 7 2-3 4 7H4Z"/><path d="M4 20h16"/></svg></span><h3 class="text-sm font-bold">No build traces yet</h3><p class="mt-2 text-sm text-slate-500">CI builds will appear here after reporting through the Build Trace API.</p></div>
                 {/if}
             </section>
         {/if}
     </main>
 </AppShell>
 
-{#if showIdentifier}
+{#if showIdentifier && canManageApplications}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeIdentifier()}>
         <form class="modal" on:submit|preventDefault={saveIdentifier}>
             <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5"><div><h2 class="text-lg font-bold">{editingIdentifier ? 'Edit app identifier' : 'Add app identifier'}</h2><p class="mt-1 text-sm text-slate-500">{editingIdentifier ? 'Update this platform target.' : 'Connect a platform target to this project.'}</p></div><button type="button" class="ghost -mr-2 p-2" on:click={closeIdentifier}>✕</button></div>
@@ -314,17 +396,19 @@
                 <label><span class="label">Platform</span><select value={identifierForm.platform} on:change={changeIdentifierPlatform}><option value="ios">iOS</option><option value="android">Android</option></select></label>
                 <label><span class="label">{identifierForm.platform === 'ios' ? 'Bundle identifier' : 'Package name'}</span><input bind:value={identifierForm.identifier} placeholder="com.company.product" required />{#if identifierForm.errors.identifier}<span class="error">{identifierForm.errors.identifier}</span>{/if}</label>
                 <label><span class="label">Display name <span class="font-normal text-slate-400">(optional)</span></span><input bind:value={identifierForm.name} placeholder={identifierForm.platform === 'ios' ? 'Atlas for iOS' : 'Atlas for Android'} />{#if identifierForm.errors.name}<span class="error">{identifierForm.errors.name}</span>{/if}</label>
-                <div class="grid gap-4 {identifierForm.platform === 'android' ? 'sm:grid-cols-2' : ''}">
+                <div class="grid gap-4 sm:grid-cols-2">
                     <label><span class="label">Version <span class="font-normal text-slate-400">(optional)</span></span><input bind:value={identifierForm.version} placeholder="1.0.0" />{#if identifierForm.errors.version}<span class="error">{identifierForm.errors.version}</span>{/if}</label>
                     {#if identifierForm.platform === 'android'}<label><span class="label">Version code <span class="font-normal text-slate-400">(optional)</span></span><input type="number" min="1" step="1" bind:value={identifierForm.version_code} placeholder="1" />{#if identifierForm.errors.version_code}<span class="error">{identifierForm.errors.version_code}</span>{/if}</label>{/if}
+                    {#if identifierForm.platform === 'ios'}<label><span class="label">Build number <span class="font-normal text-slate-400">(optional)</span></span><input bind:value={identifierForm.build_number} placeholder="1" />{#if identifierForm.errors.build_number}<span class="error">{identifierForm.errors.build_number}</span>{/if}</label>{/if}
                 </div>
+                <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3.5"><input class="mt-0.5" type="checkbox" bind:checked={identifierForm.is_default} /><span><span class="block text-xs font-semibold text-slate-800">Default {identifierForm.platform === 'ios' ? 'iOS' : 'Android'} target</span><span class="mt-0.5 block text-[10px] leading-4 text-slate-500">Builds without an explicit identifier use this target.</span></span></label>
             </div>
             <div class="flex justify-end gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4"><button type="button" class="secondary" on:click={closeIdentifier}>Cancel</button><button disabled={identifierForm.processing}>{identifierForm.processing ? 'Saving…' : editingIdentifier ? 'Save changes' : 'Add identifier'}</button></div>
         </form>
     </div>
 {/if}
 
-{#if showCredential}
+{#if showCredential && canManageCredentials}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeCredential()}>
         <form class="modal" on:submit|preventDefault={saveCredential}>
             <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
@@ -414,7 +498,7 @@
     </div>
 {/if}
 
-{#if showEdit}
+{#if showEdit && canManageApplications}
     <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeEdit()}>
         <form class="modal" on:submit|preventDefault={saveEdit}>
             <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">

@@ -39,6 +39,8 @@ class CredentialController extends Controller
 
     public function store(Request $request, Team $team, MobileApp $mobileApp): JsonResponse
     {
+        $this->authorize('manageCredentials', $team);
+
         $type = CredentialType::tryFrom((string) $request->input('type'));
         $rules = [
             'app_identifier_id' => [
@@ -106,6 +108,8 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): CredentialResource {
+        $this->authorize('manageCredentials', $team);
+
         $credential = $this->credential($team, $mobileApp, $credential);
         $rules = [
             'name' => ['sometimes', 'string', 'max:255'],
@@ -144,6 +148,8 @@ class CredentialController extends Controller
 
     public function destroy(Team $team, MobileApp $mobileApp, string $credential): Response
     {
+        $this->authorize('manageCredentials', $team);
+
         $this->credential($team, $mobileApp, $credential)->delete();
 
         return response()->noContent();
@@ -166,6 +172,8 @@ class CredentialController extends Controller
         MobileApp $mobileApp,
         string $credential,
     ): CredentialResource {
+        $this->authorize('manageCredentials', $team);
+
         $credential = $this->credential($team, $mobileApp, $credential);
         $request->validate([
             'file' => [
@@ -182,6 +190,8 @@ class CredentialController extends Controller
 
     public function destroyFile(Team $team, MobileApp $mobileApp, string $credential): Response
     {
+        $this->authorize('manageCredentials', $team);
+
         $credential = $this->credential($team, $mobileApp, $credential);
         abort_unless($credential->getFirstMedia('file'), 404);
         $credential->clearMediaCollection('file');

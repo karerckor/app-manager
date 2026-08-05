@@ -2,6 +2,8 @@
 
 namespace App\Actions\Fortify;
 
+use App\Enums\TeamRole;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -42,10 +44,11 @@ class CreateNewUser implements CreatesNewUsers
                 'password' => Hash::make($input['password']),
             ]);
 
-            $team = $user->teams()->create([
+            $team = Team::create([
                 'name' => $input['name']."'s Team",
                 'owner_id' => $user->id,
-            ], ['role' => 'owner']);
+            ]);
+            $team->addUser($user, TeamRole::Owner);
 
             $user->update(['current_team_id' => $team->id]);
 

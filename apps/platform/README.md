@@ -2,7 +2,8 @@
 
 ## Platform API
 
-Документация versioned API для mobile apps, icon/splashscreen, app identifiers и credentials: [docs/api-v1.md](docs/api-v1.md).
+Документация versioned API для mobile apps, icon/splashscreen, app identifiers,
+credentials и воспроизводимых build traces: [docs/api-v1.md](docs/api-v1.md).
 
 <p align="center">
 <a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>

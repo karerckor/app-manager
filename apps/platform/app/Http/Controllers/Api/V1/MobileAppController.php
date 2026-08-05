@@ -22,6 +22,8 @@ class MobileAppController extends Controller
 
     public function store(Request $request, Team $team): JsonResponse
     {
+        $this->authorize('manageApplications', $team);
+
         $data = $request->validate($this->rules($team));
         $data['slug'] = $this->availableSlug($team, ($data['slug'] ?? null) ?: $data['name']);
 
@@ -39,6 +41,8 @@ class MobileAppController extends Controller
 
     public function update(Request $request, Team $team, MobileApp $mobileApp): MobileAppResource
     {
+        $this->authorize('manageApplications', $team);
+
         $data = $request->validate($this->rules($team, $mobileApp));
         $mobileApp->update($data);
 
@@ -47,6 +51,8 @@ class MobileAppController extends Controller
 
     public function destroy(Team $team, MobileApp $mobileApp): Response
     {
+        $this->authorize('manageApplications', $team);
+
         $mobileApp->delete();
 
         return response()->noContent();

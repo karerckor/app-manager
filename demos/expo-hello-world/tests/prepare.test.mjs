@@ -1,407 +1,263 @@
 import assert from 'node:assert/strict';
-import { stat } from 'node:fs/promises';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import { prepare } from '../scripts/prepare.mjs';
 
-test('prepare builds Expo config and Android/iOS credentials from App Manager', async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-'));
-  const requests = [];
-  const keystore = Buffer.from('demo-pkcs12-keystore');
-  const certificate = Buffer.from('demo-ios-pkcs12-certificate');
-  const provisioningProfile = Buffer.from('demo-mobileprovision');
-  const fetchImpl = async (url, options) => {
-    const requestUrl = new URL(url);
-    requests.push({ authorization: options.headers.Authorization, url: requestUrl.pathname });
+const require = createRequire(import.meta.url);
+const { mergeConfig } = require('../app.config.js');
 
-    if (requestUrl.pathname === '/api/v1/demo-users-team/apps/example-app') {
-      return json({
-        data: {
-          description: 'Demo application for local development.',
-          name: 'Example App',
-          slug: 'example-app',
-        },
-      });
-    }
+test('prepares Android only and leaves tracked app.json unchanged', async (t) => {
+  const workspace = await temporaryWorkspace(t);
+  const trackedConfig = '{"expo":{"name":"Tracked fallback"}}\n';
+  await writeFile(join(workspace, 'app.json'), trackedConfig);
 
-    if (requestUrl.pathname === '/api/v1/demo-users-team/apps/example-app/identifiers') {
-      return json({
-        data: [
-          {
-            id: 'identifier-1',
-            identifier: 'com.example.app',
-            platform: 'android',
-            version: '2.3.0',
-            version_code: 20300,
-          },
-          {
-            id: 'identifier-2',
-            identifier: 'com.example.app',
-            platform: 'ios',
-            version: '2.3.0',
-            version_code: null,
-          },
-        ],
-      });
-    }
-
-    if (requestUrl.pathname === '/api/v1/demo-users-team/apps/example-app/credentials') {
-      return json({
-        data: [
-          {
-            file: { name: 'production.keystore' },
-            id: 'credential-1',
-            name: 'Production Keystore',
-            payload: {
-              key_alias: 'production',
-              key_password: 'key-secret',
-              store_password: 'store-secret',
-            },
-            profiles: [
-              {
-                app_identifier: { identifier: 'com.example.app' },
-                type: 'production',
-              },
-            ],
-            type: 'android_keystore',
-          },
-          {
-            file: { name: 'distribution.p12' },
-            id: 'credential-2',
-            name: 'App Store Certificate',
-            payload: { password: 'certificate-secret' },
-            profiles: [
-              {
-                app_identifier: { identifier: 'com.example.app' },
-                type: 'appstore',
-              },
-            ],
-            type: 'ios_certificate',
-          },
-          {
-            file: { name: 'appstore.mobileprovision' },
-            id: 'credential-3',
-            name: 'App Store Provisioning Profile',
-            payload: null,
-            profiles: [
-              {
-                app_identifier: { identifier: 'com.example.app' },
-                type: 'appstore',
-              },
-            ],
-            type: 'provisioning_profile',
-          },
-        ],
-      });
-    }
-
-    if (
-      requestUrl.pathname ===
-      '/api/v1/demo-users-team/apps/example-app/credentials/credential-1/file'
-    ) {
-      return new Response(keystore, {
-        headers: { 'Content-Type': 'application/octet-stream' },
-        status: 200,
-      });
-    }
-
-    if (
-      requestUrl.pathname ===
-      '/api/v1/demo-users-team/apps/example-app/credentials/credential-2/file'
-    ) {
-      return new Response(certificate, {
-        headers: { 'Content-Type': 'application/x-pkcs12' },
-        status: 200,
-      });
-    }
-
-    if (
-      requestUrl.pathname ===
-      '/api/v1/demo-users-team/apps/example-app/credentials/credential-3/file'
-    ) {
-      return new Response(provisioningProfile, {
-        headers: { 'Content-Type': 'application/octet-stream' },
-        status: 200,
-      });
-    }
-
-    return new Response(null, { status: 404, statusText: 'Not Found' });
-  };
-
-  t.after(async () => {
-    await rm(workspace, { force: true, recursive: true });
-  });
-
-  await prepare({
+  const result = await prepare({
     cwd: workspace,
-    env: {
-      APP_MANAGER_BASE_URL: 'http://platform.test:8000',
-    },
-    fetchImpl,
-    logger: { log() {} },
+    input: androidInput('example-app'),
+    logger: silentLogger,
   });
 
-  const appJson = JSON.parse(await readFile(join(workspace, 'app.json'), 'utf8'));
-  const credentialsJson = JSON.parse(
-    await readFile(join(workspace, 'credentials.json'), 'utf8'),
-  );
-  const downloadedKeystore = await readFile(
-    join(workspace, 'credentials/android/production.keystore'),
-  );
-  const downloadedCertificate = await readFile(
-    join(workspace, 'credentials/ios/distribution.p12'),
-  );
-  const downloadedProvisioningProfile = await readFile(
-    join(workspace, 'credentials/ios/profile.mobileprovision'),
-  );
-
-  assert.deepEqual(appJson, {
+  assert.deepEqual(result.expo, {
     expo: {
-      android: { package: 'com.example.app', versionCode: 20300 },
-      description: 'Demo application for local development.',
+      android: {
+        googleServicesFile: './.app-manager/downloads/example-app/google-services.json',
+        package: 'com.example.app',
+        versionCode: 1,
+      },
+      description: 'Example brand',
+      icon: './.app-manager/downloads/example-app/icon.png',
       name: 'Example App',
       orientation: 'portrait',
-      ios: { bundleIdentifier: 'com.example.app' },
       slug: 'example-app',
+      splash: {
+        backgroundColor: '#ffffff',
+        image: './.app-manager/downloads/example-app/splash.png',
+        resizeMode: 'contain',
+      },
       userInterfaceStyle: 'automatic',
-      version: '2.3.0',
+      version: '1.0.0',
     },
   });
-  assert.deepEqual(credentialsJson, {
+  assert.equal('ios' in result.expo.expo, false);
+  assert.deepEqual(result.credentials, {
     android: {
       keystore: {
-        keyAlias: 'production',
-        keyPassword: 'key-secret',
-        keystorePassword: 'store-secret',
-        keystorePath: 'credentials/android/production.keystore',
+        keyAlias: 'example-app-release',
+        keyPassword: 'example-app-key-secret',
+        keystorePassword: 'example-app-store-secret',
+        keystorePath: '.app-manager/downloads/example-app/production.keystore',
       },
     },
+  });
+  assert.equal(result.buildContext.android.googlePlayJsonKeyPath, '.app-manager/downloads/example-app/google-play.json');
+  assert.equal(result.buildContext.app, 'example-app');
+  assert.equal(await readFile(join(workspace, 'app.json'), 'utf8'), trackedConfig);
+  assert.equal((await stat(result.expoConfigPath)).mode & 0o777, 0o644);
+  assert.equal((await stat(result.credentialsPath)).mode & 0o777, 0o600);
+  assert.equal((await stat(result.contextPath)).mode & 0o777, 0o600);
+});
+
+test('same Android source produces isolated white-label configuration', async (t) => {
+  const workspace = await temporaryWorkspace(t);
+
+  const first = await prepare({ cwd: workspace, input: androidInput('example-app'), logger: silentLogger });
+  const blue = await prepare({ cwd: workspace, input: androidInput('example-app-blue'), logger: silentLogger });
+
+  assert.equal(first.expo.expo.name, 'Example App');
+  assert.equal(blue.expo.expo.name, 'Blue Example App');
+  assert.equal(first.expo.expo.android.package, 'com.example.app');
+  assert.equal(blue.expo.expo.android.package, 'com.example.blue');
+  assert.notEqual(first.expo.expo.icon, blue.expo.expo.icon);
+  assert.notEqual(first.expo.expo.android.googleServicesFile, blue.expo.expo.android.googleServicesFile);
+  assert.notEqual(
+    first.credentials.android.keystore.keystorePassword,
+    blue.credentials.android.keystore.keystorePassword,
+  );
+  assert.notEqual(
+    first.buildContext.android.googlePlayJsonKeyPath,
+    blue.buildContext.android.googlePlayJsonKeyPath,
+  );
+});
+
+test('prepares iOS only with build number, Firebase and signing data', async (t) => {
+  const workspace = await temporaryWorkspace(t);
+  const result = await prepare({ cwd: workspace, input: iosInput('example-app-blue'), logger: silentLogger });
+
+  assert.deepEqual(result.expo.expo.ios, {
+    buildNumber: '20000',
+    bundleIdentifier: 'com.example.blue',
+    googleServicesFile: './.app-manager/downloads/example-app-blue/GoogleService-Info.plist',
+  });
+  assert.equal('android' in result.expo.expo, false);
+  assert.deepEqual(result.credentials, {
     ios: {
       distributionCertificate: {
-        password: 'certificate-secret',
-        path: 'credentials/ios/distribution.p12',
+        password: 'example-app-blue-certificate-secret',
+        path: '.app-manager/downloads/example-app-blue/distribution.p12',
       },
-      provisioningProfilePath: 'credentials/ios/profile.mobileprovision',
+      provisioningProfilePath: '.app-manager/downloads/example-app-blue/profile.mobileprovision',
     },
   });
-  assert.deepEqual(downloadedKeystore, keystore);
-  assert.deepEqual(downloadedCertificate, certificate);
-  assert.deepEqual(downloadedProvisioningProfile, provisioningProfile);
-  assert.equal((await stat(join(workspace, 'credentials.json'))).mode & 0o777, 0o600);
-  assert.equal(
-    (await stat(join(workspace, 'credentials/android/production.keystore'))).mode & 0o777,
-    0o600,
-  );
-  assert.equal(
-    (await stat(join(workspace, 'credentials/ios/distribution.p12'))).mode & 0o777,
-    0o600,
-  );
-  assert.equal(
-    (await stat(join(workspace, 'credentials/ios/profile.mobileprovision'))).mode &
-      0o777,
-    0o600,
-  );
-  assert.equal(requests.length, 6);
-  assert.ok(requests.every((request) => request.authorization === 'Bearer demo-api-key'));
-  assert.equal('owner' in appJson.expo, false);
-  assert.equal('updates' in appJson.expo, false);
+  assert.deepEqual(result.buildContext.ios.appStoreApiKey, {
+    issuerId: 'example-app-blue-issuer',
+    keyId: 'example-app-blue-key',
+    path: '.app-manager/downloads/example-app-blue/appstore.p8',
+  });
 });
 
-test('prepare downloads client Firebase files and wires app.json', async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-fb-'));
-  const googleServices = Buffer.from('{"project_info":{},"client":[]}');
-  const googlePlist = Buffer.from('<plist></plist>');
-  const fetchImpl = buildFetch({
-    googleServices,
-    googlePlist,
-  });
+test('same iOS source produces isolated white-label configuration', async (t) => {
+  const workspace = await temporaryWorkspace(t);
 
-  t.after(async () => {
-    await rm(workspace, { force: true, recursive: true });
-  });
+  const first = await prepare({ cwd: workspace, input: iosInput('example-app'), logger: silentLogger });
+  const blue = await prepare({ cwd: workspace, input: iosInput('example-app-blue'), logger: silentLogger });
 
-  await prepare({
-    cwd: workspace,
-    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
-    fetchImpl,
-    logger: { log() {} },
-  });
-
-  const appJson = JSON.parse(await readFile(join(workspace, 'app.json'), 'utf8'));
-  assert.equal(appJson.expo.android.googleServicesFile, './google-services.json');
-  assert.equal(appJson.expo.ios.googleServicesFile, './GoogleService-Info.plist');
-  assert.deepEqual(await readFile(join(workspace, 'google-services.json')), googleServices);
-  assert.deepEqual(await readFile(join(workspace, 'GoogleService-Info.plist')), googlePlist);
-  assert.equal(
-    (await stat(join(workspace, 'google-services.json'))).mode & 0o777,
-    0o600,
+  assert.equal(first.expo.expo.name, 'Example App');
+  assert.equal(blue.expo.expo.name, 'Blue Example App');
+  assert.equal(first.expo.expo.ios.bundleIdentifier, 'com.example.app');
+  assert.equal(blue.expo.expo.ios.bundleIdentifier, 'com.example.blue');
+  assert.notEqual(first.expo.expo.ios.buildNumber, blue.expo.expo.ios.buildNumber);
+  assert.notEqual(
+    first.expo.expo.ios.googleServicesFile,
+    blue.expo.expo.ios.googleServicesFile,
+  );
+  assert.notEqual(
+    first.credentials.ios.distributionCertificate.password,
+    blue.credentials.ios.distributionCertificate.password,
+  );
+  assert.notEqual(
+    first.buildContext.ios.appStoreApiKey.path,
+    blue.buildContext.ios.appStoreApiKey.path,
   );
 });
 
-test('prepare downloads icon and splash and wires app.json', async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-assets-'));
-  const icon = Buffer.from('icon-bytes');
-  const splash = Buffer.from('splash-bytes');
-  const fetchImpl = buildFetch({
-    assets: {
-      icon: { mime_type: 'image/png', url: 'http://platform.test:8000/assets/icon' },
-      splashscreen: { mime_type: 'image/png', url: 'http://platform.test:8000/assets/splash' },
-    },
-    assetBody: { icon, splash },
-  });
+test('fails before generation when required platform build data is absent', async (t) => {
+  const workspace = await temporaryWorkspace(t);
+  const input = androidInput('example-app');
+  input.context.target.version_code = null;
 
-  t.after(async () => {
-    await rm(workspace, { force: true, recursive: true });
-  });
-
-  await prepare({
-    cwd: workspace,
-    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
-    fetchImpl,
-    logger: { log() {} },
-  });
-
-  const appJson = JSON.parse(await readFile(join(workspace, 'app.json'), 'utf8'));
-  assert.equal(appJson.expo.icon, './assets/icon.png');
-  assert.equal(appJson.expo.splash.image, './assets/splash.png');
-  assert.equal(appJson.expo.splash.resizeMode, 'contain');
-  assert.deepEqual(await readFile(join(workspace, 'assets/icon.png')), icon);
-  assert.deepEqual(await readFile(join(workspace, 'assets/splash.png')), splash);
+  await assert.rejects(
+    prepare({ cwd: workspace, input, logger: silentLogger }),
+    /version_code must be a positive integer/,
+  );
 });
 
-test('prepare downloads store keys and writes fastlane/context.json', async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-store-'));
-  const googlePlay = Buffer.from('{"type":"service_account"}');
-  const appleKey = Buffer.from('-----BEGIN PRIVATE KEY-----demo-----END PRIVATE KEY-----');
-  const fetchImpl = buildFetch({ googlePlay, appleKey });
+test('dynamic Expo config removes the unselected fallback platform', () => {
+  const fallback = {
+    android: { package: 'fallback.android' },
+    ios: { bundleIdentifier: 'fallback.ios' },
+    name: 'Fallback',
+  };
 
-  t.after(async () => {
-    await rm(workspace, { force: true, recursive: true });
+  const android = mergeConfig(fallback, {
+    android: { package: 'com.example.app', versionCode: 1 },
+    name: 'Example App',
+  });
+  const ios = mergeConfig(fallback, {
+    ios: { bundleIdentifier: 'com.example.app', buildNumber: '1' },
+    name: 'Example App',
   });
 
-  await prepare({
-    cwd: workspace,
-    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
-    fetchImpl,
-    logger: { log() {} },
-  });
-
-  const context = JSON.parse(await readFile(join(workspace, 'fastlane/context.json'), 'utf8'));
-  assert.equal(context.version, '2.3.0');
-  assert.equal(context.android.package, 'com.example.app');
-  assert.equal(context.android.versionCode, 20300);
-  assert.equal(context.android.profileType, 'production');
-  assert.equal(context.android.googlePlayJsonKeyPath, 'credentials/android/google-play-service-account.json');
-  assert.equal(context.ios.bundleIdentifier, 'com.example.app');
-  assert.equal(context.ios.profileType, 'appstore');
-  assert.deepEqual(context.ios.appStoreApiKey, {
-    path: 'credentials/ios/appstore-api-key.p8',
-    keyId: 'ABCDE12345',
-    issuerId: '11111111-1111-4111-8111-111111111111',
-  });
-  assert.deepEqual(await readFile(join(workspace, 'credentials/android/google-play-service-account.json')), googlePlay);
-  assert.deepEqual(await readFile(join(workspace, 'credentials/ios/appstore-api-key.p8')), appleKey);
-  assert.equal((await stat(join(workspace, 'fastlane/context.json'))).mode & 0o777, 0o600);
+  assert.equal(android.android.package, 'com.example.app');
+  assert.equal('ios' in android, false);
+  assert.equal(ios.ios.bundleIdentifier, 'com.example.app');
+  assert.equal('android' in ios, false);
 });
 
-test('prepare writes context.json with null store keys when absent', async (t) => {
-  const workspace = await mkdtemp(join(tmpdir(), 'expo-hello-world-nostore-'));
-  const fetchImpl = buildFetch({});
+function androidInput(slug) {
+  const blue = slug.endsWith('-blue');
+  const identifier = blue ? 'com.example.blue' : 'com.example.app';
 
-  t.after(async () => {
-    await rm(workspace, { force: true, recursive: true });
-  });
-
-  await prepare({
-    cwd: workspace,
-    env: { APP_MANAGER_BASE_URL: 'http://platform.test:8000' },
-    fetchImpl,
-    logger: { log() {} },
-  });
-
-  const context = JSON.parse(await readFile(join(workspace, 'fastlane/context.json'), 'utf8'));
-  assert.equal(context.android.googlePlayJsonKeyPath, null);
-  assert.equal(context.ios.appStoreApiKey, null);
-});
-
-function json(body) {
-  return Response.json(body);
-}
-
-function buildFetch(extras = {}) {
-  const keystore = Buffer.from('demo-pkcs12-keystore');
-  const certificate = Buffer.from('demo-ios-pkcs12-certificate');
-  const provisioningProfile = Buffer.from('demo-mobileprovision');
-  const base = '/api/v1/demo-users-team/apps/example-app';
-  const identifierCredential = (id, type) => ({
-    app_identifiers: [{ identifier: 'com.example.app' }],
-    file: { name: `${id}.bin` },
-    id,
-    name: id,
-    payload: extras[`${id}Payload`] ?? null,
-    type,
-  });
-
-  return async (url) => {
-    const { pathname } = new URL(url);
-
-    if (pathname === base) {
-      return json({
-        data: {
-          assets: extras.assets ?? { icon: null, splashscreen: null },
-          description: 'Demo application for local development.',
-          name: 'Example App',
-          slug: 'example-app',
+  return {
+    platform: 'android',
+    context: buildContext({
+      slug,
+      name: blue ? 'Blue Example App' : 'Example App',
+      identifier,
+      platform: 'android',
+      profile: 'production',
+      version: blue ? '2.0.0' : '1.0.0',
+      versionCode: blue ? 20000 : 1,
+    }),
+    files: {
+      icon: `.app-manager/downloads/${slug}/icon.png`,
+      splashscreen: `.app-manager/downloads/${slug}/splash.png`,
+      google_services: `.app-manager/downloads/${slug}/google-services.json`,
+      google_play: `.app-manager/downloads/${slug}/google-play.json`,
+      keystore: {
+        path: `.app-manager/downloads/${slug}/production.keystore`,
+        payload: {
+          key_alias: `${slug}-release`,
+          key_password: `${slug}-key-secret`,
+          store_password: `${slug}-store-secret`,
         },
-      });
-    }
-
-    if (pathname === `${base}/identifiers`) {
-      return json({
-        data: [
-          { id: 'identifier-1', identifier: 'com.example.app', platform: 'android', version: '2.3.0', version_code: 20300 },
-          { id: 'identifier-2', identifier: 'com.example.app', platform: 'ios', version: '2.3.0', version_code: null },
-        ],
-      });
-    }
-
-    if (pathname === `${base}/credentials`) {
-      const data = [
-        { file: { name: 'production.keystore' }, id: 'credential-1', name: 'Production Keystore', payload: { key_alias: 'production', key_password: 'key-secret', store_password: 'store-secret' }, profiles: [{ app_identifier: { identifier: 'com.example.app' }, type: 'production' }], type: 'android_keystore' },
-        { file: { name: 'distribution.p12' }, id: 'credential-2', name: 'App Store Certificate', payload: { password: 'certificate-secret' }, profiles: [{ app_identifier: { identifier: 'com.example.app' }, type: 'appstore' }], type: 'ios_certificate' },
-        { file: { name: 'appstore.mobileprovision' }, id: 'credential-3', name: 'App Store Provisioning Profile', payload: null, profiles: [{ app_identifier: { identifier: 'com.example.app' }, type: 'appstore' }], type: 'provisioning_profile' },
-      ];
-      if (extras.googleServices) data.push(identifierCredential('google-services-json', 'google_services_json'));
-      if (extras.googlePlist) data.push(identifierCredential('google-service-info-plist', 'google_service_info_plist'));
-      if (extras.googlePlay) data.push(identifierCredential('google-play', 'google_play_service_account'));
-      if (extras.appleKey) data.push({ ...identifierCredential('apple-api-key', 'apple_api_key'), payload: { key_id: 'ABCDE12345', issuer_id: '11111111-1111-4111-8111-111111111111' } });
-      return json({ data });
-    }
-
-    const files = {
-      'credential-1/file': keystore,
-      'credential-2/file': certificate,
-      'credential-3/file': provisioningProfile,
-      'google-services-json/file': extras.googleServices,
-      'google-service-info-plist/file': extras.googlePlist,
-      'google-play/file': extras.googlePlay,
-      'apple-api-key/file': extras.appleKey,
-    };
-    for (const [suffix, body] of Object.entries(files)) {
-      if (body && pathname === `${base}/credentials/${suffix}`) {
-        return new Response(body, { headers: { 'Content-Type': 'application/octet-stream' }, status: 200 });
-      }
-    }
-    if (extras.assetBody && pathname === '/assets/icon') {
-      return new Response(extras.assetBody.icon, { headers: { 'Content-Type': 'image/png' }, status: 200 });
-    }
-    if (extras.assetBody && pathname === '/assets/splash') {
-      return new Response(extras.assetBody.splash, { headers: { 'Content-Type': 'image/png' }, status: 200 });
-    }
-
-    return new Response(null, { status: 404, statusText: 'Not Found' });
+      },
+    },
   };
 }
+
+function iosInput(slug) {
+  const blue = slug.endsWith('-blue');
+
+  return {
+    platform: 'ios',
+    context: buildContext({
+      slug,
+      name: blue ? 'Blue Example App' : 'Example App',
+      identifier: blue ? 'com.example.blue' : 'com.example.app',
+      platform: 'ios',
+      profile: 'appstore',
+      version: blue ? '2.0.0' : '1.0.0',
+      buildNumber: blue ? '20000' : '1',
+    }),
+    files: {
+      certificate: {
+        path: `.app-manager/downloads/${slug}/distribution.p12`,
+        payload: { password: `${slug}-certificate-secret` },
+      },
+      provisioning_profile: {
+        path: `.app-manager/downloads/${slug}/profile.mobileprovision`,
+      },
+      google_service_info: `.app-manager/downloads/${slug}/GoogleService-Info.plist`,
+      apple_api_key: {
+        path: `.app-manager/downloads/${slug}/appstore.p8`,
+        payload: { key_id: `${slug}-key`, issuer_id: `${slug}-issuer` },
+      },
+    },
+  };
+}
+
+function buildContext({
+  slug,
+  name,
+  identifier,
+  platform,
+  profile,
+  version,
+  versionCode = null,
+  buildNumber = null,
+}) {
+  return {
+    schema_version: 1,
+    app: { slug, name, description: 'Example brand' },
+    target: {
+      platform,
+      identifier,
+      version,
+      version_code: versionCode,
+      build_number: buildNumber,
+    },
+    profile: { platform, value: profile },
+  };
+}
+
+async function temporaryWorkspace(t) {
+  const workspace = await mkdtemp(join(tmpdir(), 'expo-app-manager-'));
+  t.after(() => rm(workspace, { force: true, recursive: true }));
+  return workspace;
+}
+
+const silentLogger = { log() {} };

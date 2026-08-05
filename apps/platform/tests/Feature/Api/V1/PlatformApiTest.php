@@ -127,6 +127,79 @@ class PlatformApiTest extends TestCase
             ->assertJsonValidationErrors('version_code');
     }
 
+    public function test_ios_build_number_is_exposed_and_is_ios_only(): void
+    {
+        [$user, $team] = $this->teamMember();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->authenticate($user);
+        $url = "/api/v1/{$team->slug}/apps/{$app->slug}/identifiers";
+
+        $created = $this->postJson($url, [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.customer',
+            'version' => '2.3.0',
+            'build_number' => '20300',
+        ])->assertCreated()
+            ->assertJsonPath('data.version', '2.3.0')
+            ->assertJsonPath('data.build_number', '20300')
+            ->assertJsonPath('data.version_code', null);
+
+        $id = $created->json('data.id');
+
+        $this->getJson("{$url}/{$id}")
+            ->assertOk()
+            ->assertJsonPath('data.build_number', '20300');
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.build_number', '20300');
+
+        $this->postJson($url, [
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.customer.android',
+            'build_number' => '20300',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('build_number');
+    }
+
+    public function test_first_identifier_is_default_and_default_can_be_moved_explicitly(): void
+    {
+        [$user, $team] = $this->teamMember();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->authenticate($user);
+        $url = "/api/v1/{$team->slug}/apps/{$app->slug}/identifiers";
+
+        $first = $this->postJson($url, [
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.customer',
+            'name' => 'Production',
+        ])->assertCreated()
+            ->assertJsonPath('data.is_default', true)
+            ->json('data');
+
+        $second = $this->postJson($url, [
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.customer.beta',
+            'name' => 'Beta',
+        ])->assertCreated()
+            ->assertJsonPath('data.is_default', false)
+            ->json('data');
+
+        $this->patchJson("{$url}/{$second['id']}", [
+            'is_default' => true,
+        ])->assertOk()
+            ->assertJsonPath('data.is_default', true);
+
+        $this->getJson("{$url}/{$first['id']}")
+            ->assertOk()
+            ->assertJsonPath('data.is_default', false);
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $second['id'])
+            ->assertJsonPath('data.0.is_default', true);
+    }
+
     public function test_icon_and_splashscreen_can_be_uploaded_read_and_deleted(): void
     {
         Storage::fake('public');
@@ -264,7 +337,7 @@ class PlatformApiTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
 
         return [$user, $team];
     }

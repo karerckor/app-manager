@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BuildStatus;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -9,6 +10,7 @@ use App\Models\Credential;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Support\ApiTokenAbilities;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -32,6 +34,24 @@ class PlatformDashboardTest extends TestCase
                 ->has('apps', 1)
                 ->where('apps.0.name', 'Atlas')
                 ->where('stats.apps', 1));
+    }
+
+    public function test_dashboard_exposes_scoped_api_key_management_data(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $token = $user->createToken('Production CI', ApiTokenAbilities::build(), now()->addMonth())->accessToken;
+
+        $this->actingAs($user)->get(route('accounts.apps.index', $team))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('tokenStoreUrl', route('api-tokens.store'))
+                ->has('tokenAbilities', 6)
+                ->has('tokens', 1)
+                ->where('tokens.0.id', $token->id)
+                ->where('tokens.0.name', 'Production CI')
+                ->where('tokens.0.abilities', ApiTokenAbilities::build())
+                ->where('tokens.0.destroy_url', route('api-tokens.destroy', $token))
+                ->where('tokens.0.expires_at', fn ($value) => filled($value)));
     }
 
     public function test_user_can_create_an_application_in_the_current_team(): void
@@ -74,6 +94,88 @@ class PlatformDashboardTest extends TestCase
                 ->where('identifiers.0.update_url', route('accounts.apps.identifiers.update', [$team, $app, $identifier])));
     }
 
+    public function test_app_drilldown_exposes_latest_build_history(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = $app->appIdentifiers()->create([
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.atlas',
+            'is_default' => true,
+        ]);
+        $build = $team->buildRecords()->create([
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'external_id' => 'dashboard-build-12345',
+            'profile_type' => ProfileType::Production,
+            'status' => BuildStatus::Completed,
+            'commit_sha' => str_repeat('a', 40),
+            'ci_provider' => 'github',
+            'ci_run_id' => '12345',
+            'artifact_url' => 'https://example.test/atlas.aab',
+            'context_schema_version' => 1,
+            'context_snapshot' => [
+                'target' => [
+                    'platform' => Platform::Android->value,
+                    'identifier' => 'com.example.atlas',
+                    'version' => '2.3.0',
+                ],
+            ],
+            'started_at' => now()->subMinute(),
+            'finished_at' => now(),
+        ]);
+        $build->logs()->create([
+            'sequence' => 1,
+            'stream' => 'stdout',
+            'level' => 'info',
+            'message' => 'Build completed',
+            'logged_at' => now(),
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('builds', 1)
+                ->where('builds.0.id', $build->id)
+                ->where('builds.0.external_id', 'dashboard-build-12345')
+                ->where('builds.0.status', BuildStatus::Completed->value)
+                ->where('builds.0.target.identifier', 'com.example.atlas')
+                ->where('builds.0.ci.run_id', '12345')
+                ->where('builds.0.logs_count', 1)
+                ->where('builds.0.cancel_url', null));
+
+        $this->getJson(route('accounts.apps.builds.logs.index', [$team, $app, $build]))
+            ->assertOk()
+            ->assertJsonPath('data.0.message', 'Build completed');
+    }
+
+    public function test_owner_can_cancel_a_pending_build_from_the_app_drilldown(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = $app->appIdentifiers()->create([
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.atlas',
+        ]);
+        $build = $team->buildRecords()->create([
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'external_id' => 'cancel-from-web',
+            'profile_type' => ProfileType::Production,
+            'status' => BuildStatus::Pending,
+            'context_schema_version' => 1,
+            'context_snapshot' => ['target' => ['identifier' => 'com.example.atlas']],
+        ]);
+
+        $url = route('accounts.apps.builds.cancel', [$team, $app, $build]);
+        $this->actingAs($user)->patch($url)
+            ->assertRedirect()
+            ->assertSessionHas('status');
+
+        $this->assertSame(BuildStatus::Cancelled, $build->fresh()->status);
+        $this->assertNotNull($build->fresh()->finished_at);
+    }
+
     public function test_user_can_update_an_existing_app_identifier(): void
     {
         [$user, $team] = $this->userWithTeam();
@@ -104,6 +206,51 @@ class PlatformDashboardTest extends TestCase
             'version' => '2.4.0',
             'version_code' => 20400,
         ]);
+    }
+
+    public function test_web_identifier_workflow_manages_ios_build_numbers_and_default_targets(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->post(route('accounts.apps.identifiers.store', [$team, $app]), [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas',
+            'version' => '2.3.0',
+            'build_number' => '20300',
+        ])->assertRedirect();
+
+        $first = $app->appIdentifiers()->firstOrFail();
+        $this->assertSame('20300', $first->build_number);
+        $this->assertTrue($first->is_default);
+
+        $this->actingAs($user)->post(route('accounts.apps.identifiers.store', [$team, $app]), [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas.beta',
+            'name' => 'Beta',
+            'is_default' => false,
+        ])->assertRedirect();
+
+        $second = $app->appIdentifiers()->where('identifier', 'com.example.atlas.beta')->firstOrFail();
+        $this->assertFalse($second->is_default);
+
+        $this->actingAs($user)->patch(route('accounts.apps.identifiers.update', [$team, $app, $second]), [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas.beta',
+            'name' => 'Beta',
+            'version' => '2.3.1',
+            'build_number' => '20301',
+            'is_default' => true,
+        ])->assertRedirect();
+
+        $this->assertFalse($first->fresh()->is_default);
+        $this->assertTrue($second->fresh()->is_default);
+
+        $this->actingAs($user)->get(route('accounts.apps.show', [$team, $app]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('identifiers.1.build_number', '20301')
+                ->where('identifiers.1.is_default', true));
     }
 
     public function test_identifier_cannot_be_updated_through_a_different_app(): void
@@ -327,7 +474,7 @@ class PlatformDashboardTest extends TestCase
     {
         $user = User::factory()->create();
         $team = Team::factory()->create(['owner_id' => $user->id]);
-        $team->users()->attach($user, ['role' => 'owner']);
+        $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
 
         return [$user->fresh(), $team];

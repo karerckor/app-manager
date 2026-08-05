@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\BuildStatus;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -47,13 +48,22 @@ class DemoSeederTest extends TestCase
         $this->assertSame('Example App', $app->name);
         $this->assertSame($team->id, $app->team_id);
 
-        $androidIdentifier = $app->appIdentifiers()->where('platform', Platform::Android)->firstOrFail();
+        $androidIdentifier = $app->appIdentifiers()
+            ->where('platform', Platform::Android)
+            ->where('identifier', 'com.example.app')
+            ->firstOrFail();
         $this->assertSame('com.example.app', $androidIdentifier->identifier);
+        $this->assertSame('1.0.0', $androidIdentifier->version);
+        $this->assertSame(1, $androidIdentifier->version_code);
+        $this->assertTrue($androidIdentifier->is_default);
         $androidProfile = $androidIdentifier->profiles()->firstOrFail();
         $this->assertSame(ProfileType::Production, $androidProfile->type);
 
         $iosIdentifier = $app->appIdentifiers()->where('platform', Platform::Ios)->firstOrFail();
         $this->assertSame('com.example.app', $iosIdentifier->identifier);
+        $this->assertSame('1.0.0', $iosIdentifier->version);
+        $this->assertSame('1', $iosIdentifier->build_number);
+        $this->assertTrue($iosIdentifier->is_default);
         $iosProfile = $iosIdentifier->profiles()->firstOrFail();
         $this->assertSame(ProfileType::AppStore, $iosProfile->type);
 
@@ -157,6 +167,98 @@ class DemoSeederTest extends TestCase
         $plistContents = file_get_contents($iosFirebase->getFirstMedia('file')->getPath());
         $this->assertStringContainsString('<key>BUNDLE_ID</key>', $plistContents);
         $this->assertStringContainsString('<key>GOOGLE_APP_ID</key>', $plistContents);
+
+        // Non-default target for deterministic explicit selection.
+        $betaIdentifier = $app->appIdentifiers()
+            ->where('platform', Platform::Android)
+            ->where('identifier', 'com.example.app.beta')
+            ->firstOrFail();
+        $this->assertFalse($betaIdentifier->is_default);
+        $this->assertSame(10100, $betaIdentifier->version_code);
+        $betaProfile = $betaIdentifier->profiles()->where('type', ProfileType::Preview)->firstOrFail();
+        $betaKeystore = Credential::where('name', 'Beta Preview Keystore')->firstOrFail();
+        $this->assertTrue($betaProfile->credentials()->whereKey($betaKeystore->id)->exists());
+
+        // A second application represents another brand built from the same source.
+        $blue = MobileApp::where('slug', 'example-app-blue')->firstOrFail();
+        $this->assertSame('Blue Example App', $blue->name);
+        $this->assertTrue($blue->hasMedia('app_icon'));
+        $this->assertTrue($blue->hasMedia('splash_icon'));
+        $blueAndroid = $blue->appIdentifiers()
+            ->where('platform', Platform::Android)
+            ->firstOrFail();
+        $blueIos = $blue->appIdentifiers()
+            ->where('platform', Platform::Ios)
+            ->firstOrFail();
+        $this->assertSame('com.example.blue', $blueAndroid->identifier);
+        $this->assertSame(20000, $blueAndroid->version_code);
+        $this->assertTrue($blueAndroid->is_default);
+        $this->assertSame('com.example.blue', $blueIos->identifier);
+        $this->assertSame('20000', $blueIos->build_number);
+        $this->assertTrue($blueIos->is_default);
+
+        $blueKeystore = Credential::where('name', 'Blue Production Keystore')->firstOrFail();
+        $this->assertSame('blue-production', $blueKeystore->payload['key_alias']);
+        $this->assertTrue($blueAndroid->profiles()
+            ->where('type', ProfileType::Production)
+            ->firstOrFail()
+            ->credentials()
+            ->whereKey($blueKeystore->id)
+            ->exists());
+        $blueFirebase = Credential::where('name', 'Blue Firebase google-services.json')->firstOrFail();
+        $blueFirebaseJson = json_decode(
+            file_get_contents($blueFirebase->getFirstMedia('file')->getPath()),
+            true,
+        );
+        $this->assertSame(
+            'com.example.blue',
+            $blueFirebaseJson['client'][0]['client_info']['android_client_info']['package_name'],
+        );
+
+        $this->withToken(DemoSeeder::API_KEY)
+            ->getJson("/api/v1/{$team->slug}/apps/example-app-blue/build-context?platform=android&profile_type=production")
+            ->assertOk()
+            ->assertJsonPath('data.app.slug', 'example-app-blue')
+            ->assertJsonPath('data.target.identifier', 'com.example.blue')
+            ->assertJsonFragment(['id' => $blueKeystore->id])
+            ->assertJsonMissing(['id' => $keystore->id]);
+
+        $this->withToken(DemoSeeder::API_KEY)
+            ->getJson("/api/v1/{$team->slug}/apps/example-app/build-context?platform=android&profile_type=preview&identifier=com.example.app.beta")
+            ->assertOk()
+            ->assertJsonPath('data.target.identifier', 'com.example.app.beta')
+            ->assertJsonFragment(['id' => $betaKeystore->id]);
+
+        // Ready-to-browse build history covers successful, failed and running CI runs.
+        $completedBuild = $app->buildRecords()->where('ci_run_id', '1001')->firstOrFail();
+        $this->assertSame(BuildStatus::Completed, $completedBuild->status);
+        $this->assertSame(ProfileType::Production, $completedBuild->profile_type);
+        $this->assertSame('com.example.app', $completedBuild->context_snapshot['target']['identifier']);
+        $this->assertSame(
+            'https://artifacts.example.test/example-app-1.0.0.aab',
+            $completedBuild->artifact_url,
+        );
+        $this->assertNotNull($completedBuild->finished_at);
+        $this->assertStringNotContainsString('DemoKeystore123!', json_encode($completedBuild->context_snapshot));
+
+        $this->assertSame(
+            BuildStatus::Failed,
+            $app->buildRecords()->where('ci_run_id', '1002')->firstOrFail()->status,
+        );
+        $runningBuild = $app->buildRecords()->where('ci_run_id', '1003')->firstOrFail();
+        $this->assertSame(BuildStatus::Running, $runningBuild->status);
+        $this->assertSame('com.example.app.beta', $runningBuild->context_snapshot['target']['identifier']);
+        $this->assertNull($runningBuild->finished_at);
+        $pendingBuild = $app->buildRecords()->where('external_id', 'demo-build-1004')->firstOrFail();
+        $this->assertSame(BuildStatus::Pending, $pendingBuild->status);
+        $this->assertNull($pendingBuild->started_at);
+        $this->assertNull($pendingBuild->ci_run_id);
+        $this->assertSame(1, $pendingBuild->logs()->count());
+
+        $this->withToken(DemoSeeder::API_KEY)
+            ->getJson("/api/v1/{$team->slug}/apps/example-app/builds")
+            ->assertOk()
+            ->assertJsonCount(4, 'data');
     }
 
     public function test_it_is_idempotent(): void
@@ -175,11 +277,17 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Connect API Key')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase google-services.json')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase GoogleService-Info.plist')->count());
+        $this->assertSame(1, Credential::where('name', 'Beta Preview Keystore')->count());
+        $this->assertSame(1, Credential::where('name', 'Blue Production Keystore')->count());
+        $this->assertSame(1, MobileApp::where('slug', 'example-app-blue')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('app_identifiers', 2);
-        $this->assertDatabaseCount('profiles', 2);
-        $this->assertDatabaseCount('credentialables', 7);
-        $this->assertDatabaseCount('media', 9);
+        $this->assertDatabaseCount('app_identifiers', 5);
+        $this->assertDatabaseCount('profiles', 5);
+        $this->assertDatabaseCount('credentials', 15);
+        $this->assertDatabaseCount('credentialables', 15);
+        $this->assertDatabaseCount('media', 19);
+        $this->assertDatabaseCount('build_records', 4);
+        $this->assertDatabaseCount('build_logs', 8);
     }
 
     public function test_database_seeder_is_idempotent(): void
@@ -195,6 +303,8 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 9);
+        $this->assertDatabaseCount('media', 19);
+        $this->assertDatabaseCount('build_records', 4);
+        $this->assertDatabaseCount('build_logs', 8);
     }
 }

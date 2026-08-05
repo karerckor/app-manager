@@ -11,7 +11,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
-#[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code'])]
+#[Fillable([
+    'mobile_app_id',
+    'platform',
+    'identifier',
+    'name',
+    'version',
+    'version_code',
+    'build_number',
+    'is_default',
+])]
 class AppIdentifier extends Model
 {
     use HasFactory, HasUuids;
@@ -26,6 +35,11 @@ class AppIdentifier extends Model
         return $this->hasMany(Profile::class);
     }
 
+    public function buildRecords(): HasMany
+    {
+        return $this->hasMany(BuildRecord::class);
+    }
+
     public function credentials(): MorphToMany
     {
         return $this->morphToMany(Credential::class, 'credentialable')->withTimestamps();
@@ -36,13 +50,16 @@ class AppIdentifier extends Model
         return [
             'platform' => Platform::class,
             'version_code' => 'integer',
+            'is_default' => 'boolean',
         ];
     }
 
     protected static function booted(): void
     {
         static::saving(function (AppIdentifier $appIdentifier) {
-            if ($appIdentifier->platform !== Platform::Android) {
+            if ($appIdentifier->platform === Platform::Android) {
+                $appIdentifier->build_number = null;
+            } else {
                 $appIdentifier->version_code = null;
             }
         });

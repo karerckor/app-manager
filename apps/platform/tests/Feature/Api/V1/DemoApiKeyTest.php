@@ -47,21 +47,23 @@ class DemoApiKeyTest extends TestCase
 
         $this->getJson($this->api('/apps'))
             ->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.slug', 'example-app');
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['slug' => 'example-app'])
+            ->assertJsonFragment(['slug' => 'example-app-blue']);
     }
 
     public function test_seeded_api_exposes_android_and_ios_signing_materials(): void
     {
         $this->getJson($this->api('/apps/example-app/identifiers'))
             ->assertOk()
-            ->assertJsonCount(2, 'data')
+            ->assertJsonCount(3, 'data')
             ->assertJsonFragment(['platform' => 'android', 'identifier' => 'com.example.app'])
+            ->assertJsonFragment(['platform' => 'android', 'identifier' => 'com.example.app.beta'])
             ->assertJsonFragment(['platform' => 'ios', 'identifier' => 'com.example.app']);
 
         $response = $this->getJson($this->api('/apps/example-app/credentials'))
             ->assertOk()
-            ->assertJsonCount(7, 'data')
+            ->assertJsonCount(8, 'data')
             ->assertJsonFragment(['type' => CredentialType::AndroidKeystore->value])
             ->assertJsonFragment(['type' => CredentialType::IosCertificate->value])
             ->assertJsonFragment(['type' => CredentialType::ProvisioningProfile->value])
@@ -71,13 +73,15 @@ class DemoApiKeyTest extends TestCase
             ->assertJsonFragment(['type' => CredentialType::GoogleServiceInfoPlist->value]);
 
         $expectedFiles = [
-            CredentialType::AndroidKeystore->value => 'production.keystore',
-            CredentialType::IosCertificate->value => 'distribution.p12',
-            CredentialType::ProvisioningProfile->value => 'appstore.mobileprovision',
+            [CredentialType::AndroidKeystore->value, ProfileType::Production->value, 'production.keystore'],
+            [CredentialType::IosCertificate->value, ProfileType::AppStore->value, 'distribution.p12'],
+            [CredentialType::ProvisioningProfile->value, ProfileType::AppStore->value, 'appstore.mobileprovision'],
         ];
 
-        foreach ($expectedFiles as $type => $fileName) {
-            $credential = collect($response->json('data'))->firstWhere('type', $type);
+        foreach ($expectedFiles as [$type, $profileType, $fileName]) {
+            $credential = collect($response->json('data'))->first(fn ($candidate) => $candidate['type'] === $type
+                && collect($candidate['profiles'])->contains('type', $profileType)
+            );
             $this->assertNotNull($credential);
             $this->get($this->api("/apps/example-app/credentials/{$credential['id']}/file"))
                 ->assertOk()
