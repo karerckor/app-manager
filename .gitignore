@@ -2,6 +2,7 @@
 .idea/
 .vscode/
 apps/platform/.env
+deploy/docker/.env
 apps/platform/vendor/
 apps/platform/node_modules/
 apps/platform/public/build/

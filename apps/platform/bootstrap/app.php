@@ -9,6 +9,7 @@ use App\Http\Middleware\SetActorContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 
@@ -44,6 +45,21 @@ return Application::configure(basePath: dirname(__DIR__))
                 SetActorContext::class,
             ],
         );
+    })
+    ->booted(function (): void {
+        // Config isn't loaded yet inside withMiddleware() — both the console
+        // kernel path tests boot through and the HTTP kernel path production
+        // requests boot through resolve that closure before the config
+        // bootstrapper runs. Read app.trusted_proxies here instead, once the
+        // application has actually booted, and set the same static state
+        // that Middleware::trustProxies() would have set.
+        $trustedProxies = trim((string) config('app.trusted_proxies'));
+
+        if ($trustedProxies !== '') {
+            TrustProxies::at(
+                $trustedProxies === '*' ? '*' : array_map('trim', explode(',', $trustedProxies)),
+            );
+        }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontFlash([

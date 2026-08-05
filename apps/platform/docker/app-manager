@@ -1,0 +1,45 @@
+#!/bin/sh
+# Selects which process this container runs. The base image's entrypoint has
+# already executed /etc/entrypoint.d, so the environment is prepared here.
+set -eu
+
+usage() {
+    echo "usage: app-manager {queue|scheduler|init|generate-key}" >&2
+    exit 64
+}
+
+role="${1:-}"
+[ -n "$role" ] || usage
+shift
+
+case "$role" in
+    queue)
+        exec php artisan queue:work \
+            --queue=notifications,integrations,webhooks,default \
+            --tries=3 \
+            --max-time=3600 "$@"
+        ;;
+    scheduler)
+        exec php artisan schedule:work "$@"
+        ;;
+    init)
+        php artisan migrate --force
+        # Credentials are envelope encrypted: a data encryption key wrapped with
+        # APP_KEY. Without a row in encryption_keys the first credential write
+        # throws, so the key has to exist before anyone can use the instance.
+        # Idempotent by design — it creates a key only when none is active, and
+        # skips payloads and files that are already envelope encrypted.
+        php artisan encryption:migrate --force
+        php artisan app:bootstrap
+        exit 0
+        ;;
+    generate-key)
+        # Laravel's APP_KEY is 32 random bytes, base64 encoded. Generated here
+        # rather than through artisan so it works before the app can boot.
+        echo "base64:$(head -c 32 /dev/urandom | base64 | tr -d '\n')"
+        exit 0
+        ;;
+    *)
+        usage
+        ;;
+esac

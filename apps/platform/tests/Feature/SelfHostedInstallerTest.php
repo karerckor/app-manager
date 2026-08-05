@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Installation\ProvisionFirstOwner;
 use App\Models\Installation;
 use App\Models\Team;
 use App\Models\User;
@@ -222,6 +223,34 @@ class SelfHostedInstallerTest extends TestCase
 
         $this->get(route('installer.index'))->assertRedirect('/');
         $this->get('/register')->assertNotFound();
+    }
+
+    public function test_provision_first_owner_can_create_an_owner_without_recording_an_installation(): void
+    {
+        $user = app(ProvisionFirstOwner::class)->provision(
+            name: 'Grace Hopper',
+            email: 'grace@example.com',
+            password: 'Sup3rSecret!',
+            teamName: 'Compiler Crew',
+        );
+
+        $team = Team::query()->firstOrFail();
+
+        $this->assertSame('grace@example.com', $user->email);
+        $this->assertSame($user->id, $team->owner_id);
+        $this->assertSame('Compiler Crew', $team->name);
+        $this->assertSame($team->id, $user->fresh()->current_team_id);
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'role' => 'owner',
+        ]);
+        $this->assertDatabaseHas('audits', [
+            'auditable_type' => Team::class,
+            'auditable_id' => $team->id,
+            'event' => 'membership_added',
+        ]);
+        $this->assertDatabaseCount('installations', 0);
     }
 
     /** @param array<string, mixed> $overrides */

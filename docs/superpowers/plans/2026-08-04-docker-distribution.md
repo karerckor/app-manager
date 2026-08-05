@@ -4,15 +4,16 @@
 
 **Goal:** Publish `apps/platform` as a multi-arch container image on GHCR and ship an example Compose stack that brings up a working App Manager, with the first-run behaviour and the credential modes driven entirely by environment variables.
 
-**Architecture:** One image built from `serversideup/php:8.3-fpm-nginx` serves four roles selected by command (web, queue, scheduler, one-shot init). A one-shot `init` service owns migrations and first-run provisioning; `app`, `queue` and `scheduler` start only after it exits 0. First-run behaviour lives in a new idempotent `php artisan app:bootstrap` command with three modes, so it is unit-testable and the container entrypoint stays a dumb shell script.
+**Architecture:** One image built from `serversideup/php:8.4-fpm-nginx` serves four roles selected by command (web, queue, scheduler, one-shot init). A one-shot `init` service owns migrations and first-run provisioning; `app`, `queue` and `scheduler` start only after it exits 0. First-run behaviour lives in a new idempotent `php artisan app:bootstrap` command with three modes, so it is unit-testable and the container entrypoint stays a dumb shell script.
 
-**Tech Stack:** Laravel 13 / PHP 8.3, `serversideup/php:8.3-fpm-nginx`, Postgres 17, Redis 8, Docker Buildx + GHCR, GitHub Actions, Astro (docs site).
+**Tech Stack:** Laravel 13 / PHP 8.4, `serversideup/php:8.4.23-fpm-nginx-bookworm`, Postgres 17, Redis 8, Docker Buildx + GHCR, GitHub Actions, Astro (docs site).
 
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-08-04-docker-distribution-design.md`. Read it before starting.
 - Image name: `ghcr.io/karerckor/app-manager-platform`.
-- Base image: `serversideup/php:8.3.32-fpm-nginx-bookworm` — the patch- and distro-pinned form of `8.3-fpm-nginx`, verified to exist. Pinned so a base rebuild cannot change our runtime silently. Verified facts about it — do not re-derive:
+- **The app requires PHP 8.4.1+, not 8.3.** Laravel 13 resolves to Symfony 8.1, whose components declare `php >= 8.4.1`, so `vendor/composer/platform_check.php` fatals on 8.3 before any application code runs. `composer.json` claiming `^8.3`, `platform-ci.yml` pinning 8.3, and the README promising 8.3+ are all wrong; Task 4 corrects them.
+- Base image: `serversideup/php:8.4.23-fpm-nginx-bookworm` — the patch- and distro-pinned form of `8.4-fpm-nginx`, verified to exist for amd64 and arm64. Pinned so a base rebuild cannot change our runtime silently. It ships Composer 2.10.2 and PHP 8.4.23, so the vendor stage builds on the same runtime the app runs on and needs no `--ignore-platform-req` flags. Verified facts about it — do not re-derive:
   - `ENTRYPOINT ["docker-php-serversideup-entrypoint"]`, `CMD ["/init"]`, `USER www-data` (uid/gid `33:33`), `WORKDIR /var/www/html`.
   - The entrypoint runs every `/etc/entrypoint.d/*.sh` in version order, **each in a subshell** (`(. "$f")`). A non-zero exit from any script aborts the container start. `export` inside such a script does **not** reach the final process. The container command is visible to those scripts as `$DOCKER_CMD`.
   - HTTP listens on `8080` (`NGINX_HTTP_PORT`), webroot `/var/www/html/public`, `NGINX_CLIENT_MAX_BODY_SIZE=100M`.
@@ -21,6 +22,7 @@
   - `PHP_OPCACHE_ENABLE` defaults to `0` and must be set to `1`.
   - Already bundled: `pdo_pgsql`, `redis`, `zip`, `opcache`, `openssl`, `sodium`, `pcntl`, `curl`. Missing and required: `gd`, `exif`. Install with `install-php-extensions` as `root`, then switch back to `www-data`.
   - `php.ini` already gives `upload_max_filesize=100M`, `post_max_size=100M`, `memory_limit=256M` — matches `MEDIA_MAX_FILE_SIZE_KB=102400`; do not override.
+- **Demo mode requires `APP_ENV=local`.** `DemoSeeder::run()` refuses to seed outside `local`/`development`/`testing`, so `app:bootstrap --mode=demo` fails loudly when the environment forbids seeding, and the Compose demo preset sets `APP_ENV=local`. Do not weaken the seeder's own guard.
 - **Never run `php artisan route:cache`.** `routes/web.php:51` registers `Route::get('/', function () { … })`, and a closure route makes route caching throw. `config:cache` and `view:cache` are safe.
 - PHP tests run against a real Postgres (`app_manager_test`); `composer test` from `apps/platform`. Test classes extend `Tests\TestCase` and use `Illuminate\Foundation\Testing\RefreshDatabase`.
 - `vendor/bin/pint` must pass on every PHP file touched.
@@ -383,6 +385,18 @@ class BootstrapInstanceCommandTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'demo@example.com']);
     }
 
+    public function test_demo_mode_fails_when_the_environment_forbids_seeding(): void
+    {
+        config(['installer.bootstrap' => 'demo']);
+        $this->app['env'] = 'production';
+
+        $this->artisan('app:bootstrap')
+            ->expectsOutputToContain('APP_ENV=local')
+            ->assertExitCode(1);
+
+        $this->assertDatabaseCount('users', 0);
+    }
+
     public function test_an_unknown_mode_fails(): void
     {
         config(['installer.bootstrap' => 'nonsense']);
@@ -595,6 +609,17 @@ class BootstrapInstance extends Command
 
     private function runDemoMode(): int
     {
+        // DemoSeeder itself refuses to seed outside local/development/testing.
+        // Failing loudly beats a container that starts up empty but healthy.
+        if (! app()->environment(['local', 'development', 'testing'])) {
+            $this->error(sprintf(
+                'Bootstrap mode "demo" requires APP_ENV=local (currently "%s"). The demo seeder is disabled outside local, development and testing.',
+                app()->environment(),
+            ));
+
+            return self::FAILURE;
+        }
+
         if (User::query()->exists()) {
             $this->info('Bootstrap mode "demo": an account already exists, skipping the demo seed.');
 
@@ -779,7 +804,7 @@ Expected: PASS.
 
 - [ ] **Step 6: Write the failing trusted-proxy test**
 
-Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The `Env` write happens before `parent::setUp()` because `config/app.php` is read while the application boots:
+Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The environment write happens before `parent::setUp()` because `config/app.php` is read while the application boots. Use the `putenv()`/`$_ENV`/`$_SERVER` trio that `tests/Feature/Api/V1/CredentialDashboardOnlyProfileTest.php` already uses for exactly this purpose — `Illuminate\Support\Env::getRepository()->set()` silently no-ops here, because the repository is immutable for variables phpunit.xml has already defined:
 
 ```php
 <?php
@@ -787,15 +812,21 @@ Create `apps/platform/tests/Feature/TrustedProxiesTest.php`. The `Env` write hap
 namespace Tests\Feature;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class TrustedProxiesTest extends TestCase
 {
+    /** The environment's prior value, so tearDown() restores it rather than merely unsetting it. `false` means it was not set. */
+    private string|false $priorEnvValue;
+
     protected function setUp(): void
     {
-        Env::getRepository()->set('TRUSTED_PROXIES', '*');
+        $this->priorEnvValue = getenv('TRUSTED_PROXIES');
+
+        putenv('TRUSTED_PROXIES=*');
+        $_ENV['TRUSTED_PROXIES'] = '*';
+        $_SERVER['TRUSTED_PROXIES'] = '*';
 
         parent::setUp();
 
@@ -804,7 +835,14 @@ class TrustedProxiesTest extends TestCase
 
     protected function tearDown(): void
     {
-        Env::getRepository()->clear('TRUSTED_PROXIES');
+        if ($this->priorEnvValue === false) {
+            putenv('TRUSTED_PROXIES');
+            unset($_ENV['TRUSTED_PROXIES'], $_SERVER['TRUSTED_PROXIES']);
+        } else {
+            putenv("TRUSTED_PROXIES={$this->priorEnvValue}");
+            $_ENV['TRUSTED_PROXIES'] = $this->priorEnvValue;
+            $_SERVER['TRUSTED_PROXIES'] = $this->priorEnvValue;
+        }
 
         parent::tearDown();
     }
@@ -902,8 +940,10 @@ Append to `apps/platform/.env.example`, after the bootstrap block from Task 2:
 # Open Fortify's public /register form. Keep false on any instance reachable from the internet.
 ALLOW_PUBLIC_REGISTRATION=false
 # "*" or a comma-separated list of proxy IPs/CIDRs. Set only when a reverse proxy terminates TLS.
-TRUSTED_PROXIES=
+# TRUSTED_PROXIES=
 ```
+
+`TRUSTED_PROXIES` stays **commented out**, unlike the other variables. `TrustedProxiesTest` sets it in the environment before the application boots, and a `.env` that names the variable — even with an empty value — wins over that, so shipping it uncommented would make the suite fail for anyone who copies `.env.example`. `CredentialDashboardOnlyProfileTest` already depends on `CREDENTIALS_API_PROFILE` being absent from `.env` for the same reason. Empty and absent mean the same thing here, so commenting costs nothing.
 
 - [ ] **Step 11: Full suite, lint, commit**
 
@@ -924,10 +964,29 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `apps/platform/.dockerignore`
 - Create: `apps/platform/docker/app-manager`
 - Create: `apps/platform/docker/entrypoint.d/60-app-manager.sh`
+- Modify: `apps/platform/composer.json` (the `php` requirement)
+- Modify: `.github/workflows/platform-ci.yml` (both `php-version` pins)
+- Modify: `apps/platform/README.md` (the requirements list)
 
 **Interfaces:**
 - Consumes: `app:bootstrap` (Task 2), `installer.bootstrap` semantics.
 - Produces: image with entry commands `app-manager queue`, `app-manager scheduler`, `app-manager init`, `app-manager generate-key`; default command starts the web server. Reads `APP_MANAGER_BOOTSTRAP`, `APP_KEY`, `APP_BASE_DIR`.
+
+- [ ] **Step 0: Correct the declared PHP floor**
+
+The lock file resolves Symfony 8.1, which requires `php >= 8.4.1`, so the app cannot run on 8.3 at all — `vendor/composer/platform_check.php` fatals before `artisan` prints anything. Three places claim otherwise; fix them in one commit before touching the image, so the image and CI agree on a runtime:
+
+- `apps/platform/composer.json`: `"php": "^8.3"` → `"php": "^8.4"`.
+- `.github/workflows/platform-ci.yml`: both `php-version: '8.3'` occurrences → `'8.4'`.
+- `apps/platform/README.md`: `- PHP 8.3+ and Composer 2` → `- PHP 8.4+ and Composer 2`.
+
+Then confirm the lock file still satisfies the constraint and nothing else drifted:
+
+```bash
+cd apps/platform && composer validate --no-check-publish && composer check-platform-reqs --no-dev | tail -3
+```
+
+Expected: `./composer.json is valid` and every requirement `success`. Commit as `fix(platform): declare the PHP 8.4 floor the lock file already requires`.
 
 - [ ] **Step 1: Write `.dockerignore` first**
 
@@ -948,6 +1007,8 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 storage/logs/*
+bootstrap/cache/*
+!bootstrap/cache/.gitignore
 .git
 .github
 .claude
@@ -1041,7 +1102,7 @@ APP_KEY is not set.
 Every credential in App Manager is encrypted with it: generate one, store it
 with the rest of your secrets, and pass it to every container in the stack.
 
-    docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key
+    docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key
 
 Only APP_MANAGER_BOOTSTRAP=demo generates a throwaway key by itself.
 MSG
@@ -1070,7 +1131,18 @@ Create `apps/platform/Dockerfile`:
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM composer:2 AS vendor
+# pdo_pgsql, redis and zip ship with the base image; gd and exif do not, and
+# MobileApp::registerMediaConversions needs them for icon variants. Installed in
+# a shared stage so the vendor build resolves the lock file's platform
+# requirements against exactly the runtime the app will use — no
+# --ignore-platform-req flags, no version drift between build and run.
+FROM serversideup/php:8.4.23-fpm-nginx-bookworm AS php-base
+USER root
+RUN install-php-extensions gd exif
+USER www-data
+
+FROM php-base AS vendor
+USER root
 WORKDIR /app
 COPY composer.json composer.lock ./
 # --no-scripts: post-autoload-dump runs `artisan package:discover`, which boots
@@ -1092,13 +1164,7 @@ RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 
-FROM serversideup/php:8.3.32-fpm-nginx-bookworm AS app
-
-# pdo_pgsql, redis and zip ship with the base image; gd and exif do not, and
-# MobileApp::registerMediaConversions needs them for icon variants.
-USER root
-RUN install-php-extensions gd exif
-USER www-data
+FROM php-base AS app
 
 ENV APP_ENV=production \
     APP_DEBUG=false \
@@ -1131,7 +1197,7 @@ Expected: build succeeds. If `npm run build` fails on a missing file, the culpri
 - [ ] **Step 6: Verify the image's contents and its refusal to start without a key**
 
 ```bash
-docker run --rm app-manager-platform:dev app-manager generate-key
+docker run --rm --entrypoint app-manager app-manager-platform:dev generate-key
 docker run --rm --entrypoint php app-manager-platform:dev -m | tr '\n' ' ' | grep -o -E 'gd|exif|pdo_pgsql|redis|zip'
 docker run --rm --entrypoint sh app-manager-platform:dev -c 'test -f public/build/manifest.json && echo assets-ok; test ! -f .env && echo no-dotenv-ok; ls vendor/autoload.php'
 docker run --rm app-manager-platform:dev app-manager scheduler 2>&1 | head -5
@@ -1287,7 +1353,7 @@ volumes:
 # Required
 # ==============================================================================
 # Generate once and keep it safe — every credential is encrypted with it:
-#   docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key
+#   docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key
 APP_KEY=
 # The URL users open. Must match the scheme they actually use.
 APP_URL=http://localhost:8000
@@ -1324,7 +1390,10 @@ ALLOW_PUBLIC_REGISTRATION=false
 # installer: create the first owner in the browser at /install (default)
 # admin:     create the first owner from the ADMIN_* variables below
 # demo:      seed the demo account demo@example.com / Demo123! (disposable data,
-#            generates its own APP_KEY when you leave APP_KEY empty)
+#            generates its own APP_KEY when the APP_KEY line is commented out
+#            entirely — a blank value is not the same as an absent one and would
+#            shadow the generated key forever — and needs
+#            APP_ENV=local — the demo seeder is disabled in production)
 APP_MANAGER_BOOTSTRAP=installer
 # ADMIN_NAME="Owner"
 # ADMIN_EMAIL=owner@example.com
@@ -1390,6 +1459,7 @@ IMAGE="${APP_MANAGER_IMAGE:-ghcr.io/karerckor/app-manager-platform:latest}"
 PORT="${SMOKE_PORT:-8099}"
 PROJECT="am-smoke-$$"
 ENV_FILE=".env"
+ENV_FILE_CREATED=0
 ADMIN_EMAIL="smoke@example.com"
 ADMIN_PASSWORD="Sm0keTest!Pass"
 
@@ -1404,7 +1474,9 @@ cleanup() {
         compose logs --no-color --tail=100 >&2 || true
     fi
     compose down -v --remove-orphans >/dev/null 2>&1 || true
-    rm -f "$ENV_FILE"
+    # Only ever delete the file this script created — the refusal path below
+    # exits through this trap while an operator's real .env is still on disk.
+    [ "$ENV_FILE_CREATED" = "1" ] && rm -f "$ENV_FILE"
     exit $status
 }
 trap cleanup EXIT
@@ -1415,7 +1487,7 @@ if [ -e "$ENV_FILE" ]; then
 fi
 
 cat > "$ENV_FILE" <<EOF
-APP_KEY=$(docker run --rm "$IMAGE" app-manager generate-key)
+APP_KEY=$(docker run --rm --entrypoint app-manager "$IMAGE" generate-key)
 APP_URL=http://localhost:${PORT}
 APP_PORT=${PORT}
 APP_ENV=production
@@ -1440,6 +1512,7 @@ ADMIN_EMAIL=${ADMIN_EMAIL}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ADMIN_TEAM_NAME=Smoke Team
 EOF
+ENV_FILE_CREATED=1
 
 echo "==> bringing up $IMAGE"
 compose up -d --wait --wait-timeout 300
@@ -1473,7 +1546,7 @@ register_code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT
 echo "==> the queue worker drains a job"
 compose exec -T app php artisan tinker --execute="dispatch(function () { \Illuminate\Support\Facades\Cache::put('smoke', 'ok', 300); });"
 for _ in $(seq 1 30); do
-    value="$(compose exec -T app php artisan tinker --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n')"
+    value="$(compose exec -T app php artisan tinker --execute="echo \Illuminate\Support\Facades\Cache::get('smoke', 'pending');" | tr -d '\r\n' || true)"
     [ "$value" = "ok" ] && break
     sleep 2
 done
@@ -1494,7 +1567,7 @@ Expected: `==> smoke test passed`. Fix the stack — not the assertions — unti
 
 ```bash
 cd deploy/docker && cp .env.example .env
-# edit .env: APP_MANAGER_BOOTSTRAP=demo, leave APP_KEY empty, DB_PASSWORD=demo-secret
+# edit .env: APP_MANAGER_BOOTSTRAP=demo, APP_ENV=local, comment out the APP_KEY line, DB_PASSWORD=demo-secret
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo up -d
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/login
 APP_MANAGER_IMAGE=app-manager-platform:dev docker compose -p am-demo exec -T postgres \
@@ -1529,7 +1602,7 @@ curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/dock
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
 
 # APP_KEY encrypts every credential in the instance. Generate it once, keep it.
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 
 docker compose up -d
 ```
@@ -1546,7 +1619,7 @@ tls up -d` adds Caddy with automatic TLS for `APP_DOMAIN`.
 |---|---|
 | Configure in the browser (default) | `APP_MANAGER_BOOTSTRAP=installer` → open `/install` |
 | First owner straight from the environment | `APP_MANAGER_BOOTSTRAP=admin` + `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`, `ADMIN_TEAM_NAME` |
-| Throwaway demo instance | `APP_MANAGER_BOOTSTRAP=demo` → `demo@example.com` / `Demo123!`, API key `demo-api-key` |
+| Throwaway demo instance | `APP_MANAGER_BOOTSTRAP=demo` **and** `APP_ENV=local` → `demo@example.com` / `Demo123!`, API key `demo-api-key` |
 | Bring your own vault only | `CREDENTIAL_STORAGE_MODES=external` |
 | Platform-held secrets only | `CREDENTIAL_STORAGE_MODES=local` |
 | Both (default) | `CREDENTIAL_STORAGE_MODES=local,external` |
@@ -1850,7 +1923,7 @@ import CodeBlock from '../components/CodeBlock.astro';
 curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
 
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 
 docker compose up -d`} />
   <p>
@@ -1885,16 +1958,20 @@ docker compose up -d`} />
     <tbody>
       <tr><td>Configure in the browser (default)</td><td><code>APP_MANAGER_BOOTSTRAP=installer</code></td></tr>
       <tr><td>First owner straight from the environment</td><td><code>APP_MANAGER_BOOTSTRAP=admin</code> with <code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code>, <code>ADMIN_NAME</code>, <code>ADMIN_TEAM_NAME</code></td></tr>
-      <tr><td>Throwaway demo instance</td><td><code>APP_MANAGER_BOOTSTRAP=demo</code> — seeds <code>demo@example.com</code> / <code>Demo123!</code> and the <code>demo-api-key</code> API key</td></tr>
+      <tr><td>Throwaway demo instance</td><td><code>APP_MANAGER_BOOTSTRAP=demo</code> together with <code>APP_ENV=local</code> — seeds <code>demo@example.com</code> / <code>Demo123!</code> and the <code>demo-api-key</code> API key</td></tr>
       <tr><td>Bring your own vault only</td><td><code>CREDENTIAL_STORAGE_MODES=external</code></td></tr>
       <tr><td>Platform-held secrets only</td><td><code>CREDENTIAL_STORAGE_MODES=local</code></td></tr>
       <tr><td>Secrets never traverse the API</td><td><code>CREDENTIALS_API_PROFILE=dashboard_only</code></td></tr>
     </tbody>
   </table>
   <p>
-    Only <code>demo</code> generates its own <code>APP_KEY</code>; the data is disposable, so a key
-    that disappears with the volume costs nothing. In the other modes the container refuses to start
-    without one, on purpose.
+    Only <code>demo</code> generates its own <code>APP_KEY</code>, and only when the
+    <code>APP_KEY</code> line is commented out entirely — a blank value is not the same as an absent
+    one, and it would shadow the generated key forever. The data is disposable, so a key that
+    disappears with the volume costs nothing. In the other modes the container refuses to start
+    without one, on purpose. Demo mode also requires <code>APP_ENV=local</code> — the demo seeder is
+    disabled in production environments, and <code>app:bootstrap</code> fails loudly rather than
+    leaving you with an empty instance that looks healthy.
   </p>
 
   <h2>Environment reference</h2>
@@ -1960,7 +2037,7 @@ In the root `README.md`, above the existing local-development instructions, add:
 mkdir app-manager && cd app-manager
 curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
 curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
-echo "APP_KEY=$(docker run --rm ghcr.io/karerckor/app-manager-platform:latest app-manager generate-key)" >> .env
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
 docker compose up -d
 ```
 

@@ -2,9 +2,24 @@
 
 The Laravel 13 application that powers App Manager — a self-hosted control plane for mobile application configuration, signing credentials, CI/CD builds, logs, and artifacts.
 
+## Run with Docker
+
+```bash
+mkdir app-manager && cd app-manager
+curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
+curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
+docker compose up -d
+```
+
+Open <http://localhost:8000>. See [`deploy/docker`](../../deploy/docker/README.md) for the startup
+presets — installer, env-provided admin, or demo data — and the credential storage modes.
+
+Everything below is for developing the platform itself, not for running an instance.
+
 ## Requirements
 
-- PHP 8.3+ and Composer 2
+- PHP 8.4+ and Composer 2
 - Node.js 22+ and npm
 - PostgreSQL 17
 - Redis 8
