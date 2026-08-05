@@ -15,7 +15,7 @@
   "dependencies": {
     "@scalar/api-reference": "^1.63.0",
     "astro": "^7.1.6",
-    "shiki": "^4.3.1"
+    "shiki": "^4.4.1"
   },
   "devDependencies": {
     "playwright": "^1.62.1"
