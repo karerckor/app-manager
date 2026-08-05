@@ -7,6 +7,19 @@ The project is aimed at teams that maintain multiple mobile applications, enviro
 > [!IMPORTANT]
 > App Manager is under active development. It has a substantial domain model and test suite, but it does not yet ship a production application image or a stable release contract. Review the [production notes](#production-notes) before using it with real signing material.
 
+## Run with Docker
+
+```bash
+mkdir app-manager && cd app-manager
+curl -O https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/compose.yaml
+curl -o .env https://raw.githubusercontent.com/karerckor/app-manager/main/deploy/docker/.env.example
+echo "APP_KEY=$(docker run --rm --entrypoint app-manager ghcr.io/karerckor/app-manager-platform:latest generate-key)" >> .env
+docker compose up -d
+```
+
+Open <http://localhost:8000>. See [`deploy/docker`](deploy/docker/README.md) for the startup
+presets — installer, env-provided admin, or demo data — and the credential storage modes.
+
 ## What it provides
 
 - A multi-team web application with registration, login, two-factor authentication, invitations, and role-based permissions.
