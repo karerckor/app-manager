@@ -17,10 +17,15 @@ class NotificationTemplateRenderer
     public function render(WebhookEvent $event, NotificationDestination $destination): string
     {
         $eventKey = $event->event_type->value;
-        $template = data_get($destination->templates, $eventKey)
+        // Plain array access, not data_get(): event keys contain dots ("build.completed"),
+        // which data_get() reads as a nested path and never finds, silently falling back
+        // to the catalog default and discarding every customised template.
+        $template = ($destination->templates ?? [])[$eventKey]
             ?? data_get(collect(NotificationEventCatalog::all())->firstWhere('key', $eventKey), 'default_template')
             ?? $eventKey;
         $values = $this->values($event);
+        $values['tags'] = $this->formatTags($destination->tags ?? [], '#');
+        $values['tags_str'] = $this->formatTags($destination->tags ?? [], '');
 
         return preg_replace_callback(
             '/{{\s*([a-zA-Z0-9_.]+)\s*}}/',
@@ -52,6 +57,7 @@ class NotificationTemplateRenderer
                 'app.url' => $app
                     ? route('accounts.apps.show', [$team, $app])
                     : route('accounts.apps.index', $team),
+                ...$this->modelTags($app, 'app'),
             ]);
         }
 
@@ -74,6 +80,7 @@ class NotificationTemplateRenderer
                     : ($identifierApp
                         ? route('accounts.apps.identifiers.index', [$team, $identifierApp])
                         : route('accounts.apps.index', $team)),
+                ...$this->modelTags($identifierApp, 'app'),
             ]);
         }
 
@@ -100,6 +107,7 @@ class NotificationTemplateRenderer
                 'build.url' => $build && $build->mobileApp
                     ? route('accounts.apps.builds.show', [$team, $build->mobileApp, $build])
                     : route('accounts.apps.index', $team),
+                ...$this->modelTags($build, 'build'),
             ]);
         }
 
@@ -118,6 +126,7 @@ class NotificationTemplateRenderer
                     ? route('accounts.apps.builds.artifacts.download', [$team, $build->mobileApp, $build, $artifact])
                     : route('accounts.apps.index', $team),
                 'build.number' => $build?->id ? substr($build->id, 0, 8) : '—',
+                ...$this->modelTags($build, 'build'),
             ]);
         }
 
@@ -130,6 +139,7 @@ class NotificationTemplateRenderer
                 'credential.expires_at' => $this->date($expiresAt),
                 'credential.days_remaining' => (string) (data_get($payload, 'days_remaining') ?? '—'),
                 'credential.url' => route('accounts.credentials.index', $team),
+                ...$this->modelTags($credential, 'credential'),
             ]);
         }
 
@@ -186,5 +196,28 @@ class NotificationTemplateRenderer
         $value = $bytes / (1024 ** $power);
 
         return number_format($value, $power === 0 ? 0 : 1).' '.$units[$power];
+    }
+
+    /** @param list<string> $tags */
+    private function formatTags(array $tags, string $prefix): string
+    {
+        $tags = array_filter($tags, fn (string $tag) => $tag !== '');
+
+        return implode(' ', array_map(fn (string $tag) => $prefix.$tag, $tags));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function modelTags(?object $model, string $prefix): array
+    {
+        $texts = $model && method_exists($model, 'tagList')
+            ? collect($model->tagList())->pluck(0)->values()->all()
+            : [];
+
+        return [
+            "{$prefix}.tags" => $this->formatTags($texts, '#'),
+            "{$prefix}.tags_str" => $this->formatTags($texts, ''),
+        ];
     }
 }

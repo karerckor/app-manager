@@ -7,6 +7,8 @@ use App\Http\Controllers\AppIdentifierController;
 use App\Http\Controllers\AppIdentifierPageController;
 use App\Http\Controllers\AppMediaLibraryController;
 use App\Http\Controllers\AppOverviewController;
+use App\Http\Controllers\AppTelemetryPageController;
+use App\Http\Controllers\AppTelemetryDetailPageController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\BuildLogArchiveController;
@@ -28,6 +30,7 @@ use App\Http\Controllers\Integrations\GitLabConnectionController;
 use App\Http\Controllers\Integrations\IntegrationIndexController;
 use App\Http\Controllers\Integrations\NotificationDestinationController;
 use App\Http\Controllers\Integrations\PipelineBuildController;
+use App\Http\Controllers\Integrations\SentryDsnController;
 use App\Http\Controllers\Integrations\WebhookDeliveryController;
 use App\Http\Controllers\Integrations\WebhookEndpointController;
 use App\Http\Controllers\ManualBuildController;
@@ -116,6 +119,8 @@ Route::middleware('auth')->group(function () {
             ->name('integrations.webhooks.index');
         Route::get('/integrations/notifications', [IntegrationIndexController::class, 'notifications'])
             ->name('integrations.notifications.index');
+        Route::get('/integrations/sentry', [IntegrationIndexController::class, 'sentry'])
+            ->name('integrations.sentry.index');
         Route::get('/integrations/github/connect', [GitHubConnectionController::class, 'connect'])
             ->name('integrations.github.connect');
         Route::post('/integrations/{integration}/github/sync', [GitHubConnectionController::class, 'sync'])
@@ -182,6 +187,12 @@ Route::middleware('auth')->group(function () {
             ->name('integrations.notifications.test');
         Route::delete('/integrations/notifications/{notificationDestination}', [NotificationDestinationController::class, 'destroy'])
             ->name('integrations.notifications.destroy');
+        Route::post('/integrations/sentry', [SentryDsnController::class, 'store'])
+            ->name('integrations.sentry.store');
+        Route::patch('/integrations/sentry/{sentryDsn}', [SentryDsnController::class, 'update'])
+            ->name('integrations.sentry.update');
+        Route::delete('/integrations/sentry/{sentryDsn}', [SentryDsnController::class, 'destroy'])
+            ->name('integrations.sentry.destroy');
         Route::post('/integrations/{integration}/pipelines/batch/runs', [PipelineBuildController::class, 'storeBatch'])
             ->name('integrations.pipelines.batch.runs.store');
         Route::post('/integrations/{integration}/pipelines/{pipeline}/runs', [PipelineBuildController::class, 'store'])
@@ -204,6 +215,12 @@ Route::middleware('auth')->group(function () {
             ->name('api-keys.destroy');
         Route::post('/apps', [MobileAppController::class, 'store'])->middleware('team.permission:manage_applications')->name('apps.store');
         Route::get('/apps/{mobileApp:slug}', AppOverviewController::class)->name('apps.show');
+        Route::get('/apps/{mobileApp:slug}/telemetry', AppTelemetryPageController::class)
+            ->name('apps.telemetry.index');
+        Route::get('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}', [AppTelemetryDetailPageController::class, 'issue'])
+            ->name('apps.telemetry.issues.show');
+        Route::get('/apps/{mobileApp:slug}/telemetry/traces/{traceId}', [AppTelemetryDetailPageController::class, 'trace'])
+            ->name('apps.telemetry.traces.show');
         Route::get('/apps/{mobileApp:slug}/media', AppMediaLibraryController::class)
             ->name('apps.media.index');
         Route::post('/apps/{mobileApp:slug}/media/regenerate', [AppMediaLibraryController::class, 'regenerate'])

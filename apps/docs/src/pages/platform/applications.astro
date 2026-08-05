@@ -7,7 +7,7 @@ import Screenshot from '../../components/Screenshot.astro';
   <h1>Applications</h1>
   <p>
     An application is the container everything else hangs off. It carries a name, a slug, an
-    optional description and tags — and nothing platform-specific. Bundle IDs, package names,
+    optional description, tags, and an optional JSON metadata object. Bundle IDs, package names,
     versions, signing material, and build history all belong to its identifiers.
   </p>
 
@@ -22,10 +22,34 @@ import Screenshot from '../../components/Screenshot.astro';
     same data from a different angle. Search matches name, slug, and tag, so tagging apps by squad
     or by client is a practical way to navigate a long list.
   </p>
+
+  <h3>Creating an application</h3>
   <p>
-    <strong>New application</strong> asks only for a name; the slug is derived and can be edited
-    before saving. The slug is what appears in every URL and in every CLI command, so it is worth
-    choosing deliberately — changing it later breaks scripts that reference it.
+    <strong>New application</strong> asks for a name; the slug is derived and can be edited before
+    saving. The slug is what appears in every URL and in every CLI command, so it is worth choosing
+    deliberately — changing it later breaks scripts that reference it.
+  </p>
+  <Screenshot
+    src="new-application-modal"
+    alt="New application modal showing name, slug, description, and metadata JSON fields"
+    caption="The metadata field accepts any JSON object — use it for values your pipeline or tooling needs."
+  />
+
+  <h3>Metadata (JSON)</h3>
+  <p>
+    The <strong>Metadata</strong> field in the creation form accepts any JSON object. It is optional,
+    but useful for attaching application-specific values that your CI/CD pipeline, scripts, or
+    integrations need — for example the owning team, release channel, or Expo project ID.
+  </p>
+  <p>
+    The value must be a JSON object (not an array, null, or a primitive). The form validates the
+    JSON before submission and shows an error if the syntax is invalid. Metadata can also be updated
+    later from the <strong>Edit</strong> action on the application overview.
+  </p>
+  <p>
+    On the application overview, metadata is displayed as a collapsible section with formatted JSON.
+    Through the CLI, it is set with <code>--metadata '&#123;"key": "value"&#125;'</code> on
+    <a href="/cli/applications"><code>appmctl apps</code></a>.
   </p>
 
   <h2>Application overview</h2>
@@ -35,8 +59,8 @@ import Screenshot from '../../components/Screenshot.astro';
     caption="The overview answers 'what happened here lately'."
   />
   <p>
-    The header carries the actions you reach for most: <strong>Edit</strong> for name, description
-    and tags, <strong>Pipelines</strong> to see which CI/CD pipelines target this app, and
+    The header carries the actions you reach for most: <strong>Edit</strong> for name, description,
+    tags, and metadata, <strong>Pipelines</strong> to see which CI/CD pipelines target this app, and
     <strong>Run build</strong> to start one.
   </p>
   <p>
@@ -53,7 +77,7 @@ import Screenshot from '../../components/Screenshot.astro';
       <tr><th>Tab</th><th>Contents</th></tr>
     </thead>
     <tbody>
-      <tr><td>Overview</td><td>Counters, recent activity, application details</td></tr>
+      <tr><td>Overview</td><td>Counters, recent activity, application details, metadata</td></tr>
       <tr><td>Files and Media Library</td><td>Attached files, app icon, splash screen — see <a href="/platform/files-and-assets">Files and assets</a></td></tr>
       <tr><td>Platforms and App Identifiers</td><td>One row per platform the app ships on</td></tr>
       <tr><td>Builds</td><td>Build history — see <a href="/platform/builds">Builds</a></td></tr>
@@ -71,27 +95,135 @@ import Screenshot from '../../components/Screenshot.astro';
     reverse-DNS value such as <code>com.acme.customer</code>, and web needs a domain. The same
     value may exist on two different apps, but not twice on one app for the same platform.
   </p>
+
+  <h3>Adding an identifier</h3>
+  <Screenshot
+    src="add-identifier-modal"
+    alt="Add identifier modal with platform selector, bundle identifier, display name, and version fields"
+    caption="The identifier field label and placeholder change to match the selected platform."
+  />
   <table>
     <thead>
       <tr><th>Field</th><th>Notes</th></tr>
     </thead>
     <tbody>
       <tr><td>Platform</td><td><code>ios</code>, <code>android</code>, or <code>web</code></td></tr>
-      <tr><td>Identifier</td><td>Bundle ID, package name, or domain</td></tr>
+      <tr><td>Identifier</td><td>Bundle ID (iOS), package name (Android), or domain (web)</td></tr>
       <tr><td>Name</td><td>Display name, shown in build listings</td></tr>
       <tr><td>Version</td><td>Marketing version, e.g. <code>1.4.0</code></td></tr>
       <tr><td>Version code</td><td>Android only. The API rejects it for iOS and web.</td></tr>
     </tbody>
   </table>
+
+  <h3>Identifier detail and credentials</h3>
+  <Screenshot
+    src="identifier-detail"
+    alt="Identifier detail page showing platform header, credentials section with attached signing keys"
+    caption="Each credential card shows its type, encryption status, and expiration."
+  />
   <p>
-    Opening an identifier shows its <strong>build profiles</strong> — production, App Store,
-    development, and so on — and which credentials each profile signs with. That link is what makes
-    a build reproducible: the profile decides which keystore or certificate is used, so attaching
-    the wrong credential surfaces here rather than halfway through a release.
+    Opening an identifier shows its detail page with the <strong>Credentials</strong> section.
+    Credentials are grouped into <strong>Services</strong> (directly attached, e.g. APNs keys,
+    service accounts) and <strong>Build targets</strong> (attached via profiles like App Store,
+    Ad Hoc, or Production).
+  </p>
+  <p>
+    Each credential card displays its name, type, the number of encrypted fields, expiration status,
+    and whether a file is uploaded. The <strong>Show sensitive info</strong> button decrypts the
+    credential's fields for 60 seconds after password confirmation.
+  </p>
+  <p>
+    That link is what makes a build reproducible: the profile decides which keystore or certificate
+    is used, so attaching the wrong credential surfaces here rather than halfway through a release.
   </p>
   <p>
     Changing an identifier to the web platform is refused while credentials or profiles are still
     attached, since web identifiers hold no signing material. Detach them first.
+  </p>
+
+  <h3>Adding a credential to an identifier</h3>
+  <p>
+    The <strong>Add credential</strong> button opens a modal with two modes, toggled at the top:
+  </p>
+
+  <h4>Existing from Vault</h4>
+  <Screenshot
+    src="add-credential-existing"
+    alt="Add credential modal in Existing from Vault mode showing a dropdown of compatible vault credentials"
+    caption="The same vault record, encrypted fields, and file are reused — no copy is created."
+  />
+  <p>
+    In this mode, a dropdown lists all compatible credentials from the team's
+    <a href="/platform/credentials-vault">Credentials Vault</a>. Selecting one shows its details:
+    name, type, file info, expiration, and how many other places it is already used. For
+    certificate-type credentials, you also pick a <strong>Build target</strong> (e.g. App Store,
+    Ad Hoc, Development).
+  </p>
+  <p>
+    Clicking <strong>Reuse credential</strong> links the vault record to this identifier without
+    creating a duplicate. The credential stays in the vault and remains available for other
+    identifiers and apps.
+  </p>
+
+  <h4>Create new</h4>
+  <Screenshot
+    src="add-credential-new"
+    alt="Add credential modal in Create new mode showing credential type, name, payload fields, and file upload"
+    caption="Create new mode lets you store the credential locally or reference an external vault."
+  />
+  <p>
+    In this mode you fill in the credential details from scratch. The form includes:
+  </p>
+  <ul>
+    <li><strong>Credential type</strong> — filtered to types compatible with the identifier's platform</li>
+    <li><strong>Expiration</strong> — optional, shown as a warning when the date passes</li>
+    <li><strong>Build target</strong> — for certificate-type credentials, which profile this credential signs for</li>
+    <li><strong>Name</strong> — a human-readable label</li>
+    <li><strong>Payload fields</strong> — type-specific fields like Team ID, Issuer ID, Key ID, or passwords</li>
+    <li><strong>Credential file</strong> — the .p12, .jks, .keystore, or JSON key file</li>
+  </ul>
+  <p>
+    A <strong>Check uniqueness</strong> toggle is on by default. When enabled, the system checks
+    whether an identical credential already exists in the vault and reuses it instead of storing
+    a duplicate.
+  </p>
+
+  <h4>Storage modes: local vs. external vault</h4>
+  <p>
+    When the team allows both storage modes, a toggle appears at the top of the "Create new" form
+    with two options:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Mode</th><th>Behaviour</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Store in App Manager</strong></td>
+        <td>The credential file and encrypted payload fields are stored in the database. App Manager holds the secrets.</td>
+      </tr>
+      <tr>
+        <td><strong>Reference my vault</strong></td>
+        <td>App Manager stores only a reference (provider, resource path, and optional metadata). The actual secrets stay in your external vault — e.g. AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, Google Secret Manager, or fastlane match.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    In <strong>Reference my vault</strong> mode, the file upload is replaced by vault reference
+    fields: a <strong>Vault provider</strong> dropdown, a <strong>Resource</strong> text field for
+    the secret path or ARN, and optional <strong>Storage metadata</strong> key/value pairs that
+    your CI/CD pipeline may need (e.g. <code>region: eu-central-1</code>).
+  </p>
+  <p>
+    Password-type payload fields are hidden in external mode because the secrets live in the
+    external vault, not in App Manager. The storage mode is immutable after creation — to change
+    it, create a new credential and move its attachments.
+  </p>
+  <p>
+    Which modes are available depends on the instance configuration and the workspace's
+    <strong>Permitted credential storage</strong> setting on
+    <a href="/platform/team-access">Team access</a>. If only one mode is permitted, the toggle does
+    not appear.
   </p>
 
   <h2>Doing the same from the CLI</h2>
@@ -100,7 +232,11 @@ import Screenshot from '../../components/Screenshot.astro';
     repeated:
   </p>
   <ul>
-    <li><a href="/cli/applications"><code>appmctl apps</code></a> — list, create, update, delete</li>
+    <li><a href="/cli/applications"><code>appmctl apps</code></a> — list, create, update, delete (includes <code>--metadata</code>)</li>
     <li><a href="/cli/identifiers"><code>appmctl identifiers</code></a> — the same fields as the form above</li>
+    <li>
+      <a href="/cli/credentials"><code>appmctl credentials</code></a> — create, update, and delete
+      credentials. Attaching one to a build profile is console-only.
+    </li>
   </ul>
 </DocsLayout>

@@ -13,12 +13,14 @@ use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Integrations\Notifications\NotificationEventCatalog;
 use App\Models\Credential;
+use App\Models\EncryptionKey;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
 use App\Models\User;
 use App\Models\WebhookEndpoint;
 use App\Support\Credentials\CredentialFileStorage;
+use App\Support\Encryption\EncryptionKeyManager;
 use Illuminate\Database\Seeder;
 
 /**
@@ -51,8 +53,8 @@ class DemoSeeder extends Seeder
             return;
         }
 
-        if (\App\Models\EncryptionKey::count() === 0) {
-            \App\Support\Encryption\EncryptionKeyManager::createKey();
+        if (EncryptionKey::count() === 0) {
+            EncryptionKeyManager::createKey();
         }
 
         // Demo user. The User model's 'hashed' cast hashes the password on set.
@@ -247,6 +249,16 @@ class DemoSeeder extends Seeder
             CredentialFileStorage::storeContents($iosFirebase, $this->makeGoogleServiceInfoPlist(), 'GoogleService-Info.plist', 'application/xml');
         }
 
+        // Web identifier: no signing credentials, just a deploy target.
+        $webIdentifier = $app->appIdentifiers()->firstOrCreate(
+            ['platform' => Platform::Web, 'identifier' => 'com.example.app.web'],
+            ['name' => 'Example App (Web)'],
+        );
+        $webBuildProfile = $webIdentifier->profiles()->firstOrCreate(
+            ['type' => ProfileType::Production],
+            ['name' => 'Production'],
+        );
+
         // App metadata: free-form JSON that flows into the mobile app at build
         // time via the prepare CLI. Demonstrates feature flags, environment
         // config, and minimum supported version management from Platform.
@@ -302,6 +314,55 @@ class DemoSeeder extends Seeder
                 'context_snapshot' => ['runner' => 'self-hosted'],
                 'parameters' => ['channel' => 'beta'],
                 'tags' => [['demo', null], ['ios', null]],
+            ],
+        );
+
+        // Web builds: one completed deploy, one failed build.
+        $app->buildRecords()->firstOrCreate(
+            ['request_uuid' => '00000000-0000-4000-8000-000000000003'],
+            [
+                'team_id' => $team->id,
+                'app_identifier_id' => $webIdentifier->id,
+                'requested_by_user_id' => $user->id,
+                'profile_type' => ProfileType::Production,
+                'status' => BuildStatus::Completed,
+                'reporting_mode' => BuildReportingMode::Manual,
+                'context_snapshot' => ['runner' => 'vercel', 'commit' => 'def5678'],
+                'parameters' => ['channel' => 'production'],
+                'log_output' => implode("\n", [
+                    '[1/5] Installing dependencies...',
+                    '[2/5] Compiling TypeScript...',
+                    '[3/5] Bundling with Vite...',
+                    '[4/5] Uploading to CDN...',
+                    '[5/5] Deploy completed successfully.',
+                ]),
+                'started_at' => now()->subHour(),
+                'finished_at' => now()->subHour()->addMinutes(1),
+                'tags' => [['demo', null], ['web', null]],
+            ],
+        );
+
+        $app->buildRecords()->firstOrCreate(
+            ['request_uuid' => '00000000-0000-4000-8000-000000000004'],
+            [
+                'team_id' => $team->id,
+                'app_identifier_id' => $webIdentifier->id,
+                'requested_by_user_id' => $user->id,
+                'profile_type' => ProfileType::Production,
+                'status' => BuildStatus::Failed,
+                'reporting_mode' => BuildReportingMode::Manual,
+                'context_snapshot' => ['runner' => 'github-actions', 'commit' => 'bad0001'],
+                'parameters' => ['channel' => 'staging'],
+                'log_output' => implode("\n", [
+                    '[1/4] Installing dependencies...',
+                    '[2/4] Compiling TypeScript...',
+                    '[3/4] Bundling with Vite...',
+                    'ERROR: Module not found: "./missing-module"',
+                    'Build failed with 1 error.',
+                ]),
+                'started_at' => now()->subMinutes(30),
+                'finished_at' => now()->subMinutes(28),
+                'tags' => [['demo', null], ['web', null]],
             ],
         );
 

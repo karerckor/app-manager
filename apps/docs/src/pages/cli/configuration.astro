@@ -87,19 +87,21 @@ export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
       <tr><td><code>identifiers</code></td><td><code>identifiers:read</code>, <code>identifiers:write</code></td></tr>
       <tr><td><code>assets</code></td><td><code>assets:read</code>, <code>assets:write</code></td></tr>
       <tr><td><code>files</code></td><td><code>files:read</code>, <code>files:write</code></td></tr>
-      <tr><td><code>credentials</code></td><td><code>credentials:read</code>, <code>credentials:write</code>, <code>credentials:reveal</code> for <code>download</code></td></tr>
+      <tr><td><code>credentials</code></td><td><code>credentials:read</code>, <code>credentials:write</code>, <code>credentials:reveal</code> for <code>download</code>, <code>credentials:verify</code> to verify an external vault reference</td></tr>
       <tr><td><code>builds</code></td><td><code>builds:read</code>, <code>builds:write</code></td></tr>
       <tr><td><code>logs</code>, <code>stream</code></td><td><code>logs:read</code>, <code>logs:write</code></td></tr>
       <tr><td><code>artifacts</code></td><td><code>artifacts:read</code>, <code>artifacts:write</code></td></tr>
       <tr><td><code>integrations</code>, <code>eas</code></td><td><code>integrations:read</code>, <code>integrations:write</code>, <code>integrations:proxy</code> for the Expo proxies</td></tr>
       <tr><td><code>pipelines</code></td><td><code>pipelines:read</code>, <code>pipelines:write</code>, <code>pipelines:run</code> to trigger</td></tr>
       <tr><td><code>webhooks</code></td><td><code>webhooks:read</code>, <code>webhooks:write</code>, <code>deliveries:read</code></td></tr>
+      <tr><td><code>sentry</code></td><td><code>integrations:read</code>, <code>integrations:write</code></td></tr>
+      <tr><td><code>telemetry</code></td><td><code>apps:read</code></td></tr>
     </tbody>
   </table>
   <p>
     A missing scope answers <code>403</code>. Team permissions apply on top of scopes: a key
     cannot exceed what its team role allows. See
-    <a href="/guides/authentication">Authentication</a> for how keys are issued.
+    <a href="/platform/api-keys">API keys</a> for how keys are issued.
   </p>
 
   <h2>Generic requests</h2>

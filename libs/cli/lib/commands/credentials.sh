@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# "credentials" subcommands: list, get, create, update, delete, download, upload, types.
+# "credentials" subcommands: list, get, create, update, delete, download, upload,
+# verify, types.
 
 credentials_usage() {
   cat <<'EOF'
@@ -15,6 +16,7 @@ Actions:
   delete              Delete a credential
   download            Download a credential file
   upload              Upload a credential file
+  verify              Report a verification verdict for an external vault reference
   types               List available credential types
 
 Options:
@@ -25,6 +27,10 @@ Options:
   --data-file FILE    Credential data as JSON from FILE or stdin (-) (create, update)
   --data JSON         Credential data as inline JSON (deprecated; may leak via process arguments)
   --file FILE         Credential file to upload (create, upload)
+  --status STATUS     Reported verdict: verified or failed (verify)
+  --error TEXT        Why resolution failed; required with --status failed (verify)
+  --expires-at DATE   Expiry discovered in the vault; only with --status verified (verify)
+  --metadata JSON     JSON object of string values describing the resolved secret (verify)
 
 Run "appmctl credentials <action> --help" for action-specific help.
 EOF
@@ -42,9 +48,10 @@ command_credentials() {
     delete) _credentials_delete "$@" ;;
     download) _credentials_download "$@" ;;
     upload) _credentials_upload "$@" ;;
+    verify) _credentials_verify "$@" ;;
     types) _credentials_types "$@" ;;
     -h|--help|"") credentials_usage; [ -z "$action" ] && return 1; return 0 ;;
-    *) die "unknown credentials action: $action (use list, get, create, update, delete, download, upload, types)" ;;
+    *) die "unknown credentials action: $action (use list, get, create, update, delete, download, upload, verify, types)" ;;
   esac
 }
 
@@ -429,6 +436,116 @@ _credentials_upload() {
 
   perform_request POST "$url" || return 1
   printf 'Credential file uploaded to %s\n' "$cred_id"
+}
+
+# App Manager never reaches into an external vault itself, so the verdict has to
+# come from whoever can: the build. This action only transmits that verdict.
+_credentials_verify() {
+  local app="${APP:-}"
+  local cred_id=""
+  local status=""
+  local error_text=""
+  local expires_at=""
+  local metadata=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --status) require_value "$1" "$2"; status="$2"; shift 2 ;;
+      --status=*) status=${1#*=}; shift ;;
+      --error) require_value "$1" "$2"; error_text="$2"; shift 2 ;;
+      --error=*) error_text=${1#*=}; shift ;;
+      --expires-at) require_value "$1" "$2"; expires_at="$2"; shift 2 ;;
+      --expires-at=*) expires_at=${1#*=}; shift ;;
+      --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
+      --metadata=*) metadata=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials verify [--app APP] <credential-id> --status verified|failed\n'
+        printf '                                  [--error TEXT] [--expires-at DATE] [--metadata JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown credentials verify option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+
+  # Mirror the API's rules rather than discovering them as a 422: a build that
+  # passed contradictory flags should learn so before it spends a request.
+  case "$status" in
+    verified|failed) ;;
+    "") die "--status is required (verified or failed)" ;;
+    *) die "--status must be verified or failed, not $status" ;;
+  esac
+
+  if [ "$status" = "failed" ]; then
+    [ -n "$error_text" ] || die "--error is required when --status is failed"
+    [ -z "$expires_at" ] || die "--expires-at cannot be combined with --status failed"
+  else
+    [ -z "$error_text" ] || die "--error is only accepted when --status is failed"
+  fi
+
+  local metadata_json=""
+  if [ -n "$metadata" ]; then
+    metadata_json=$(
+      printf '%s' "$metadata" |
+        "$JQ_BIN" -c 'if type == "object" then . else error("not an object") end' 2>/dev/null
+    ) || die "--metadata must be a JSON object of string values"
+  fi
+
+  ensure_tmpdir
+  body_file=$(new_temp_file verification-body) || die "could not create temp file"
+
+  local jq_args=(--arg st "$status")
+  local jq_filter='{status: $st'
+
+  if [ -n "$error_text" ]; then
+    jq_args+=(--arg err "$error_text")
+    jq_filter="$jq_filter, error: \$err"
+  fi
+
+  if [ -n "$expires_at" ]; then
+    jq_args+=(--arg exp "$expires_at")
+    jq_filter="$jq_filter, expires_at: \$exp"
+  fi
+
+  if [ -n "$metadata_json" ]; then
+    jq_args+=(--argjson meta "$metadata_json")
+    jq_filter="$jq_filter, metadata: \$meta"
+  fi
+
+  jq_filter="$jq_filter}"
+  "$JQ_BIN" -nc "${jq_args[@]}" "$jq_filter" >"$body_file"
+
+  local path="apps/$APP/credentials/$cred_id/verification"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"provider":"provider","resource":"resource","status":"verification.status","verified_at":"verification.verified_at","error":"verification.error","metadata":"metadata // empty | tojson","metadata_version":"metadata_version","metadata_source":"metadata_source"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
 _credentials_types() {

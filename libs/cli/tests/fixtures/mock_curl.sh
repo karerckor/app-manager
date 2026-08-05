@@ -55,6 +55,19 @@ rel_path="${rel_path#*/}"
 
 # Match from most specific to least specific.
 case "$rel_path" in
+  # --- Sentry telemetry ---
+  apps/*/telemetry/issues/*)
+    printf '{"data":{"id":"issue-001","title":"Payment failed","events_count":2,"timeline":[{"id":"evt-001"}],"selected_event":{"id":"evt-001","user":{"id":"buyer-42"}}}}' >"$output"
+    ;;
+  apps/*/telemetry/issues)
+    printf '{"data":[{"id":"issue-001","title":"Payment failed","events_count":2,"status":"unresolved","last_seen_at":"2026-08-05T12:00:00Z"}]}' >"$output"
+    ;;
+  apps/*/telemetry/traces/*)
+    printf '{"data":{"trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","title":"POST /checkout","events_count":2,"selected_event":{"id":"evt-002"}}}' >"$output"
+    ;;
+  apps/*/telemetry/traces)
+    printf '{"data":[{"trace_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","title":"POST /checkout","environment":"production","release":"1.4.0","occurred_at":"2026-08-05T12:00:00Z"}]}' >"$output"
+    ;;
   # --- builds (specific patterns first, since * matches slashes) ---
   apps/*/builds/*/cancel)
     printf '{"data":{"ok":true}}' >"$output"
@@ -95,6 +108,9 @@ case "$rel_path" in
       GET) printf 'fake-credential-content' >"$output" ;;
       POST) printf '{"data":{"ok":true}}' >"$output" ;;
     esac
+    ;;
+  apps/*/credentials/*/verification)
+    printf '{"data":{"provider":"aws_secrets_manager","resource":"arn:aws:secretsmanager:eu-central-1:123456789012:secret:ios-dist","metadata":{"region":"eu-central-1"},"metadata_version":2,"metadata_source":"pipeline","verification":{"status":"verified","verified_at":"2026-08-03T12:30:00+00:00","error":null}}}' >"$output"
     ;;
   apps/*/credentials/*)
     case "$method" in
@@ -215,6 +231,19 @@ case "$rel_path" in
     case "$method" in
       GET) printf '{"data":[{"id":"wh-001","name":"Release notifier","url":"https://example.com/hook","subscribed_events":["build.completed","build.failed"],"enabled":true,"created_at":"2025-01-15"}]}' >"$output" ;;
       POST) printf '{"data":{"id":"wh-002","name":"Release notifier","url":"https://example.com/hook","subscribed_events":["build.completed"],"enabled":true,"created_at":"2025-07-31"}}' >"$output" ;;
+    esac
+    ;;
+  # --- Sentry integration (must precede the generic integrations/* patterns) ---
+  integrations/sentry/*)
+    case "$method" in
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+      *) printf '{"data":{"id":"dsn-001","name":"Customer relay","routing_method":"query","enabled":true,"forward_enabled":false,"routes":[]}}' >"$output" ;;
+    esac
+    ;;
+  integrations/sentry)
+    case "$method" in
+      GET) printf '{"data":[{"id":"dsn-001","name":"Customer relay","routing_method":"query","enabled":true,"forward_enabled":false,"last_event_at":null}]}' >"$output" ;;
+      *) printf '{"data":{"id":"dsn-001","name":"Customer relay","routing_method":"query","enabled":true,"forward_enabled":false,"routes":[]}}' >"$output" ;;
     esac
     ;;
   # --- expo on integrations (must precede the generic integrations/* patterns) ---

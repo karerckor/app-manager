@@ -18,6 +18,7 @@ use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Builds\BuildLifecycle;
+use App\Support\Tags\TagRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -60,6 +61,7 @@ class BuildController extends Controller
                     }
                 },
             ],
+            ...TagRules::rules(),
         ]);
 
         $reportingMode = $data['reporting_mode'] ?? 'manual';
@@ -95,6 +97,10 @@ class BuildController extends Controller
             );
         }
 
+        if (array_key_exists('tags', $data)) {
+            $build->syncTags($data['tags'] ?? [])->save();
+        }
+
         return (new BuildRecordResource($build))->response()->setStatusCode(201);
     }
 
@@ -113,29 +119,41 @@ class BuildController extends Controller
         BuildLifecycle $lifecycle,
     ): BuildRecordResource|JsonResponse {
         $this->assertBuild($team, $mobileApp, $buildRecord);
-        abort_unless($buildRecord->reporting_mode === BuildReportingMode::Manual, 409, 'This build is managed automatically.');
         $data = $request->validate([
-            'status' => ['required', Rule::in([
+            ...TagRules::rules(),
+            'status' => ['required_without:tags', Rule::in([
                 BuildStatus::Running->value,
                 BuildStatus::Completed->value,
                 BuildStatus::Failed->value,
                 BuildStatus::Cancelled->value,
             ])],
+            'tags' => ['required_without:status', 'array'],
         ]);
-        $status = BuildStatus::from($data['status']);
+        $build = $buildRecord;
 
-        try {
-            $build = $status === BuildStatus::Running
-                ? $lifecycle->start($buildRecord)
-                : $lifecycle->finish($buildRecord, $status);
-        } catch (InvalidBuildTransition $exception) {
-            return response()->json(['message' => $exception->getMessage()], 409);
+        // Tags are metadata, so they stay writable on automatically reported
+        // builds; only the lifecycle itself is off limits there.
+        if (isset($data['status'])) {
+            abort_unless($buildRecord->reporting_mode === BuildReportingMode::Manual, 409, 'This build is managed automatically.');
+            $status = BuildStatus::from($data['status']);
+
+            try {
+                $build = $status === BuildStatus::Running
+                    ? $lifecycle->start($buildRecord)
+                    : $lifecycle->finish($buildRecord, $status);
+            } catch (InvalidBuildTransition $exception) {
+                return response()->json(['message' => $exception->getMessage()], 409);
+            }
+
+            if ($build->status !== $status) {
+                return response()->json([
+                    'message' => "Build cannot transition from {$build->status->value} to {$status->value}.",
+                ], 409);
+            }
         }
 
-        if ($build->status !== $status) {
-            return response()->json([
-                'message' => "Build cannot transition from {$build->status->value} to {$status->value}.",
-            ], 409);
+        if (array_key_exists('tags', $data)) {
+            $build->syncTags($data['tags'] ?? [])->save();
         }
 
         return new BuildRecordResource($build);

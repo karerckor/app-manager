@@ -1,0 +1,81 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+---
+
+<DocsLayout title="CLI Sentry and telemetry" activeNav="/cli/integrations/sentry">
+  <h1>Sentry and telemetry</h1>
+  <p>
+    <code>appmctl sentry</code> manages the routed DSNs configured in the Web UI.
+    <code>appmctl telemetry</code> reads grouped issues and distributed traces for one application.
+    Both commands use the public API, so they are suitable for scripts and incident tooling.
+  </p>
+
+  <h2>Manage routed DSNs</h2>
+  <CodeBlock lang="bash" code={`appmctl sentry list
+appmctl sentry get DSN_ID
+appmctl sentry create --config sentry.json
+appmctl sentry update DSN_ID --config sentry.json
+appmctl sentry delete DSN_ID`} />
+  <p>
+    Create and update take a complete JSON configuration. This mirrors the Web UI form exactly and
+    makes route replacement explicit. An update keeps the stored upstream secret when forwarding
+    remains enabled and <code>upstream_dsn</code> is empty.
+  </p>
+  <CodeBlock lang="json" code={`{
+  "name": "Customer telemetry relay",
+  "routing_method": "query",
+  "event_source": null,
+  "app_key": "app_slug",
+  "identifier_key": "app_identifier",
+  "routes": [
+    {
+      "mobile_app_id": "019fc789-478f-71a0-9177-0ed28c77cff2",
+      "app_identifier_id": "019fc789-478f-71a0-9177-0ed28c77cff3"
+    }
+  ],
+  "forward_enabled": true,
+  "upstream_dsn": "https://PUBLIC_KEY@sentry.example/PROJECT_ID",
+  "enabled": true
+}`} />
+  <p>
+    For event-metadata routing set <code>routing_method</code> to <code>event</code> and choose
+    <code>event_source</code> from <code>auto</code>, <code>contexts</code>, <code>extra</code>,
+    <code>tags</code>, or <code>attributes</code>. The API never returns the upstream DSN.
+  </p>
+
+  <h2>List issues and traces</h2>
+  <CodeBlock lang="bash" code={`appmctl --app customer-app telemetry issues
+appmctl --app customer-app telemetry traces
+
+# The filters match the Web UI
+appmctl --app customer-app telemetry issues \
+  --environment production \
+  --identifier 019fc789-478f-71a0-9177-0ed28c77cff3 \
+  --search checkout \
+  --per-page 50`} />
+  <p>
+    An issue is the grouped error. Its individual arrivals are occurrences. A trace is keyed by the
+    Sentry trace ID and can contain transaction events and errors from the same application.
+  </p>
+
+  <h2>Inspect a case</h2>
+  <CodeBlock lang="bash" code={`appmctl --json --app customer-app telemetry issue ISSUE_ID
+appmctl --json --app customer-app telemetry issue ISSUE_ID --event OCCURRENCE_ID
+
+appmctl --json --app customer-app telemetry trace TRACE_ID
+appmctl --json --app customer-app telemetry trace TRACE_ID --event EVENT_ID`} />
+  <p>
+    Detail responses include the timeline and one complete selected event: exceptions and source
+    context, request, user, contexts, tags, extra data, trace measurements, and untouched
+    <code>raw_payload</code>. Use <code>--event</code> to move through the case without changing its ID.
+  </p>
+
+  <h2>Scopes</h2>
+  <ul>
+    <li><code>sentry list/get</code>: <code>integrations:read</code> and the team integration-management permission.</li>
+    <li><code>sentry create/update/delete</code>: <code>integrations:write</code>.</li>
+    <li><code>telemetry</code>: <code>apps:read</code> and normal application view access.</li>
+  </ul>
+  <p>The complete request and response schemas are also available in the <a href="/api-reference">API reference</a>.</p>
+</DocsLayout>

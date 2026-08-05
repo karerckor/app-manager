@@ -20,14 +20,34 @@ const navSections = [
     ],
   },
   {
-    title: 'Guides',
+    title: 'Platform (Web UI)',
     items: [
-      { label: 'Authentication', href: '/guides/authentication' },
-      { label: 'Builds', href: '/guides/builds' },
-      { label: 'Fastlane Plugin', href: '/guides/fastlane' },
-      { label: 'Webhooks', href: '/guides/webhooks' },
-      { label: 'Expo Integration', href: '/guides/expo-integration' },
-      { label: 'CI/CD Pipelines', href: '/guides/cicd-pipelines' },
+      { label: 'Overview', href: '/platform' },
+      { label: 'Applications', href: '/platform/applications' },
+      { label: 'Files and assets', href: '/platform/files-and-assets' },
+      { label: 'Builds', href: '/platform/builds' },
+      { label: 'Credentials Vault', href: '/platform/credentials-vault' },
+      { label: 'API keys', href: '/platform/api-keys' },
+      { label: 'Audit log', href: '/platform/audit-log' },
+      {
+        label: 'Integrations',
+        href: '/platform/integrations',
+        children: [
+          { label: 'EAS', href: '/platform/integrations/eas' },
+          { label: 'Pipelines', href: '/platform/integrations/pipelines' },
+          { label: 'Webhooks', href: '/platform/integrations/webhooks' },
+          { label: 'Notifications', href: '/platform/integrations/notifications' },
+          { label: 'Sentry', href: '/platform/integrations/sentry' },
+        ],
+      },
+      { label: 'Team access', href: '/platform/team-access' },
+      { label: 'Push notifications', href: '/platform/push-notifications' },
+    ],
+  },
+  {
+    title: 'API',
+    items: [
+      { label: 'API Reference', href: '/api-reference' },
     ],
   },
   {
@@ -56,40 +76,11 @@ const navSections = [
           { label: 'EAS', href: '/cli/integrations/eas' },
           { label: 'Pipelines', href: '/cli/integrations/pipelines' },
           { label: 'Webhooks', href: '/cli/integrations/webhooks' },
+          { label: 'Sentry & telemetry', href: '/cli/integrations/sentry' },
           { label: 'Notifications', href: '/cli/integrations/notifications' },
         ],
       },
       { label: 'Examples', href: '/cli/examples' },
-    ],
-  },
-  {
-    title: 'Platform (Web UI)',
-    items: [
-      { label: 'Overview', href: '/platform' },
-      { label: 'Applications', href: '/platform/applications' },
-      { label: 'Files and assets', href: '/platform/files-and-assets' },
-      { label: 'Builds', href: '/platform/builds' },
-      { label: 'Credentials Vault', href: '/platform/credentials-vault' },
-      { label: 'API keys', href: '/platform/api-keys' },
-      { label: 'Audit log', href: '/platform/audit-log' },
-      {
-        label: 'Integrations',
-        href: '/platform/integrations',
-        children: [
-          { label: 'EAS', href: '/platform/integrations/eas' },
-          { label: 'Pipelines', href: '/platform/integrations/pipelines' },
-          { label: 'Webhooks', href: '/platform/integrations/webhooks' },
-          { label: 'Notifications', href: '/platform/integrations/notifications' },
-        ],
-      },
-      { label: 'Team access', href: '/platform/team-access' },
-      { label: 'Push notifications', href: '/platform/push-notifications' },
-    ],
-  },
-  {
-    title: 'API',
-    items: [
-      { label: 'API Reference', href: '/api-reference' },
     ],
   },
 ];
@@ -102,31 +93,43 @@ const navSections = [
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title} | App Manager Docs</title>
     <style is:global>
-      :root {
+      /* An inline script in <head> resolves the reader's choice (or their system
+         preference) into data-theme before first paint, so every themed rule keys
+         off that attribute rather than a media query. */
+      :root,
+      :root[data-theme='light'] {
         --bg: #ffffff;
-        --bg-sidebar: #f8f9fa;
-        --bg-code: #f1f3f5;
+        --bg-sidebar: #f7f8fa;
+        --bg-hover: #eceef2;
+        --bg-code: #f4f5f7;
         --text: #1a1a2e;
-        --text-muted: #6c757d;
+        --text-muted: #5c6670;
         --text-link: #2563eb;
-        --border: #e9ecef;
+        --border: #dee2e8;
         --accent: #2563eb;
         --sidebar-width: 260px;
         --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', Consolas, monospace;
       }
 
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0d1117;
-          --bg-sidebar: #161b22;
-          --bg-code: #1c2128;
-          --text: #e6edf3;
-          --text-muted: #8b949e;
-          --text-link: #58a6ff;
-          --border: #30363d;
-          --accent: #58a6ff;
-        }
+      :root[data-theme='dark'] {
+        --bg: #0d1117;
+        --bg-sidebar: #161b22;
+        --bg-hover: #21262d;
+        --bg-code: #1c2128;
+        --text: #e6edf3;
+        --text-muted: #8b949e;
+        --text-link: #58a6ff;
+        --border: #30363d;
+        --accent: #58a6ff;
+      }
+
+      :root[data-theme='light'] {
+        color-scheme: light;
+      }
+
+      :root[data-theme='dark'] {
+        color-scheme: dark;
       }
 
       * {
@@ -144,6 +147,10 @@ const navSections = [
       body {
         display: flex;
         min-height: 100vh;
+        /* Scalar paints the body from its own palette (inside @layer scalar-base,
+           which any unlayered rule outranks). Left alone, the API Reference page
+           dragged its dark background across the whole light-theme layout. */
+        background: var(--bg);
       }
 
       .sidebar {
@@ -198,7 +205,27 @@ const navSections = [
 
       .nav-link:hover {
         color: var(--text);
-        background: var(--bg);
+        background: var(--bg-hover);
+      }
+
+      /* Items with a subtree get a chevron so the nesting is visible while collapsed. */
+      .nav-link-parent {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .nav-chevron {
+        flex-shrink: 0;
+        width: 12px;
+        height: 12px;
+        opacity: 0.6;
+        transition: transform 0.15s ease;
+      }
+
+      .nav-link-parent.expanded .nav-chevron {
+        transform: rotate(90deg);
       }
 
       .nav-link-child {
@@ -213,7 +240,7 @@ const navSections = [
 
       .nav-link.active {
         color: var(--accent);
-        background: var(--bg);
+        background: var(--bg-hover);
         font-weight: 500;
         border-right: 2px solid var(--accent);
       }
@@ -353,15 +380,96 @@ const navSections = [
       .badge.patch { color: #735c0f; background: #fff5b1; }
       .badge.delete { color: #cb2431; background: #ffeef0; }
 
-      @media (prefers-color-scheme: dark) {
-        .badge.get { color: #3fb950; background: #1b3a2a; }
-        .badge.post { color: #58a6ff; background: #1a3050; }
-        .badge.patch { color: #d29922; background: #3d2e00; }
-        .badge.delete { color: #f85149; background: #3d1a1e; }
+      :root[data-theme='dark'] .badge.get { color: #3fb950; background: #1b3a2a; }
+      :root[data-theme='dark'] .badge.post { color: #58a6ff; background: #1a3050; }
+      :root[data-theme='dark'] .badge.patch { color: #d29922; background: #3d2e00; }
+      :root[data-theme='dark'] .badge.delete { color: #f85149; background: #3d1a1e; }
+
+      .theme-toggle {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-sidebar);
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: color 0.15s ease, background 0.15s ease;
+      }
+
+      .theme-toggle:hover {
+        color: var(--text);
+        background: var(--bg-hover);
+      }
+
+      .theme-toggle:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* One icon per theme; the inactive one is removed from the box entirely so
+         the button keeps its size. */
+      .theme-toggle .icon-dark {
+        display: none;
+      }
+
+      :root[data-theme='dark'] .theme-toggle .icon-light {
+        display: none;
+      }
+
+      :root[data-theme='dark'] .theme-toggle .icon-dark {
+        display: block;
+      }
+
+      @media (max-width: 768px) {
+        /* No sidebar to tuck the button beside, so keep it clear of the heading. */
+        .content {
+          padding-top: 64px;
+        }
       }
     </style>
+    <script is:inline>
+      // Runs before first paint so a dark-theme reader never sees a white flash.
+      (() => {
+        const stored = localStorage.getItem('docs-theme');
+        const theme =
+          stored === 'light' || stored === 'dark'
+            ? stored
+            : window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body>
+    <button class="theme-toggle" type="button" aria-label="Switch between light and dark theme">
+      <svg class="icon-light" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.8" />
+        <path
+          d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      <svg class="icon-dark" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
     <nav class="sidebar">
       <div class="sidebar-title">
         <a href="/">App Manager</a>
@@ -373,17 +481,54 @@ const navSections = [
             <Fragment>
               <a
                 href={item.href}
-                class:list={['nav-link', { active: activeNav === item.href }]}
+                class:list={[
+                  'nav-link',
+                  {
+                    active: activeNav === item.href,
+                    'nav-link-parent': !!item.children,
+                    expanded: !!item.children && isWithin(item.href),
+                  },
+                ]}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {item.children && (
+                  <svg class="nav-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M6 4l4 4-4 4"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                )}
               </a>
               {item.children && isWithin(item.href) && item.children.map((child) => (
                 <Fragment>
                   <a
                     href={child.href}
-                    class:list={['nav-link', 'nav-link-child', { active: activeNav === child.href }]}
+                    class:list={[
+                      'nav-link',
+                      'nav-link-child',
+                      {
+                        active: activeNav === child.href,
+                        'nav-link-parent': !!child.children,
+                        expanded: !!child.children && isWithin(child.href),
+                      },
+                    ]}
                   >
-                    {child.label}
+                    <span>{child.label}</span>
+                    {child.children && (
+                      <svg class="nav-chevron" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path
+                          d="M6 4l4 4-4 4"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    )}
                   </a>
                   {child.children && isWithin(child.href) && child.children.map((grandchild) => (
                     <a
@@ -405,5 +550,26 @@ const navSections = [
         <slot />
       </div>
     </main>
+    <script is:inline>
+      const applyTheme = (theme) => {
+        document.documentElement.dataset.theme = theme;
+        // Embedded widgets (the Scalar API reference) theme themselves and cannot
+        // read our custom properties, so they listen for this instead.
+        document.dispatchEvent(new CustomEvent('docs:themechange', { detail: { theme } }));
+      };
+
+      document.querySelector('.theme-toggle')?.addEventListener('click', () => {
+        const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('docs-theme', next);
+        applyTheme(next);
+      });
+
+      // Until the reader picks a side, keep following the OS.
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
+        if (!localStorage.getItem('docs-theme')) {
+          applyTheme(event.matches ? 'dark' : 'light');
+        }
+      });
+    </script>
   </body>
 </html>

@@ -779,6 +779,8 @@ Resources:
   eas             Manage the Expo/EAS integration
   pipelines       Manage CI/CD pipelines
   webhooks        Manage webhook endpoints
+  sentry          Manage routed Sentry DSNs
+  telemetry       Inspect application issues and traces
 
 Required environment:
   APP_MANAGER_API_KEY       API key used as a Bearer token
@@ -843,7 +845,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks)
+      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -872,6 +874,8 @@ dispatch_command() {
     integrations) command_integrations "${REMAINING_ARGS[@]}" ;;
     pipelines) command_pipelines "${REMAINING_ARGS[@]}" ;;
     webhooks) command_webhooks "${REMAINING_ARGS[@]}" ;;
+    sentry) command_sentry "${REMAINING_ARGS[@]}" ;;
+    telemetry) command_telemetry "${REMAINING_ARGS[@]}" ;;
     '') usage; return 1 ;;
   esac
 }
@@ -3952,7 +3956,8 @@ _apps_delete() {
 }
 
 
-# "credentials" subcommands: list, get, create, update, delete, download, upload, types.
+# "credentials" subcommands: list, get, create, update, delete, download, upload,
+# verify, types.
 
 credentials_usage() {
   cat <<'EOF'
@@ -3967,6 +3972,7 @@ Actions:
   delete              Delete a credential
   download            Download a credential file
   upload              Upload a credential file
+  verify              Report a verification verdict for an external vault reference
   types               List available credential types
 
 Options:
@@ -3977,6 +3983,10 @@ Options:
   --data-file FILE    Credential data as JSON from FILE or stdin (-) (create, update)
   --data JSON         Credential data as inline JSON (deprecated; may leak via process arguments)
   --file FILE         Credential file to upload (create, upload)
+  --status STATUS     Reported verdict: verified or failed (verify)
+  --error TEXT        Why resolution failed; required with --status failed (verify)
+  --expires-at DATE   Expiry discovered in the vault; only with --status verified (verify)
+  --metadata JSON     JSON object of string values describing the resolved secret (verify)
 
 Run "appmctl credentials <action> --help" for action-specific help.
 EOF
@@ -3994,9 +4004,10 @@ command_credentials() {
     delete) _credentials_delete "$@" ;;
     download) _credentials_download "$@" ;;
     upload) _credentials_upload "$@" ;;
+    verify) _credentials_verify "$@" ;;
     types) _credentials_types "$@" ;;
     -h|--help|"") credentials_usage; [ -z "$action" ] && return 1; return 0 ;;
-    *) die "unknown credentials action: $action (use list, get, create, update, delete, download, upload, types)" ;;
+    *) die "unknown credentials action: $action (use list, get, create, update, delete, download, upload, verify, types)" ;;
   esac
 }
 
@@ -4381,6 +4392,116 @@ _credentials_upload() {
 
   perform_request POST "$url" || return 1
   printf 'Credential file uploaded to %s\n' "$cred_id"
+}
+
+# App Manager never reaches into an external vault itself, so the verdict has to
+# come from whoever can: the build. This action only transmits that verdict.
+_credentials_verify() {
+  local app="${APP:-}"
+  local cred_id=""
+  local status=""
+  local error_text=""
+  local expires_at=""
+  local metadata=""
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --app) require_value "$1" "$2"; app="$2"; shift 2 ;;
+      --app=*) app=${1#*=}; shift ;;
+      --status) require_value "$1" "$2"; status="$2"; shift 2 ;;
+      --status=*) status=${1#*=}; shift ;;
+      --error) require_value "$1" "$2"; error_text="$2"; shift 2 ;;
+      --error=*) error_text=${1#*=}; shift ;;
+      --expires-at) require_value "$1" "$2"; expires_at="$2"; shift 2 ;;
+      --expires-at=*) expires_at=${1#*=}; shift ;;
+      --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
+      --metadata=*) metadata=${1#*=}; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        printf 'Usage: appmctl credentials verify [--app APP] <credential-id> --status verified|failed\n'
+        printf '                                  [--error TEXT] [--expires-at DATE] [--metadata JSON]\n'
+        return 0
+        ;;
+      -*) die "unknown credentials verify option: $1" ;;
+      *)
+        [ -z "$cred_id" ] || die "unexpected argument: $1"
+        cred_id="$1"; shift ;;
+    esac
+  done
+
+  APP="$app"
+  require_app
+  [ -n "$cred_id" ] || die "credential ID is required"
+
+  # Mirror the API's rules rather than discovering them as a 422: a build that
+  # passed contradictory flags should learn so before it spends a request.
+  case "$status" in
+    verified|failed) ;;
+    "") die "--status is required (verified or failed)" ;;
+    *) die "--status must be verified or failed, not $status" ;;
+  esac
+
+  if [ "$status" = "failed" ]; then
+    [ -n "$error_text" ] || die "--error is required when --status is failed"
+    [ -z "$expires_at" ] || die "--expires-at cannot be combined with --status failed"
+  else
+    [ -z "$error_text" ] || die "--error is only accepted when --status is failed"
+  fi
+
+  local metadata_json=""
+  if [ -n "$metadata" ]; then
+    metadata_json=$(
+      printf '%s' "$metadata" |
+        "$JQ_BIN" -c 'if type == "object" then . else error("not an object") end' 2>/dev/null
+    ) || die "--metadata must be a JSON object of string values"
+  fi
+
+  ensure_tmpdir
+  body_file=$(new_temp_file verification-body) || die "could not create temp file"
+
+  local jq_args=(--arg st "$status")
+  local jq_filter='{status: $st'
+
+  if [ -n "$error_text" ]; then
+    jq_args+=(--arg err "$error_text")
+    jq_filter="$jq_filter, error: \$err"
+  fi
+
+  if [ -n "$expires_at" ]; then
+    jq_args+=(--arg exp "$expires_at")
+    jq_filter="$jq_filter, expires_at: \$exp"
+  fi
+
+  if [ -n "$metadata_json" ]; then
+    jq_args+=(--argjson meta "$metadata_json")
+    jq_filter="$jq_filter, metadata: \$meta"
+  fi
+
+  jq_filter="$jq_filter}"
+  "$JQ_BIN" -nc "${jq_args[@]}" "$jq_filter" >"$body_file"
+
+  local path="apps/$APP/credentials/$cred_id/verification"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local url
+    require_config
+    url=$(build_url "$path") || return 1
+    printf 'dry-run: no request sent\n'
+    printf 'method: POST\n'
+    printf 'url: %s\n' "$url"
+    printf 'body: %s\n' "$(cat "$body_file")"
+    rm -f -- "$body_file"
+    return 0
+  fi
+
+  api_post "$path" "$body_file" || { rm -f -- "$body_file"; return 1; }
+  rm -f -- "$body_file"
+  local fmt='{"type":"resource","fields":{"provider":"provider","resource":"resource","status":"verification.status","verified_at":"verification.verified_at","error":"verification.error","metadata":"metadata // empty | tojson","metadata_version":"metadata_version","metadata_source":"metadata_source"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
 _credentials_types() {
@@ -6215,5 +6336,118 @@ _webhooks_redeliver() {
   api_post "webhooks/$webhook_id/deliveries/$delivery_id/redeliver" "" || return 1
   printf 'Delivery %s redelivered\n' "$delivery_id"
 }
+
+
+sentry_usage() {
+  cat <<'EOF'
+Usage: appmctl [global options] sentry <action> [options]
+
+Actions:
+  list                         List routed Sentry DSNs
+  get <dsn-id>                 Show one routed DSN
+  create --config FILE         Create a routed DSN from JSON
+  update <dsn-id> --config FILE Replace a routed DSN configuration
+  delete <dsn-id>              Delete a routed DSN
+EOF
+}
+
+command_sentry() {
+  local action="${1:-}"; shift 2>/dev/null || true
+  case "$action" in
+    list) _sentry_list "$@" ;; get) _sentry_get "$@" ;; create) _sentry_write POST "" "$@" ;;
+    update) local id="${1:-}"; [ -n "$id" ] || die "DSN ID is required"; shift; _sentry_write PATCH "$id" "$@" ;;
+    delete) _sentry_delete "$@" ;;
+    -h|--help|"") sentry_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown sentry action: $action (use list, get, create, update, delete)" ;;
+  esac
+}
+
+_sentry_common_options() {
+  return 0
+}
+
+_sentry_list() {
+  while [ "$#" -gt 0 ]; do case "$1" in --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl sentry list\n'; return 0 ;; *) die "unknown sentry list option: $1" ;; esac; done
+  if [ "$DRY_RUN" -eq 1 ]; then _sentry_dry GET "integrations/sentry"; return; fi
+  api_get "integrations/sentry" || return 1
+  emit_formatted_response "$LAST_RESPONSE_FILE" '{"type":"table","fields":["id","name","routing_method","enabled","forward_enabled","last_event_at"],"headers":["id","name","routing","enabled","forward","last_event_at"]}'
+}
+
+_sentry_get() {
+  local id="${1:-}"; [ -n "$id" ] || die "DSN ID is required"; shift 2>/dev/null || true
+  while [ "$#" -gt 0 ]; do case "$1" in --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl sentry get <dsn-id>\n'; return 0 ;; *) die "unknown sentry get option: $1" ;; esac; done
+  if [ "$DRY_RUN" -eq 1 ]; then _sentry_dry GET "integrations/sentry/$id"; return; fi
+  api_get "integrations/sentry/$id" || return 1
+  emit_response
+}
+
+_sentry_write() {
+  local method="$1" id="$2"; shift 2
+  local config=""
+  while [ "$#" -gt 0 ]; do case "$1" in --config) require_value "$1" "$2"; config="$2"; shift 2 ;; --config=*) config=${1#*=}; shift ;; --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl sentry %s %s--config FILE\n' "$( [ "$method" = POST ] && printf create || printf update )" "$( [ -n "$id" ] && printf '<dsn-id> ' )"; return 0 ;; *) die "unknown sentry option: $1" ;; esac; done
+  [ -n "$config" ] || die "--config is required"; [ -f "$config" ] || die "config file does not exist: $config"
+  require_jq; "$JQ_BIN" -e 'type == "object"' "$config" >/dev/null || die "--config must contain a JSON object"
+  local path="integrations/sentry${id:+/$id}"
+  if [ "$DRY_RUN" -eq 1 ]; then _sentry_dry "$method" "$path"; printf 'body: %s\n' "$(cat "$config")"; return; fi
+  if [ "$method" = POST ]; then api_post "$path" "$config" || return 1; else api_patch "$path" "$config" || return 1; fi
+  emit_response
+}
+
+_sentry_delete() {
+  local id="${1:-}"; [ -n "$id" ] || die "DSN ID is required"; shift 2>/dev/null || true
+  while [ "$#" -gt 0 ]; do case "$1" in --dry-run) DRY_RUN=1; shift ;; -h|--help) printf 'Usage: appmctl sentry delete <dsn-id>\n'; return 0 ;; *) die "unknown sentry delete option: $1" ;; esac; done
+  if [ "$DRY_RUN" -eq 1 ]; then _sentry_dry DELETE "integrations/sentry/$id"; return; fi
+  api_delete "integrations/sentry/$id" || return 1; printf 'Sentry DSN %s deleted\n' "$id"
+}
+
+_sentry_dry() { local url; require_config; url=$(build_url "$2") || return 1; printf 'dry-run: no request sent\nmethod: %s\nurl: %s\n' "$1" "$url"; }
+
+
+telemetry_usage() {
+  cat <<'EOF'
+Usage: appmctl [global options] telemetry <action> [options]
+
+Actions:
+  issues                    List grouped error issues for an app
+  issue <issue-id>          Inspect an issue and selected occurrence
+  traces                    List traces for an app
+  trace <trace-id>          Inspect a trace and selected event
+
+List filters: --environment VALUE, --identifier UUID (repeatable), --search TEXT, --per-page N
+Detail option: --event UUID
+EOF
+}
+
+command_telemetry() {
+  local action="${1:-}"; shift 2>/dev/null || true
+  case "$action" in issues) _telemetry_list issues "$@" ;; traces) _telemetry_list traces "$@" ;; issue) _telemetry_show issues "${1:-}" "${@:2}" ;; trace) _telemetry_show traces "${1:-}" "${@:2}" ;; -h|--help|"") telemetry_usage; [ -z "$action" ] && return 1; return 0 ;; *) die "unknown telemetry action: $action (use issues, issue, traces, trace)" ;; esac
+}
+
+_telemetry_list() {
+  local kind="$1"; shift; local app="${APP:-}" environment="" search="" per_page=""; local identifiers=()
+  while [ "$#" -gt 0 ]; do case "$1" in --app) require_value "$1" "$2"; app="$2"; shift 2 ;; --app=*) app=${1#*=}; shift ;; --environment) require_value "$1" "$2"; environment="$2"; shift 2 ;; --environment=*) environment=${1#*=}; shift ;; --identifier) require_value "$1" "$2"; identifiers+=("$2"); shift 2 ;; --identifier=*) identifiers+=("${1#*=}"); shift ;; --search) require_value "$1" "$2"; search="$2"; shift 2 ;; --search=*) search=${1#*=}; shift ;; --per-page) require_value "$1" "$2"; per_page="$2"; shift 2 ;; --per-page=*) per_page=${1#*=}; shift ;; --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl telemetry %s [filters]\n' "$kind"; return 0 ;; *) die "unknown telemetry $kind option: $1" ;; esac; done
+  APP="$app"; require_app; require_jq
+  case "$per_page" in ''|*[!0-9]*) [ -z "$per_page" ] || die "--per-page must be a positive integer" ;; esac
+  local query="" pair encoded value
+  for pair in "environment:$environment" "search:$search" "per_page:$per_page"; do value=${pair#*:}; [ -z "$value" ] && continue; encoded=$(_telemetry_encode "$value"); query="${query}${query:+&}${pair%%:*}=$encoded"; done
+  for value in "${identifiers[@]+"${identifiers[@]}"}"; do encoded=$(_telemetry_encode "$value"); query="${query}${query:+&}identifiers%5B%5D=$encoded"; done
+  local path="apps/$APP/telemetry/$kind${query:+?$query}"
+  if [ "$DRY_RUN" -eq 1 ]; then _telemetry_dry "$path"; return; fi
+  api_get "$path" || return 1
+  if [ "$kind" = issues ]; then emit_formatted_response "$LAST_RESPONSE_FILE" '{"type":"table","fields":["id","title","events_count","status","last_seen_at"],"headers":["id","title","events","status","last_seen_at"]}'; else emit_formatted_response "$LAST_RESPONSE_FILE" '{"type":"table","fields":["trace_id","title","environment","release","occurred_at"],"headers":["trace_id","title","environment","release","occurred_at"]}'; fi
+}
+
+_telemetry_show() {
+  local kind="$1" id="$2"; shift 2; [ -n "$id" ] || die "${kind%?} ID is required"
+  local app="${APP:-}" event=""
+  while [ "$#" -gt 0 ]; do case "$1" in --app) require_value "$1" "$2"; app="$2"; shift 2 ;; --app=*) app=${1#*=}; shift ;; --event) require_value "$1" "$2"; event="$2"; shift 2 ;; --event=*) event=${1#*=}; shift ;; --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl telemetry %s <%s-id> [--event UUID]\n' "${kind%?}" "${kind%?}"; return 0 ;; *) die "unknown telemetry detail option: $1" ;; esac; done
+  APP="$app"; require_app; require_jq
+  local path="apps/$APP/telemetry/$kind/$id"; [ -n "$event" ] && path="$path?event=$(_telemetry_encode "$event")"
+  if [ "$DRY_RUN" -eq 1 ]; then _telemetry_dry "$path"; return; fi
+  api_get "$path" || return 1; emit_response
+}
+
+_telemetry_encode() { "$JQ_BIN" -nr --arg value "$1" '$value|@uri'; }
+_telemetry_dry() { local url; require_config; url=$(build_url "$1") || return 1; printf 'dry-run: no request sent\nmethod: GET\nurl: %s\n' "$url"; }
 
 main "$@"

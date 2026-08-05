@@ -10,6 +10,7 @@
     export let destinations = [];
     export let events = [];
     export let initialDestinationId = null;
+    export let globalVariables = [];
 
     const templateDefaults = () => Object.fromEntries(
         events.map((event) => [event.key, event.default_template]),
@@ -49,6 +50,19 @@
     let testError = '';
     let pendingRemoval = null;
     let removeProcessing = false;
+    let tagInput = '';
+
+    const addTag = () => {
+        const tag = tagInput.trim();
+        if (tag && !notificationForm.tags.includes(tag)) {
+            notificationForm.tags = [...notificationForm.tags, tag];
+        }
+        tagInput = '';
+    };
+
+    const removeTag = (tag) => {
+        notificationForm.tags = notificationForm.tags.filter((t) => t !== tag);
+    };
 
     const notificationForm = useForm({
         name: initialDestination?.name ?? '',
@@ -58,6 +72,7 @@
         bot_token: '',
         events: initialDestination?.events ?? ['build.completed', 'artifact.created'].filter((key) => events.some((event) => event.key === key)),
         templates: { ...templateDefaults(), ...(initialDestination?.templates ?? {}) },
+        tags: initialDestination?.tags ?? [],
         enabled: initialDestination?.status !== 'disabled',
     });
 
@@ -67,6 +82,9 @@
     $: connectedProvider = selectedDestination?.configured ? selectedDestination.provider : null;
     $: selectedProvider = providers.find((provider) => provider.value === notificationForm.provider) ?? providers[0];
     $: credentialField = notificationForm.provider === 'telegram' ? 'bot_token' : 'webhook_url';
+    $: convertingProvider = selectedDestination && selectedDestination.provider !== notificationForm.provider
+        ? providers.find((provider) => provider.value === selectedDestination.provider) ?? null
+        : null;
     $: destinationField = notificationForm.provider === 'telegram'
         ? {
             label: 'Chat ID or channel',
@@ -88,6 +106,7 @@
         notificationForm.bot_token = '';
         notificationForm.events = [...destination.events];
         notificationForm.templates = { ...templateDefaults(), ...destination.templates };
+        notificationForm.tags = destination.tags ?? [];
         notificationForm.enabled = destination.status !== 'disabled';
         credentialConfigured = Boolean(destination.configured)
             && notificationForm.provider === destination.provider;
@@ -105,10 +124,35 @@
         notificationForm.bot_token = '';
         notificationForm.events = ['build.completed', 'artifact.created'].filter((key) => events.some((event) => event.key === key));
         notificationForm.templates = templateDefaults();
+        notificationForm.tags = [];
         notificationForm.enabled = true;
         credentialConfigured = false;
         testError = '';
         notificationForm.clearErrors();
+    };
+
+    // Switching provider on a saved destination converts it: the stored credential
+    // is replaced, so the old provider silently stops receiving. Offer to carry the
+    // current setup into a brand new destination instead, which is what someone
+    // wanting to notify both providers actually means.
+    const splitIntoNewDestination = () => {
+        const carried = {
+            provider: notificationForm.provider,
+            destination: notificationForm.destination,
+            webhook_url: notificationForm.webhook_url,
+            bot_token: notificationForm.bot_token,
+            events: [...notificationForm.events],
+            templates: { ...notificationForm.templates },
+            tags: [...notificationForm.tags],
+        };
+        createDestination();
+        notificationForm.provider = carried.provider;
+        notificationForm.destination = carried.destination;
+        notificationForm.webhook_url = carried.webhook_url;
+        notificationForm.bot_token = carried.bot_token;
+        notificationForm.events = carried.events;
+        notificationForm.templates = carried.templates;
+        notificationForm.tags = carried.tags;
     };
 
     const chooseProvider = (provider) => {
@@ -242,8 +286,13 @@
         templateInput?.setSelectionRange(start + token.length, start + token.length);
     };
 
-    const renderPreview = (event, templates) => {
+    const renderPreview = (event, templates, tags) => {
         const examples = Object.fromEntries(event.variables.map((variable) => [variable.key, variable.example]));
+        // Global variables live outside event.variables, so they'd otherwise stay
+        // unsubstituted. Render them from the tags configured on this destination —
+        // that is what the server does, so the preview matches the delivered message.
+        examples['tags'] = (tags ?? []).map((tag) => `#${tag}`).join(' ');
+        examples['tags_str'] = (tags ?? []).join(' ');
 
         return (templates[event.key] ?? '')
             .replace(/{{\s*([a-zA-Z0-9_.]+)\s*}}/g, (token, key) => examples[key] ?? token);
@@ -377,6 +426,22 @@
                             {/each}
                         </div>
                         {#if notificationForm.errors.provider}<span class="error">{notificationForm.errors.provider}</span>{/if}
+                        {#if convertingProvider}
+                            <div class="mt-3 rounded-md border border-warn-text/30 bg-warn-text/10 px-3 py-2.5">
+                                <p class="text-xs leading-5 text-text">
+                                    Saving converts this destination from <strong>{convertingProvider.name}</strong> to
+                                    <strong>{selectedProvider.name}</strong>. The stored {convertingProvider.value === 'telegram' ? 'bot token' : 'webhook URL'}
+                                    is replaced, so {convertingProvider.name} stops receiving messages.
+                                </p>
+                                <button
+                                    type="button"
+                                    class="mt-2 border border-border bg-surface-raised px-2.5 py-1 text-xs font-semibold text-text shadow-none"
+                                    on:click={splitIntoNewDestination}
+                                >
+                                    Keep {convertingProvider.name} — create a separate {selectedProvider.name} destination
+                                </button>
+                            </div>
+                        {/if}
                     </fieldset>
 
                     <div class="mt-4 grid gap-4 md:grid-cols-2">
@@ -410,6 +475,37 @@
                             </span>
                         </div>
                     </div>
+
+                    <label class="mt-4 block">
+                        <span class="label">Notification tags</span>
+                        <span class="mt-1 block text-xs text-faint">Tags can be inserted into message templates as <code class="rounded-sm bg-brand-soft px-1 py-0.5 font-mono text-brand text-[11px]">{`{{tags}}`}</code> or <code class="rounded-sm bg-brand-soft px-1 py-0.5 font-mono text-brand text-[11px]">{`{{tags_str}}`}</code>.</span>
+                        <div class="mt-2 flex items-center gap-2">
+                            <input
+                                bind:value={tagInput}
+                                placeholder="Add a tag…"
+                                class="flex-1"
+                                on:keydown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ',') {
+                                        event.preventDefault();
+                                        addTag();
+                                    }
+                                }}
+                            />
+                            <button type="button" class="secondary min-h-0 px-3 py-2" on:click={addTag}>Add</button>
+                        </div>
+                        {#if notificationForm.tags.length > 0}
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                {#each notificationForm.tags as tag}
+                                    <span class="inline-flex items-center gap-1.5 rounded-full border border-brand-soft-line bg-brand-soft px-3 py-1 text-sm font-medium text-brand">
+                                        {tag}
+                                        <button type="button" class="grid h-4 w-4 place-items-center rounded-full text-brand/70 hover:bg-brand/10 hover:text-brand" aria-label={`Remove tag ${tag}`} on:click={() => removeTag(tag)}>
+                                            <span class="text-xs font-bold leading-none">&times;</span>
+                                        </button>
+                                    </span>
+                                {/each}
+                            </div>
+                        {/if}
+                    </label>
                 </div>
 
                 <div class="grid min-h-[540px] lg:grid-cols-[250px_minmax(0,1fr)]">
@@ -506,8 +602,21 @@
                                         required
                                     ></textarea>
                                     {#if eventError(selectedEvent.key)}<span class="error">{eventError(selectedEvent.key)}</span>{/if}
-                                    <div class="mt-3 flex flex-wrap gap-1.5" aria-label={`Available values for ${selectedEvent.label}`}>
+                                    <div class="mt-3 flex flex-wrap items-center gap-1.5" aria-label={`Available values for ${selectedEvent.label}`}>
+                                        <span class="mr-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">Event</span>
                                         {#each selectedEvent.variables as variable (variable.key)}
+                                            <button
+                                                type="button"
+                                                class="chip border-border bg-surface-sunken font-mono text-xs text-text hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand"
+                                                title={variable.description}
+                                                on:click={() => insertVariable(variable.key)}
+                                            >
+                                                <Plus class="h-3 w-3" />{`{{${variable.key}}}`}
+                                            </button>
+                                        {/each}
+                                        <span class="mx-1 h-4 w-px bg-border"></span>
+                                        <span class="font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">Global</span>
+                                        {#each globalVariables as variable (variable.key)}
                                             <button
                                                 type="button"
                                                 class="chip border-border bg-surface-sunken font-mono text-xs text-text hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand"
@@ -543,7 +652,7 @@
                                                 <p class="font-mono text-xs text-faint">just now · {notificationForm.destination || 'your destination'}</p>
                                             </div>
                                         </div>
-                                        <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-text">{renderPreview(selectedEvent, notificationForm.templates) || 'Your message preview will appear here.'}</p>
+                                        <p class="mt-3 whitespace-pre-wrap text-sm leading-6 text-text">{renderPreview(selectedEvent, notificationForm.templates, notificationForm.tags) || 'Your message preview will appear here.'}</p>
                                     </div>
                                     {#if testError}<span class="error mt-1">{testError}</span>{/if}
                                 </div>
@@ -575,6 +684,25 @@
                                                 {:else}
                                                     <span class="mt-2 block truncate font-mono text-xs font-normal text-muted">e.g. {variable.example}</span>
                                                 {/if}
+                                            </span>
+                                        </button>
+                                    {/each}
+                                </div>
+
+                                <h4 class="mt-6 text-sm font-semibold text-text">Global values</h4>
+                                <p class="mt-1 text-xs text-faint">These values are available in every notification template, regardless of the event.</p>
+                                <div class="mt-3 grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+                                    {#each globalVariables as variable (variable.key)}
+                                        <button
+                                            type="button"
+                                            class="group justify-start rounded-md border border-border bg-surface-raised p-3 text-left text-text shadow-none hover:border-brand-soft-line hover:bg-brand-soft"
+                                            on:click={() => insertVariable(variable.key)}
+                                        >
+                                            <span class="min-w-0">
+                                                <span class="block truncate font-mono text-xs text-brand">{`{{${variable.key}}}`}</span>
+                                                <span class="mt-1 block text-sm font-semibold">{variable.label}</span>
+                                                <span class="mt-0.5 block text-xs font-normal leading-4 text-faint">{variable.description}</span>
+                                                <span class="mt-2 block truncate font-mono text-xs font-normal text-muted">e.g. {variable.example}</span>
                                             </span>
                                         </button>
                                     {/each}

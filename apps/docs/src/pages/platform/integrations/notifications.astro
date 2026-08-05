@@ -25,93 +25,272 @@ import Screenshot from '../../../components/Screenshot.astro';
     events list and the templates are edited together on one screen.
   </p>
 
-  <h2>Providers</h2>
+  <h2>Configuring a destination</h2>
+  <Screenshot
+    src="notifications-destination-form"
+    alt="Destination form showing provider selector, name, channel label, credential field, and active toggle"
+    caption="The form adapts its fields to the selected provider."
+  />
+  <p>
+    Select a destination from the left sidebar to edit it, or click <strong>New destination</strong>
+    to create one. The right panel shows the configuration form with three sections: settings,
+    events, and templates.
+  </p>
+
+  <h3>Settings</h3>
   <table>
     <thead>
-      <tr><th>Provider</th><th>What it needs</th></tr>
+      <tr><th>Field</th><th>Notes</th></tr>
     </thead>
     <tbody>
-      <tr><td>Slack</td><td>An incoming webhook URL. The webhook itself determines the channel.</td></tr>
-      <tr><td>Discord</td><td>A channel webhook URL. Messages are capped at 2,000 characters.</td></tr>
-      <tr><td>Telegram</td><td>A bot token plus a numeric chat ID or an <code>@channel</code> username.</td></tr>
+      <tr><td>Provider</td><td>Slack, Discord, or Telegram — determines the credential field and message limits.</td></tr>
+      <tr><td>Name</td><td>A recognizable label for the destination (e.g. <code>#mobile-releases</code>).</td></tr>
+      <tr>
+        <td>Channel label</td>
+        <td>
+          For Slack and Discord: a display label only — the webhook URL decides the actual channel.
+          For Telegram: the numeric chat ID or <code>@channel</code> username used when sending.
+        </td>
+      </tr>
+      <tr>
+        <td>Credential</td>
+        <td>
+          Slack/Discord: incoming webhook URL. Telegram: bot token. Encrypted at rest and never shown
+          again after save. Leave blank to keep the current value.
+        </td>
+      </tr>
+      <tr><td>Active / Paused</td><td>Disables delivery without deleting the destination or its templates.</td></tr>
+      <tr>
+        <td>Notification tags</td>
+        <td>
+          Tags inserted into templates via <code>&#123;&#123;tags&#125;&#125;</code> or
+          <code>&#123;&#123;tags_str&#125;&#125;</code>. A property of the destination, not of the build.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Providers</h3>
+  <table>
+    <thead>
+      <tr><th>Provider</th><th>Credential</th><th>Message limit</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Slack</td><td>Webhook URL (<code>hooks.slack.com</code>)</td><td>4 000 chars</td><td>Webhook determines the channel</td></tr>
+      <tr><td>Discord</td><td>Webhook URL (<code>discord.com</code>)</td><td>2 000 chars</td><td>Webhook determines the channel</td></tr>
+      <tr><td>Telegram</td><td>Bot token</td><td>4 000 chars</td><td>Chat ID or <code>@channel</code> required</td></tr>
     </tbody>
   </table>
   <p>
-    The <strong>Channel label</strong> is only a recognisable name for the destination — it does not
-    route anything. For Slack and Discord the webhook URL decides where messages land, so a label of
-    <code>#mobile-releases</code> pointing at a webhook for <code>#general</code> will mislead you and
-    nothing else.
-  </p>
-  <p>
-    Credentials are encrypted at rest and never shown again. The field reads
-    <em>Stored securely — enter a new URL to replace it</em>, and leaving it blank keeps the current
-    value rather than clearing it, the same convention as the credentials vault.
+    Switching provider on a saved destination shows a warning: the stored credential is replaced, so
+    the old provider stops receiving messages. The form offers to create a separate destination
+    instead.
   </p>
 
-  <h2>Templates</h2>
+  <h2>Events and templates</h2>
+  <Screenshot
+    src="notifications-template-editor"
+    alt="Template editor showing event list with toggles, message textarea, insertable variable chips, and rendered example preview"
+    caption="Select an event from the left list to edit its message template on the right."
+  />
   <p>
-    Each event's message is a template with double-braced, dotted placeholders:
+    The left column lists all available events grouped by category (Builds, Credentials, etc.).
+    Toggle an event on to subscribe to it, then click its name to edit the message template. The
+    right column shows the template textarea, insertable variable chips, and a rendered example
+    preview.
   </p>
-  <pre><code>&#123;&#123;build.status_icon&#125;&#125; &#123;&#123;app.name&#125;&#125; &#123;&#123;build.profile&#125;&#125; build &#123;&#123;build.status&#125;&#125; in &#123;&#123;build.duration&#125;&#125; — &#123;&#123;build.url&#125;&#125;</code></pre>
-  <p>
-    Which placeholders are available depends on the event. Build events expose the build; artifact
-    events expose the artifact; identifier events expose the identifier.
-  </p>
+
+  <h3>Available events</h3>
   <table>
     <thead>
-      <tr><th>Group</th><th>Placeholders</th></tr>
+      <tr><th>Category</th><th>Event</th><th>Fires when</th></tr>
     </thead>
     <tbody>
-      <tr><td>Application</td><td><code>app.name</code></td></tr>
+      <tr><td rowspan="2">Application</td><td><code>mobile_app.created</code></td><td>A new application is added</td></tr>
+      <tr><td><code>mobile_app.deleted</code></td><td>An application is removed</td></tr>
+      <tr><td rowspan="3">Identifiers</td><td><code>app_identifier.created</code></td><td>A platform identifier is added</td></tr>
+      <tr><td><code>app_identifier.updated</code></td><td>An identifier or its version is changed</td></tr>
+      <tr><td><code>app_identifier.deleted</code></td><td>An identifier is removed</td></tr>
+      <tr><td rowspan="4">Builds</td><td><code>build.created</code></td><td>A build enters the queue</td></tr>
+      <tr><td><code>build.started</code></td><td>A runner starts working on a build</td></tr>
+      <tr><td><code>build.completed</code></td><td>A build succeeds, fails, or is cancelled</td></tr>
+      <tr><td><code>artifact.created</code></td><td>A downloadable artifact is attached</td></tr>
+      <tr><td rowspan="8">Credentials</td><td><code>credential.created</code></td><td>A credential is added to the vault</td></tr>
+      <tr><td><code>credential.updated</code></td><td>A credential or its assignments change</td></tr>
+      <tr><td><code>credential.deleted</code></td><td>A credential is removed</td></tr>
+      <tr><td><code>credential.expiring_30_days</code></td><td>30 days before expiration</td></tr>
+      <tr><td><code>credential.expiring_7_days</code></td><td>7 days before expiration</td></tr>
+      <tr><td><code>credential.expiring_1_day</code></td><td>24 hours before expiration</td></tr>
+      <tr><td><code>credential.expired</code></td><td>Credential has expired</td></tr>
       <tr>
-        <td>Build</td>
-        <td>
-          <code>build.number</code>, <code>build.profile</code>, <code>build.status</code>,
-          <code>build.status_icon</code>, <code>build.duration</code>, <code>build.branch</code>,
-          <code>build.requested_by</code>, <code>build.url</code>
-        </td>
+        <td><code>credential.verification_failed</code></td>
+        <td>A build could not resolve a credential referenced in an external vault</td>
       </tr>
-      <tr>
-        <td>Identifier</td>
-        <td>
-          <code>identifier.name</code>, <code>identifier.value</code>,
-          <code>identifier.platform</code>, <code>identifier.version</code>,
-          <code>identifier.url</code>
-        </td>
-      </tr>
-      <tr>
-        <td>Artifact</td>
-        <td>
-          <code>artifact.name</code>, <code>artifact.type</code>, <code>artifact.size</code>,
-          <code>artifact.download_url</code>
-        </td>
-      </tr>
-      <tr><td>Tags</td><td><code>tags</code>, <code>tags_str</code></td></tr>
+      <tr><td>Team Management</td><td><code>team.invitation.created</code></td><td>Someone is invited to the workspace</td></tr>
     </tbody>
   </table>
   <p>
-    A placeholder with no value renders as <code>—</code> rather than an empty gap, so a message
-    stays readable when a build has no branch recorded.
+    There is no <code>build.failed</code> event: subscribe to <code>build.completed</code> and use
+    <code>&#123;&#123;build.status&#125;&#125;</code> in the template, which covers all final states
+    (completed, failed, cancelled).
   </p>
 
-  <h3>Notification tags</h3>
+  <h3>Template variables</h3>
   <p>
-    Tags added to a destination are inserted into templates through <code>&#123;&#123;tags&#125;&#125;</code>
-    or <code>&#123;&#123;tags_str&#125;&#125;</code>. They are a property of the destination, not of the
-    build — useful for marking which channel or environment a message came from.
+    Templates use double-braced, dotted placeholders. Click a variable chip below the textarea to
+    insert it. Variables with no value render as <code>—</code> rather than an empty gap.
+  </p>
+  <p>
+    <strong>Each event exposes its own set, and a variable outside that set is rejected on save</strong>
+    rather than rendering as a literal <code>&#123;&#123;…&#125;&#125;</code> in a live message. The
+    chips under the textarea are the authoritative list for the event you have selected; the tables
+    below say which events each variable belongs to. Examples match the values the
+    <strong>Rendered example</strong> panel fills in.
   </p>
 
-  <h2>Events and the Active toggle</h2>
+  <h4>Application events</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;app.name&#125;&#125;</code></td><td>Application display name</td><td>Atlas Mobile</td></tr>
+      <tr><td><code>&#123;&#123;app.slug&#125;&#125;</code></td><td>Application URL slug</td><td>atlas-mobile</td></tr>
+      <tr><td><code>&#123;&#123;app.description&#125;&#125;</code></td><td>Description, when available (created only)</td><td>Customer mobile application</td></tr>
+      <tr><td><code>&#123;&#123;app.url&#125;&#125;</code></td><td>Direct link to the application (created only)</td><td>https://…/apps/atlas-mobile</td></tr>
+      <tr><td><code>&#123;&#123;actor.name&#125;&#125;</code></td><td>Who created or deleted it</td><td>Maya Chen</td></tr>
+      <tr><td><code>&#123;&#123;app.tags&#125;&#125;</code></td><td>App tags prefixed with #</td><td>#ios #production</td></tr>
+      <tr><td><code>&#123;&#123;app.tags_str&#125;&#125;</code></td><td>App tags as plain text</td><td>ios production</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Identifier events</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;app.name&#125;&#125;</code></td><td>The application this identifier belongs to</td><td>Atlas Mobile</td></tr>
+      <tr><td><code>&#123;&#123;identifier.value&#125;&#125;</code></td><td>Bundle ID, package name, or web domain</td><td>com.example.atlas</td></tr>
+      <tr><td><code>&#123;&#123;identifier.platform&#125;&#125;</code></td><td>Identifier platform</td><td>ios</td></tr>
+      <tr><td><code>&#123;&#123;identifier.name&#125;&#125;</code></td><td>Optional display name</td><td>Atlas Mobile iOS</td></tr>
+      <tr><td><code>&#123;&#123;identifier.version&#125;&#125;</code></td><td>Configured version, when available</td><td>4.8.0</td></tr>
+      <tr><td><code>&#123;&#123;identifier.url&#125;&#125;</code></td><td>Link to the identifier settings</td><td>https://…/identifiers/ios</td></tr>
+      <tr><td><code>&#123;&#123;actor.name&#125;&#125;</code></td><td>Who made the change</td><td>Maya Chen</td></tr>
+      <tr><td><code>&#123;&#123;app.tags&#125;&#125;</code>, <code>&#123;&#123;app.tags_str&#125;&#125;</code></td><td>App tags, with and without <code>#</code></td><td>#ios #production</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Build events</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;app.name&#125;&#125;</code></td><td>Application name</td><td>Atlas Mobile</td></tr>
+      <tr><td><code>&#123;&#123;build.number&#125;&#125;</code></td><td>Workspace build sequence number</td><td>482</td></tr>
+      <tr><td><code>&#123;&#123;build.profile&#125;&#125;</code></td><td>Build profile (created and started only)</td><td>production</td></tr>
+      <tr><td><code>&#123;&#123;build.requested_by&#125;&#125;</code></td><td>Who requested it (created only)</td><td>Maya Chen</td></tr>
+      <tr><td><code>&#123;&#123;build.branch&#125;&#125;</code></td><td>Source branch or ref (started only)</td><td>release/4.8</td></tr>
+      <tr><td><code>&#123;&#123;build.status&#125;&#125;</code></td><td>Final status (completed only)</td><td>completed</td></tr>
+      <tr><td><code>&#123;&#123;build.status_icon&#125;&#125;</code></td><td>Icon matched to the final status (completed only)</td><td>✅</td></tr>
+      <tr><td><code>&#123;&#123;build.duration&#125;&#125;</code></td><td>Human-readable duration (completed only)</td><td>8m 42s</td></tr>
+      <tr><td><code>&#123;&#123;build.url&#125;&#125;</code></td><td>Direct link to the build</td><td>https://…/builds/482</td></tr>
+      <tr><td><code>&#123;&#123;build.tags&#125;&#125;</code></td><td>Build tags prefixed with #</td><td>#release #hotfix</td></tr>
+      <tr><td><code>&#123;&#123;build.tags_str&#125;&#125;</code></td><td>Build tags as plain text</td><td>release hotfix</td></tr>
+    </tbody>
+  </table>
   <p>
-    Each event has its own toggle, and the badge beside it — <strong>Will send</strong> — confirms the
-    combination of subscription and template is complete. The <strong>Active</strong> switch at the
-    top disables the whole destination without deleting it or losing its templates, which is what you
-    want during a noisy incident.
+    <code>&#123;&#123;build.profile&#125;&#125;</code> is the one that catches people: it is not
+    available on <code>build.completed</code>, so a "build finished" template has to name the profile
+    some other way or leave it out.
   </p>
+
+  <h4>Artifact events</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;app.name&#125;&#125;</code></td><td>The application the artifact belongs to</td><td>Atlas Mobile</td></tr>
+      <tr><td><code>&#123;&#123;artifact.name&#125;&#125;</code></td><td>File name</td><td>atlas-4.8.0.ipa</td></tr>
+      <tr><td><code>&#123;&#123;artifact.type&#125;&#125;</code></td><td>File format</td><td>ipa</td></tr>
+      <tr><td><code>&#123;&#123;artifact.size&#125;&#125;</code></td><td>Human-readable size</td><td>54.2 MB</td></tr>
+      <tr><td><code>&#123;&#123;artifact.download_url&#125;&#125;</code></td><td>Direct download link</td><td>https://…/atlas-4.8.0.ipa</td></tr>
+      <tr><td><code>&#123;&#123;build.number&#125;&#125;</code></td><td>The source build sequence number</td><td>482</td></tr>
+      <tr><td><code>&#123;&#123;build.tags&#125;&#125;</code>, <code>&#123;&#123;build.tags_str&#125;&#125;</code></td><td>Build tags, with and without <code>#</code></td><td>#release #hotfix</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Credential events</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;credential.name&#125;&#125;</code></td><td>Credential display name</td><td>App Store Certificate</td></tr>
+      <tr><td><code>&#123;&#123;credential.type&#125;&#125;</code></td><td>Credential category</td><td>ios_certificate</td></tr>
+      <tr><td><code>&#123;&#123;credential.expires_at&#125;&#125;</code></td><td>Expiration date, when available</td><td>Aug 31, 2026</td></tr>
+      <tr><td><code>&#123;&#123;credential.url&#125;&#125;</code></td><td>Link to Credentials Vault</td><td>https://…/credentials</td></tr>
+      <tr><td><code>&#123;&#123;app.name&#125;&#125;</code></td><td>The app linked to this credential, when any</td><td>Atlas Mobile</td></tr>
+      <tr>
+        <td><code>&#123;&#123;credential.days_remaining&#125;&#125;</code></td>
+        <td>The reminder milestone — expiry events only (<code>0</code> on <code>credential.expired</code>)</td>
+        <td>7</td>
+      </tr>
+      <tr>
+        <td><code>&#123;&#123;actor.name&#125;&#125;</code></td>
+        <td>Who made the change. <strong>Not available on the four expiry events</strong> — nobody performs an expiry.</td>
+        <td>Maya Chen</td>
+      </tr>
+      <tr><td><code>&#123;&#123;credential.tags&#125;&#125;</code>, <code>&#123;&#123;credential.tags_str&#125;&#125;</code></td><td>Credential tags, with and without <code>#</code></td><td>#ios #certificate</td></tr>
+    </tbody>
+  </table>
   <p>
-    As with webhooks, there is no <code>build.failed</code> event: subscribe to
-    <code>build.completed</code> and use <code>&#123;&#123;build.status&#125;&#125;</code> in the
-    template, which is exactly what the seeded example above does.
+    <code>credential.verification_failed</code> carries the same set as the created, updated and
+    deleted events, with <code>&#123;&#123;actor.name&#125;&#125;</code> naming what reported the
+    failure rather than a person.
+  </p>
+
+  <h4>Team invitation</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;team.name&#125;&#125;</code></td><td>Workspace display name</td><td>Atlas Team</td></tr>
+      <tr><td><code>&#123;&#123;invitation.email&#125;&#125;</code></td><td>Invited email address</td><td>alex@example.com</td></tr>
+      <tr><td><code>&#123;&#123;invitation.role&#125;&#125;</code></td><td>Role granted by the invitation</td><td>contributor</td></tr>
+      <tr><td><code>&#123;&#123;invitation.url&#125;&#125;</code></td><td>Direct link to accept it</td><td>https://…/invitations/accept</td></tr>
+      <tr><td><code>&#123;&#123;actor.name&#125;&#125;</code></td><td>Who sent the invitation</td><td>Maya Chen</td></tr>
+    </tbody>
+  </table>
+  <p>
+    The invitation URL is an acceptance link. A destination subscribed to this event puts that link
+    into a chat channel, so subscribe it only where the channel membership is as trusted as the
+    workspace itself.
+  </p>
+
+  <h4>Global variables (available in every template)</h4>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Description</th><th>Example</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>&#123;&#123;tags&#125;&#125;</code></td><td>Destination tags prefixed with #</td><td>#mobile-releases</td></tr>
+      <tr><td><code>&#123;&#123;tags_str&#125;&#125;</code></td><td>Destination tags as plain text</td><td>mobile-releases</td></tr>
+    </tbody>
+  </table>
+  <p>
+    These two are the destination's own tags, not the build's or the app's — a build tag reaches a
+    template through <code>&#123;&#123;build.tags&#125;&#125;</code>.
+  </p>
+
+  <h3>Rendered example</h3>
+  <p>
+    Below the template textarea, a <strong>Rendered example</strong> panel shows how the message
+    will look with real values filled in. The <strong>Send example</strong> button delivers a test
+    message to the destination so you can verify the webhook works before going live.
   </p>
 
   <h2>Failures</h2>

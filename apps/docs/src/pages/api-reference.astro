@@ -17,15 +17,28 @@ import '@scalar/api-reference/vue-styles.css';
   <script>
     import { createApiReference } from '@scalar/api-reference';
 
+    const isDark = () => document.documentElement.dataset.theme === 'dark';
+
+    // Scalar styles itself from a light-mode/dark-mode class on <body> and reads
+    // its own "colorMode" key on mount, so the docs toggle drives both. Its config
+    // is not reactive to the theme, which is why this is not updateConfiguration.
+    function applyScalarTheme() {
+      const dark = isDark();
+      document.body.classList.toggle('dark-mode', dark);
+      document.body.classList.toggle('light-mode', !dark);
+      localStorage.setItem('colorMode', dark ? 'dark' : 'light');
+    }
+
     function init() {
       const el = document.getElementById('scalar-api-reference');
       if (!el) return;
 
-      createApiReference(el, {
+      const configuration = {
         url: '/openapi.yaml',
         proxyUrl: 'https://proxy.scalar.com',
         persistAuth: true,
-        darkMode: true,
+        // Scalar keeps its own theme, so it starts on ours and follows the toggle.
+        darkMode: isDark(),
         layout: 'modern',
         authentication: {
           preferredSecurityScheme: 'bearerAuth',
@@ -66,7 +79,13 @@ import '@scalar/api-reference/vue-styles.css';
           description: 'Interactive API documentation for the App Manager Platform.',
         },
         showOperationId: true,
-      });
+        // The docs toggle is the only theme control; Scalar's own would drift from it.
+        hideDarkModeToggle: true,
+      };
+
+      applyScalarTheme();
+      createApiReference(el, configuration);
+      document.addEventListener('docs:themechange', applyScalarTheme);
     }
 
     // Scalar needs DOM to be ready

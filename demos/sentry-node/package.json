@@ -1,0 +1,11 @@
+{
+  "name": "app-manager-sentry-node-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "node --env-file=.env demo.mjs"
+  },
+  "dependencies": {
+    "@sentry/node": "9.47.1"
+  }
+}

@@ -15,9 +15,17 @@ const decoded = code
   .replace(/&gt;/g, '>')
   .replace(/&amp;/g, '&');
 
+// Both palettes are emitted as --shiki-light / --shiki-dark custom properties on
+// every token, so switching themes is a CSS swap with no re-highlighting. Without
+// this the dark palette rendered on the light background, where most tokens were
+// too pale to read.
 const raw = await codeToHtml(decoded, {
   lang,
-  theme: 'github-dark',
+  themes: {
+    light: 'github-light',
+    dark: 'github-dark',
+  },
+  defaultColor: false,
 });
 
 // Merge our class into Shiki's existing class attribute
@@ -44,5 +52,17 @@ const html = raw.replace(
   .code-block code,
   .code-block code span {
     font-family: var(--font-mono) !important;
+  }
+
+  /* Shiki's own background is dropped in favour of --bg-code above, so only the
+     token colours are picked up from the active palette. */
+  .code-block,
+  .code-block span {
+    color: var(--shiki-light);
+  }
+
+  :root[data-theme='dark'] .code-block,
+  :root[data-theme='dark'] .code-block span {
+    color: var(--shiki-dark);
   }
 </style>

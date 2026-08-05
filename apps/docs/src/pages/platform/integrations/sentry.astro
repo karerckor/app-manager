@@ -1,0 +1,116 @@
+---
+import DocsLayout from '../../../layouts/DocsLayout.astro';
+import Screenshot from '../../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Sentry" activeNav="/platform/integrations/sentry">
+  <h1>Sentry</h1>
+  <p>
+    Sentry is a compatible event relay for errors and traces. Create one routed DSN, attach one or
+    more application targets to it, and the platform resolves each incoming envelope to the right
+    application. The original envelope is retained for inspection and can optionally be forwarded to
+    an upstream Sentry-compatible DSN.
+  </p>
+
+  <Screenshot
+    src="integrations-sentry"
+    alt="Sentry integration tab with a customer telemetry relay, two routed application targets, relay status and recent errors and traces"
+    caption="A routed DSN can serve more than one application target while preserving a per-target DSN for SDK setup."
+  />
+
+  <h2>Create a routed DSN</h2>
+  <p>
+    Open <strong>Workspace settings → Integrations → Sentry</strong> and select
+    <strong>New routed DSN</strong>. Give it a recognizable name, choose how events identify their
+    application, and add at least one target. A target is an application by itself or one specific
+    package identifier / web domain belonging to that application.
+  </p>
+  <p>
+    The platform gives every target its own compatible DSN. Use that target DSN in the Sentry SDK
+    when an application has one fixed destination. Use the shared DSN when a single SDK endpoint must
+    resolve between multiple targets.
+  </p>
+
+  <h3>Routing methods</h3>
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Where the values come from</th><th>Use it when</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Query</td><td>Query parameters on the envelope request</td><td>Your transport can add stable request parameters.</td></tr>
+      <tr><td>Headers</td><td>HTTP headers on the envelope request</td><td>A server-side transport or proxy controls request headers.</td></tr>
+      <tr><td>Event metadata</td><td>The Sentry event's <code>contexts</code>, <code>extra</code>, <code>tags</code>, or <code>attributes</code></td><td>The SDK already knows the application at runtime.</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Configure an application-slug key and, when targets share an application, an identifier key. The
+    identifier value can match either the exact package identifier / web domain or its platform
+    (<code>ios</code>, <code>android</code>, or <code>web</code>). A shared DSN must resolve to exactly
+    one configured target; otherwise the envelope is rejected rather than being attributed to the
+    wrong application.
+  </p>
+
+  <h3>Routing from SDK metadata</h3>
+  <p>
+    With <strong>Event metadata</strong> and source <strong>Contexts</strong>, the following JavaScript
+    setup matches the default keys <code>app.slug</code> and <code>app.identifier</code>. The same two
+    values may instead be supplied through <code>setExtra</code>, <code>setTag</code>, or
+    <code>setAttribute</code> when that source is selected (or when the source is <strong>Auto</strong>).
+  </p>
+  <pre><code>import * as Sentry from '@sentry/node';
+
+Sentry.init(&#123; dsn: 'https://TARGET_KEY@your-app-manager.example/PROJECT_ID' &#125;);
+
+Sentry.setContext('app', &#123;
+  slug: 'customer-app',
+  identifier: 'customer.acme.example', // package ID or web domain
+&#125;);</code></pre>
+  <p>
+    Use your copied DSN exactly as shown. Never put an upstream DSN or secret token in client-side
+    code; upstream forwarding is configured only in the platform.
+  </p>
+
+  <h2>Inspect errors and traces on the application</h2>
+  <p>
+    Each routed event appears on the target application's <strong>Errors &amp; traces</strong> page,
+    alongside builds, files, and media. Repeated errors are grouped into one Issue by their Sentry
+    fingerprint, while every original occurrence remains available for inspection. Transactions stay
+    in a separate trace stream and remain connected through their trace ID.
+  </p>
+
+  <Screenshot
+    src="telemetry-errors-traces"
+    alt="Customer App errors and traces triage page with Issue inbox, Trace stream, filters and search"
+    caption="The application page is a compact inbox: filter, search, then open the Issue or trace that needs investigation."
+  />
+
+  <p>
+    Filter the Issue inbox or trace stream by environment and one or more app identifiers or domains.
+    Opening an Issue or trace takes you to a dedicated investigation page, where you can switch
+    between its occurrences/events without leaving the case. It shows the exact exception and source
+    context, request, user, contexts and extra data, tags, and raw JSON. Tabs without data are omitted.
+  </p>
+
+  <Screenshot
+    src="telemetry-issue-detail"
+    alt="Dedicated Issue investigation page with an occurrence rail and full Sentry event payload"
+    caption="Each case keeps its event timeline beside the complete payload, so the inbox stays focused on triage."
+  />
+
+  <h2>Forward to an upstream DSN</h2>
+  <p>
+    Enable <strong>Relay to upstream Sentry DSN</strong> in the DSN form and enter an optional
+    Sentry-compatible upstream DSN. After the platform stores and resolves the envelope, it forwards
+    the untouched envelope asynchronously. A forwarding failure does not remove the locally captured
+    event; the relay status and consecutive failures remain visible on the Sentry integration tab.
+  </p>
+  <p>
+    This lets an existing Sentry or Better Stack workflow continue unchanged while the platform adds
+    application-level errors and traces.
+  </p>
+  <p>
+    Automation can manage the same DSNs and inspect the same cases through the
+    <a href="/cli/integrations/sentry"><code>appmctl sentry</code> and <code>appmctl telemetry</code> commands</a>.
+    The Web UI and API share their request validation, so routing rules behave identically in both surfaces.
+  </p>
+</DocsLayout>

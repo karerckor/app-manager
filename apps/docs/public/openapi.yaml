@@ -67,6 +67,10 @@ tags:
     description: Team API key management
   - name: Webhooks
     description: Outbound webhook endpoints and delivery history
+  - name: Sentry
+    description: Routed Sentry-compatible DSNs and upstream relay settings
+  - name: Telemetry
+    description: Application error issues, occurrences, and distributed traces
 
 paths:
   /apps:
@@ -2757,6 +2761,188 @@ paths:
       security:
         - bearerAuth: [api-keys:write]
 
+  /integrations/sentry:
+    get:
+      operationId: listSentryDsns
+      summary: List routed Sentry DSNs
+      tags: [Sentry]
+      responses:
+        '200':
+          description: Routed DSNs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SentryDsn' }
+      security: [{ bearerAuth: [integrations:read] }]
+    post:
+      operationId: createSentryDsn
+      summary: Create a routed Sentry DSN
+      tags: [Sentry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SentryDsnInput' }
+      responses:
+        '201':
+          description: Routed DSN created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryDsn' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+      security: [{ bearerAuth: [integrations:write] }]
+
+  /integrations/sentry/{sentry_dsn}:
+    parameters:
+      - $ref: '#/components/parameters/SentryDsnId'
+    get:
+      operationId: getSentryDsn
+      summary: Get a routed Sentry DSN
+      tags: [Sentry]
+      responses:
+        '200':
+          description: Routed DSN
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryDsn' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security: [{ bearerAuth: [integrations:read] }]
+    patch:
+      operationId: updateSentryDsn
+      summary: Replace a routed Sentry DSN configuration
+      description: Uses the same complete request object and validation as the Web UI. Existing upstream DSN is retained when forwarding remains enabled and `upstream_dsn` is omitted or empty.
+      tags: [Sentry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SentryDsnInput' }
+      responses:
+        '200':
+          description: Routed DSN updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryDsn' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+      security: [{ bearerAuth: [integrations:write] }]
+    delete:
+      operationId: deleteSentryDsn
+      summary: Delete a routed Sentry DSN
+      tags: [Sentry]
+      responses:
+        '204': { description: Routed DSN deleted }
+      security: [{ bearerAuth: [integrations:write] }]
+
+  /apps/{app_slug}/telemetry/issues:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+    get:
+      operationId: listAppSentryIssues
+      summary: List grouped error issues for an application
+      tags: [Telemetry]
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentParam'
+        - $ref: '#/components/parameters/TelemetryIdentifiersParam'
+        - $ref: '#/components/parameters/TelemetrySearchParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated issue list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/SentryIssue' }
+      security: [{ bearerAuth: [apps:read] }]
+
+  /apps/{app_slug}/telemetry/issues/{issue}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/SentryIssueId'
+    get:
+      operationId: getAppSentryIssue
+      summary: Inspect an issue and one occurrence
+      tags: [Telemetry]
+      parameters:
+        - $ref: '#/components/parameters/TelemetryEventParam'
+      responses:
+        '200':
+          description: Issue timeline and complete selected SDK event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryIssueDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security: [{ bearerAuth: [apps:read] }]
+
+  /apps/{app_slug}/telemetry/traces:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+    get:
+      operationId: listAppSentryTraces
+      summary: List distributed traces for an application
+      tags: [Telemetry]
+      parameters:
+        - $ref: '#/components/parameters/EnvironmentParam'
+        - $ref: '#/components/parameters/TelemetryIdentifiersParam'
+        - $ref: '#/components/parameters/TelemetrySearchParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Trace list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SentryTrace' }
+      security: [{ bearerAuth: [apps:read] }]
+
+  /apps/{app_slug}/telemetry/traces/{trace_id}:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/SentryTraceId'
+    get:
+      operationId: getAppSentryTrace
+      summary: Inspect a trace and one event
+      tags: [Telemetry]
+      parameters:
+        - $ref: '#/components/parameters/TelemetryEventParam'
+      responses:
+        '200':
+          description: Trace timeline and complete selected SDK event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryTraceDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security: [{ bearerAuth: [apps:read] }]
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2857,6 +3043,48 @@ components:
       schema:
         type: string
       description: API key ID
+    SentryDsnId:
+      name: sentry_dsn
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: Routed Sentry DSN ID
+    SentryIssueId:
+      name: issue
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: Grouped Sentry issue ID
+    SentryTraceId:
+      name: trace_id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[A-Fa-f0-9]{32}$' }
+      description: Sentry trace ID
+    TelemetryEventParam:
+      name: event
+      in: query
+      schema: { type: string, format: uuid }
+      description: Event or occurrence to select in the returned detail
+    EnvironmentParam:
+      name: environment
+      in: query
+      schema: { type: string, maxLength: 255 }
+    TelemetryIdentifiersParam:
+      name: identifiers[]
+      in: query
+      schema:
+        type: array
+        maxItems: 100
+        items: { type: string, format: uuid }
+      style: form
+      explode: true
+      description: App identifier IDs or web domains configured on this application
+    TelemetrySearchParam:
+      name: search
+      in: query
+      schema: { type: string, maxLength: 255 }
+      description: Search title, fingerprint, release, event ID, or trace ID
     PerPageParam:
       name: per_page
       in: query
@@ -2876,6 +3104,143 @@ components:
       description: Page number
 
   schemas:
+    SentryDsnInput:
+      type: object
+      required: [name, routing_method, app_key, routes, forward_enabled]
+      properties:
+        name: { type: string, maxLength: 255 }
+        routing_method: { type: string, enum: [query, header, event] }
+        event_source:
+          type: string
+          nullable: true
+          enum: [auto, contexts, extra, tags, attributes]
+          description: Required when `routing_method` is `event`.
+        app_key: { type: string, maxLength: 120, example: app_slug }
+        identifier_key: { type: string, maxLength: 120, nullable: true, example: app_identifier }
+        routes:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [mobile_app_id]
+            properties:
+              mobile_app_id: { type: string, format: uuid }
+              app_identifier_id: { type: string, format: uuid, nullable: true }
+        forward_enabled: { type: boolean }
+        upstream_dsn:
+          type: string
+          maxLength: 2048
+          nullable: true
+          writeOnly: true
+        enabled: { type: boolean, default: true }
+
+    SentryDsn:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        integration_id: { type: string, format: uuid }
+        name: { type: string }
+        enabled: { type: boolean }
+        dsn: { type: string, format: uri }
+        project_id: { type: string }
+        routing_method: { type: string, enum: [query, header, event] }
+        event_source: { type: string, nullable: true }
+        app_key: { type: string }
+        identifier_key: { type: string, nullable: true }
+        forward_enabled: { type: boolean }
+        routes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              dsn: { type: string, format: uri }
+              mobile_app_id: { type: string, format: uuid }
+              app_slug: { type: string }
+              app_identifier_id: { type: string, format: uuid, nullable: true }
+              identifier: { type: string, nullable: true }
+              platform: { type: string, nullable: true }
+        last_event_at: { type: string, format: date-time, nullable: true }
+        last_forwarded_at: { type: string, format: date-time, nullable: true }
+
+    SentryIssue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        fingerprint: { type: string }
+        status: { type: string, example: unresolved }
+        level: { type: string, nullable: true }
+        title: { type: string }
+        events_count: { type: integer }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        identifier: { type: string, nullable: true }
+        identifier_platform: { type: string, nullable: true }
+
+    SentryEventSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        item_type: { type: string, enum: [event, transaction] }
+        title: { type: string }
+        level: { type: string, nullable: true }
+        environment: { type: string, nullable: true }
+        release: { type: string, nullable: true }
+        occurred_at: { type: string, format: date-time }
+        trace_id: { type: string, nullable: true }
+
+    SentryEvent:
+      allOf:
+        - $ref: '#/components/schemas/SentryEventSummary'
+        - type: object
+          description: Complete normalized event plus the untouched SDK payload.
+          properties:
+            event_id: { type: string, nullable: true }
+            platform: { type: string, nullable: true }
+            identifier: { type: string, nullable: true }
+            dsn_name: { type: string, nullable: true }
+            forward_status: { type: string, nullable: true }
+            exceptions: { type: array, items: { type: object, additionalProperties: true } }
+            trace: { type: object, additionalProperties: true }
+            sdk: { type: object, additionalProperties: true }
+            contexts: { type: object, additionalProperties: true }
+            user: { type: object, additionalProperties: true }
+            request: { type: object, additionalProperties: true }
+            tags: { type: array, items: { type: object, additionalProperties: true } }
+            extra: { type: object, additionalProperties: true }
+            raw_payload: { type: object, additionalProperties: true }
+
+    SentryIssueDetail:
+      allOf:
+        - $ref: '#/components/schemas/SentryIssue'
+        - type: object
+          properties:
+            timeline: { type: array, items: { $ref: '#/components/schemas/SentryEventSummary' } }
+            selected_event: { $ref: '#/components/schemas/SentryEvent' }
+
+    SentryTrace:
+      type: object
+      properties:
+        trace_id: { type: string }
+        title: { type: string }
+        environment: { type: string, nullable: true }
+        release: { type: string, nullable: true }
+        occurred_at: { type: string, format: date-time }
+        identifier: { type: string, nullable: true }
+        identifier_platform: { type: string, nullable: true }
+
+    SentryTraceDetail:
+      allOf:
+        - $ref: '#/components/schemas/SentryTrace'
+        - type: object
+          properties:
+            events_count: { type: integer }
+            first_seen_at: { type: string, format: date-time }
+            last_seen_at: { type: string, format: date-time }
+            timeline: { type: array, items: { $ref: '#/components/schemas/SentryEventSummary' } }
+            selected_event: { $ref: '#/components/schemas/SentryEvent' }
+
     MobileApp:
       type: object
       properties:

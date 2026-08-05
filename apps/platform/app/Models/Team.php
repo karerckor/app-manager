@@ -84,6 +84,21 @@ class Team extends Model
         return $this->hasMany(NotificationDestination::class);
     }
 
+    public function sentryDsns(): HasMany
+    {
+        return $this->hasMany(SentryDsn::class);
+    }
+
+    public function sentryEvents(): HasMany
+    {
+        return $this->hasMany(SentryEvent::class);
+    }
+
+    public function sentryIssues(): HasMany
+    {
+        return $this->hasMany(SentryIssue::class);
+    }
+
     public function webhookEvents(): HasMany
     {
         return $this->hasMany(WebhookEvent::class);

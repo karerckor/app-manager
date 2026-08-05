@@ -11,6 +11,7 @@ enum IntegrationProvider: string
     case Slack = 'slack';
     case Discord = 'discord';
     case Telegram = 'telegram';
+    case Sentry = 'sentry';
     case Custom = 'custom';
 
     public function label(): string
@@ -23,6 +24,7 @@ enum IntegrationProvider: string
             self::Slack => 'Slack',
             self::Discord => 'Discord',
             self::Telegram => 'Telegram',
+            self::Sentry => 'Sentry',
             self::Custom => 'Custom',
         };
     }

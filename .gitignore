@@ -6,8 +6,10 @@ apps/platform/vendor/
 apps/platform/node_modules/
 apps/platform/public/build/
 apps/docs/dist/
+apps/docs/dist.zip
 apps/docs/node_modules/
 apps/docs/.astro/
+apps/docs/src/data/build-ids.json
 libs/fastlane-plugin/.bundle/
 libs/fastlane-plugin/pkg/
 libs/fastlane-plugin/*.gem
@@ -20,3 +22,7 @@ libs/fastlane-plugin/*.gem
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Local review screenshots
+/builds-actions-after-fix.png
+/builds-after-fix.png

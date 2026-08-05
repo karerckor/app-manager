@@ -105,8 +105,18 @@ import Screenshot from '../../components/Screenshot.astro';
     build runs, so the page fills in as a manual build reports. Long logs are archived, and the
     archive stays downloadable after the live log is truncated.
   </p>
+
+  <Screenshot
+    src="build-detail"
+    alt="Build detail page showing status, profile, duration, log output, artifacts count, build logs terminal, run details sidebar, and artifacts list"
+    caption="The detail view of a completed manual build, with the log panel, run details sidebar, and two attached artifacts."
+  />
+
+  <h3>Artifacts</h3>
   <p>
-    Artifacts are listed with their size and metadata; each is downloadable. Artifacts belong to the
+    Artifacts are listed at the bottom of the build detail page with their size and metadata;
+    each is downloadable. The completed build below carries <code>app-release.aab</code> and
+    <code>mapping.txt</code> — the output of a successful Android build. Artifacts belong to the
     build, so deleting the build removes them — anything that should outlive a build belongs in
     <a href="/platform/files-and-assets">files</a>.
   </p>

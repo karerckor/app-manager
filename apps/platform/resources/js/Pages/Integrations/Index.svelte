@@ -12,6 +12,7 @@
     import WorkspacePage from '../../Components/WorkspacePage.svelte';
     import TabSelector from '../../Components/TabSelector.svelte';
     import NotificationsPanel from './NotificationsPanel.svelte';
+    import SentryPanel from './SentryPanel.svelte';
 
     export let auth;
     export let flash = {};
@@ -37,6 +38,11 @@
     export let notificationEvents = [];
     export let notificationDestinations = [];
     export let selectedNotificationDestinationId = null;
+    export let notificationGlobalVariables = [];
+    export let sentryEnabled = false;
+    export let storeSentryUrl = '';
+    export let sentryDsns = [];
+    export let sentryEvents = [];
 
     let showWebhook = false;
     let editingEndpoint = null;
@@ -377,6 +383,7 @@
         { value: 'expo', label: 'Expo EAS', href: integrationUrls.expo, active: activeTab === 'expo', count: expoIntegration.accounts?.length ?? 0, tone: 'violet' },
         { value: 'webhooks', label: 'Webhooks', href: integrationUrls.webhooks, active: activeTab === 'webhooks', count: webhookEndpoints.length, tone: 'emerald' },
         { value: 'notifications', label: 'Notifications', href: integrationUrls.notifications, active: activeTab === 'notifications', count: notificationDestinations.length, tone: 'amber' },
+        { value: 'sentry', label: 'Sentry', href: integrationUrls.sentry, active: activeTab === 'sentry', count: sentryDsns.length, tone: 'rose' },
     ];
 </script>
 
@@ -727,6 +734,14 @@
                     </div>
                 {/if}
             </section>
+        {:else if activeTab === 'sentry'}
+            <SentryPanel
+                enabled={sentryEnabled}
+                storeUrl={storeSentryUrl}
+                dsns={sentryDsns}
+                events={sentryEvents}
+                {apps}
+            />
         {:else if activeTab === 'notifications'}
             <NotificationsPanel
                 enabled={notificationsEnabled}
@@ -735,6 +750,7 @@
                 destinations={notificationDestinations}
                 events={notificationEvents}
                 initialDestinationId={selectedNotificationDestinationId}
+                globalVariables={notificationGlobalVariables}
             />
         {/if}
 </WorkspacePage>

@@ -4,6 +4,7 @@ use App\Enums\CredentialApiProfile;
 use App\Http\Controllers\Api\V1\AppAssetController;
 use App\Http\Controllers\Api\V1\AppFileController;
 use App\Http\Controllers\Api\V1\AppIdentifierController;
+use App\Http\Controllers\Api\V1\AppTelemetryController;
 use App\Http\Controllers\Api\V1\ArtifactController;
 use App\Http\Controllers\Api\V1\BuildController;
 use App\Http\Controllers\Api\V1\BuildLogController;
@@ -20,12 +21,20 @@ use App\Http\Controllers\Api\V1\IntegrationController;
 use App\Http\Controllers\Api\V1\IntegrationDiscoveryController;
 use App\Http\Controllers\Api\V1\MobileAppController;
 use App\Http\Controllers\Api\V1\PipelineBuildController;
+use App\Http\Controllers\Api\V1\SentryDsnController as ApiSentryDsnController;
 use App\Http\Controllers\Api\V1\TeamApiKeyController;
 use App\Http\Controllers\Api\V1\WebhookDeliveryController;
 use App\Http\Controllers\Api\V1\WebhookEndpointController;
 use App\Http\Controllers\BuildLogArchiveController;
+use App\Http\Controllers\Sentry\SentryEnvelopeController;
 use App\Http\Middleware\SetActorContext;
 use Illuminate\Support\Facades\Route;
+
+Route::options('/{sentryProjectId}/envelope', [SentryEnvelopeController::class, 'options'])
+    ->whereNumber('sentryProjectId');
+Route::post('/{sentryProjectId}/envelope', [SentryEnvelopeController::class, 'store'])
+    ->whereNumber('sentryProjectId')
+    ->name('sentry.envelope.store');
 
 Route::prefix('v1/{team:slug}')
     ->middleware(['auth:sanctum', 'team.member', SetActorContext::class])
@@ -37,6 +46,11 @@ Route::prefix('v1/{team:slug}')
             ->name('credential-types.index');
 
         Route::get('/integrations', [IntegrationController::class, 'index'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.index');
+        Route::get('/integrations/sentry', [ApiSentryDsnController::class, 'index'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.sentry.index');
+        Route::post('/integrations/sentry', [ApiSentryDsnController::class, 'store'])->middleware(['abilities:integrations:write', 'team.permission:manage_integrations'])->name('integrations.sentry.store');
+        Route::get('/integrations/sentry/{sentryDsn}', [ApiSentryDsnController::class, 'show'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.sentry.show');
+        Route::patch('/integrations/sentry/{sentryDsn}', [ApiSentryDsnController::class, 'update'])->middleware(['abilities:integrations:write', 'team.permission:manage_integrations'])->name('integrations.sentry.update');
+        Route::delete('/integrations/sentry/{sentryDsn}', [ApiSentryDsnController::class, 'destroy'])->middleware(['abilities:integrations:write', 'team.permission:manage_integrations'])->name('integrations.sentry.destroy');
         Route::get('/integrations/{integration}', [IntegrationController::class, 'show'])->middleware(['abilities:integrations:read', 'team.permission:manage_integrations'])->name('integrations.show');
 
         Route::post('/integrations/expo', [ExpoIntegrationController::class, 'store'])
@@ -88,6 +102,10 @@ Route::prefix('v1/{team:slug}')
         Route::get('/apps/{mobileApp:slug}', [MobileAppController::class, 'show'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.show');
         Route::patch('/apps/{mobileApp:slug}', [MobileAppController::class, 'update'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.update');
         Route::delete('/apps/{mobileApp:slug}', [MobileAppController::class, 'destroy'])->middleware(['abilities:apps:write', 'team.permission:manage_applications'])->name('apps.destroy');
+        Route::get('/apps/{mobileApp:slug}/telemetry/issues', [AppTelemetryController::class, 'issues'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.issues.index');
+        Route::get('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}', [AppTelemetryController::class, 'issue'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.issues.show');
+        Route::get('/apps/{mobileApp:slug}/telemetry/traces', [AppTelemetryController::class, 'traces'])->middleware(['abilities:apps:read', 'team.permission:view'])->name('apps.telemetry.traces.index');
+        Route::get('/apps/{mobileApp:slug}/telemetry/traces/{traceId}', [AppTelemetryController::class, 'trace'])->middleware(['abilities:apps:read', 'team.permission:view'])->where('traceId', '[A-Fa-f0-9]{32}')->name('apps.telemetry.traces.show');
 
         Route::get('/apps/{mobileApp:slug}/expo', [ExpoProjectController::class, 'show'])
             ->middleware([

@@ -182,19 +182,26 @@
                                     <div class="mt-1.5"><TagEditor tags={build.tags} url={build.tags_url} suggestions={allTags} /></div>
                                 </td>
                                 <td class="px-4 py-4 text-muted">{build.profile_type}</td>
-                                <td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status.replaceAll('_', ' ')}</span></td>
+                                <!-- Pills carry vertical padding and a full radius, so a label that
+                                     wraps in a narrow column renders as a tall oval instead of a
+                                     pill. Keep every pill label on one line. -->
+                                <td class="px-4 py-4"><span class="whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold {buildStatusClass(build.status)}">{build.status.replaceAll('_', ' ')}</span></td>
                                 <td class="px-4 py-4">
                                     {#if build.artifacts.length}
-                                        <span class="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-1 text-[10px] font-semibold text-brand"><Package class="h-3 w-3" />{build.artifacts.length} attached</span>
+                                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-soft px-2.5 py-1 text-[10px] font-semibold text-brand"><Package class="h-3 w-3 shrink-0" />{build.artifacts.length} attached</span>
                                     {:else}
-                                        <span class="inline-flex items-center gap-1.5 text-[10px] font-medium text-faint"><Package class="h-3 w-3" strokeWidth={1.8} />None</span>
+                                        <span class="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-medium text-faint"><Package class="h-3 w-3 shrink-0" strokeWidth={1.8} />None</span>
                                     {/if}
                                 </td>
                                 <td class="px-4 py-4 text-muted">{formatDateTime(build.started_at || build.created_at)}</td>
                                 <td class="px-4 py-4 font-mono text-[11px] tabular-nums {build.finished_at ? 'text-text' : 'text-faint'}">{formatDuration(build.started_at, build.finished_at)}</td>
                                 <td class="px-4 py-4 text-muted">{formatDateTime(build.finished_at)}</td>
                                 <td class="px-5 py-4">
-                                    <div class="flex justify-end gap-2">
+                                    <!-- items-center, or the default stretch makes every button as
+                                         tall as the tallest cell item; whitespace-nowrap keeps
+                                         two-word labels like "Open run" on one line, so the group
+                                         wraps as whole buttons instead of breaking them. -->
+                                    <div class="flex flex-wrap items-center justify-end gap-2 whitespace-nowrap">
                                         <Link href={build.show_url} class="rounded-md border border-border px-2.5 py-1.5 text-[10px] font-semibold text-muted hover:bg-surface-sunken">Details</Link>
                                         {#if build.logs_pending}<span class="px-2 py-1.5 text-[10px] font-medium text-faint">Syncing logs…</span>{/if}
                                         {#if build.external_url}<a href={build.external_url} target="_blank" rel="noreferrer" class="rounded-md border border-border px-2.5 py-1.5 text-[10px] font-semibold text-muted hover:bg-surface-sunken">Open run</a>{/if}

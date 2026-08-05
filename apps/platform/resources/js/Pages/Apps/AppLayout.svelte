@@ -76,6 +76,7 @@
         { value: 'media', label: 'Files and Media Library', href: app.urls.media_page, active: active === 'media' },
         { value: 'identifiers', label: 'Platforms and App Identifiers', href: app.urls.identifiers_page, active: active === 'identifiers', count: identifiers.length },
         { value: 'builds', label: 'Builds', href: app.urls.builds_page, active: active === 'builds' },
+        ...(app.urls.telemetry_page ? [{ value: 'telemetry', label: 'Errors & traces', href: app.urls.telemetry_page, active: active === 'telemetry' }] : []),
         ...(app.urls.expo_page ? [{ value: 'expo', label: 'Expo EAS', href: app.urls.expo_page, active: active === 'expo', tone: 'violet' }] : []),
     ];
     $: pipelineConfiguration = app.pipeline_configuration;

@@ -6,9 +6,9 @@ import Screenshot from '../../components/Screenshot.astro';
 <DocsLayout title="Team access" activeNav="/platform/team-access">
   <h1>Team access</h1>
   <p>
-    Team access controls who can reach a workspace and what they can do in it. It also holds two
-    workspace-wide settings: the display name, and whether new credential forms check for
-    duplicates.
+    Team access controls who can reach a workspace and what they can do in it. It also holds the
+    workspace-wide settings: the display name, whether new credential forms check for duplicates,
+    and where credentials in this workspace may be stored.
   </p>
 
   <Screenshot
@@ -117,8 +117,39 @@ import Screenshot from '../../components/Screenshot.astro';
           <a href="/platform/credentials-vault">Credentials Vault</a>.
         </td>
       </tr>
+      <tr>
+        <td>Permitted credential storage</td>
+        <td>
+          Which storage modes new credentials in this workspace may use — kept in App Manager,
+          referenced from your own vault, or both. See below.
+        </td>
+      </tr>
     </tbody>
   </table>
+
+  <h3>Permitted credential storage</h3>
+  <p>
+    A credential either stores its secrets in App Manager or points at material held in an external
+    secret manager. This setting narrows which of those a member may choose when creating one, and
+    the choice is made per workspace rather than per credential.
+  </p>
+  <p>
+    <strong>The section only appears when the instance itself permits more than one mode.</strong>
+    On an instance configured for local storage alone there is nothing to narrow, so the card is
+    absent rather than shown with a single locked checkbox.
+  </p>
+  <p>
+    Unchecking every box does not forbid all storage — it leaves the instance default in force,
+    which the form states directly under the list. Narrowing the list does not touch credentials
+    that already exist: storage mode is immutable after creation, so an existing external credential
+    keeps working even after external storage is unchecked. What changes is only what the
+    <strong>Add credential</strong> form will offer next time.
+  </p>
+  <p>
+    Editing this needs the <em>manage the team</em> permission, the same gate as membership, and the
+    result is visible in the vault as the <strong>Storage</strong> filter — see
+    <a href="/platform/credentials-vault">Credentials Vault → External vaults</a>.
+  </p>
 
   <h2>No API for membership</h2>
   <p>

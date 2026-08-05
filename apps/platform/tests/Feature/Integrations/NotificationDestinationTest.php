@@ -357,6 +357,81 @@ class NotificationDestinationTest extends TestCase
         $this->assertDatabaseCount('notification_deliveries', 1);
     }
 
+    public function test_one_event_fans_out_to_every_provider_configured_for_the_team(): void
+    {
+        Queue::fake();
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $slack = $this->destination($team, $owner);
+        $telegram = $this->destination(
+            $team,
+            $owner,
+            IntegrationProvider::Telegram,
+            ['bot_token' => '123456789:abcdefghijklmnopqrstuvwxyz'],
+            '-1001234567890',
+        );
+        $slack->update(['templates' => ['build.completed' => 'slack: #{{build.number}}']]);
+        $telegram->update(['templates' => ['build.completed' => 'telegram: #{{build.number}}']]);
+        $event = WebhookEvent::create([
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::BuildCompleted,
+            'schema_version' => 2,
+            'aggregate_type' => 'BuildRecord',
+            'aggregate_id' => '019fbcba-10d2-7df2-9c8e-af6504ef02bd',
+            'source' => 'web',
+            'payload' => [
+                'id' => '019fbcba-10d2-7df2-9c8e-af6504ef02bd',
+                'status' => 'completed',
+                'actor' => ['type' => 'user', 'display_name' => $owner->name],
+            ],
+            'filter_context' => ['mobile_app_ids' => []],
+            'occurred_at' => now(),
+            'published_at' => now(),
+        ]);
+
+        (new PublishNotificationEvent($event->id))->handle(app(NotificationTemplateRenderer::class));
+
+        $this->assertSame(
+            'slack: #019fbcba',
+            NotificationDelivery::query()->where('notification_destination_id', $slack->id)->sole()->rendered_message,
+        );
+        $this->assertSame(
+            'telegram: #019fbcba',
+            NotificationDelivery::query()->where('notification_destination_id', $telegram->id)->sole()->rendered_message,
+        );
+        $this->assertDatabaseCount('notification_deliveries', 2);
+    }
+
+    public function test_a_custom_template_overrides_the_catalog_default(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $destination = $this->destination($team, $owner);
+        $destination->update([
+            'templates' => ['build.completed' => 'custom #{{build.number}} {{tags}}'],
+            'tags' => ['release'],
+        ]);
+        $event = WebhookEvent::create([
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::BuildCompleted,
+            'schema_version' => 2,
+            'aggregate_type' => 'BuildRecord',
+            'aggregate_id' => '019fbcba-10d2-7df2-9c8e-af6504ef02bd',
+            'source' => 'web',
+            'payload' => [
+                'id' => '019fbcba-10d2-7df2-9c8e-af6504ef02bd',
+                'profile_type' => 'production',
+                'status' => 'completed',
+                'actor' => ['type' => 'user', 'display_name' => $owner->name],
+            ],
+            'filter_context' => ['mobile_app_ids' => []],
+            'occurred_at' => now(),
+            'published_at' => now(),
+        ]);
+
+        $message = app(NotificationTemplateRenderer::class)->render($event, $destination->fresh());
+
+        $this->assertSame('custom #019fbcba #release', $message);
+    }
+
     /** @param array<string, string> $credentials */
     private function destination(
         Team $team,

@@ -47,4 +47,12 @@ return [
         'telegram_api_url' => env('TELEGRAM_API_URL', 'https://api.telegram.org'),
         'retry_delays' => [60, 300, 1800],
     ],
+
+    'sentry' => [
+        'enabled' => env('SENTRY_RELAY_ENABLED', true),
+        'max_envelope_bytes' => (int) env('SENTRY_MAX_ENVELOPE_BYTES', 10 * 1024 * 1024),
+        'timeout_seconds' => (int) env('SENTRY_FORWARD_TIMEOUT', 15),
+        'connect_timeout_seconds' => (int) env('SENTRY_FORWARD_CONNECT_TIMEOUT', 3),
+        'retry_delays' => [30, 300, 1800],
+    ],
 ];

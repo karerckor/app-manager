@@ -103,6 +103,11 @@ class Integration extends Model implements Auditable
         return $this->hasOne(NotificationDestination::class);
     }
 
+    public function sentryDsn(): HasOne
+    {
+        return $this->hasOne(SentryDsn::class);
+    }
+
     public function expoProjects(): HasMany
     {
         return $this->hasMany(ExpoProject::class);

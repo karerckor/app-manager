@@ -47,12 +47,14 @@ dispatch_command() {\
     integrations) command_integrations "${REMAINING_ARGS[@]}" ;;\
     pipelines) command_pipelines "${REMAINING_ARGS[@]}" ;;\
     webhooks) command_webhooks "${REMAINING_ARGS[@]}" ;;\
+    sentry) command_sentry "${REMAINING_ARGS[@]}" ;;\
+    telemetry) command_telemetry "${REMAINING_ARGS[@]}" ;;\
     '"'"''"'"') usage; return 1 ;;\
   esac\
 }'
 
 # Command modules (strip shebang lines)
-for cmd in request stream builds logs artifacts files assets identifiers apps credentials integrations eas pipelines webhooks; do
+for cmd in request stream builds logs artifacts files assets identifiers apps credentials integrations eas pipelines webhooks sentry telemetry; do
   printf '\n'
   grep -v '^#!/usr/bin/env bash' "$LIB_DIR/commands/$cmd.sh"
 done

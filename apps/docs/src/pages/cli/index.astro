@@ -54,7 +54,7 @@ import CommandOutput from '../../components/CommandOutput.astro';
       </tr>
       <tr>
         <td><code>credentials</code></td>
-        <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>download</code>, <code>upload</code>, <code>types</code></td>
+        <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code>, <code>download</code>, <code>upload</code>, <code>verify</code>, <code>types</code></td>
         <td><a href="/cli/credentials">Credentials</a></td>
       </tr>
       <tr>
@@ -166,5 +166,6 @@ appmctl --json builds get 019fc789-47b5-7034-9291-4cd3c57b75d5 | jq -r '.data.st
     <li><code>builds list --status</code> is accepted but has no effect: the API's build index takes no status filter.</li>
     <li><code>builds when-running --timeout</code> is accepted but has no effect; see <a href="/cli/builds">Builds</a>.</li>
     <li>Notification destinations have no API, so no CLI command covers them; see <a href="/cli/integrations/notifications">Notifications</a>.</li>
+    <li><code>credentials verify</code> transmits a verdict your build reached; the CLI does not resolve an external vault itself. See <a href="/cli/credentials">Credentials</a>.</li>
   </ul>
 </DocsLayout>

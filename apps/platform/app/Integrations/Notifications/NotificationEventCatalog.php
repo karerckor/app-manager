@@ -29,6 +29,7 @@ final class NotificationEventCatalog
                     self::variable('app.description', 'Description', 'The application description, when available.', 'Customer mobile application'),
                     self::variable('app.url', 'App URL', 'A direct link to the application.', 'https://manager.example/apps/atlas-mobile'),
                     self::variable('actor.name', 'Created by', 'The person or automation that created the application.', 'Maya Chen'),
+                    ...self::appTagVariables(),
                 ],
             ),
             self::event(
@@ -41,6 +42,7 @@ final class NotificationEventCatalog
                     self::variable('app.name', 'App name', 'The deleted application display name.', 'Atlas Mobile'),
                     self::variable('app.slug', 'App slug', 'The deleted application URL slug.', 'atlas-mobile'),
                     self::variable('actor.name', 'Deleted by', 'The person or automation that deleted the application.', 'Maya Chen'),
+                    ...self::appTagVariables(),
                 ],
             ),
             self::event(
@@ -143,6 +145,7 @@ final class NotificationEventCatalog
                     self::variable('build.profile', 'Profile', 'The selected build profile.', 'production'),
                     self::variable('build.requested_by', 'Requested by', 'The person or automation that requested the build.', 'Maya Chen'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
+                    ...self::buildTagVariables(),
                 ],
             ),
             self::event(
@@ -157,6 +160,7 @@ final class NotificationEventCatalog
                     self::variable('build.profile', 'Profile', 'The selected build profile.', 'production'),
                     self::variable('build.branch', 'Branch', 'The source branch or ref.', 'release/4.8'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
+                    ...self::buildTagVariables(),
                 ],
             ),
             self::event(
@@ -178,6 +182,7 @@ final class NotificationEventCatalog
                     ),
                     self::variable('build.duration', 'Duration', 'The human-readable build duration.', '8m 42s'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
+                    ...self::buildTagVariables(),
                 ],
             ),
             self::event(
@@ -193,6 +198,7 @@ final class NotificationEventCatalog
                     self::variable('artifact.size', 'File size', 'The human-readable file size.', '54.2 MB'),
                     self::variable('artifact.download_url', 'Download URL', 'A direct download link.', 'https://manager.example/artifacts/atlas-4.8.0.ipa'),
                     self::variable('build.number', 'Build number', 'The source build sequence number.', '482'),
+                    ...self::buildTagVariables(),
                 ],
             ),
             self::event(
@@ -223,6 +229,31 @@ final class NotificationEventCatalog
             self::variable('identifier.version', 'Version', 'The configured application version, when available.', '4.8.0'),
             self::variable('identifier.url', 'Identifier URL', 'A direct link to the identifier settings.', 'https://manager.example/apps/atlas-mobile/identifiers/ios'),
             self::variable('actor.name', $actorLabel, 'The person or automation that made the change.', 'Maya Chen'),
+            ...self::appTagVariables(),
+        ];
+    }
+
+    private static function appTagVariables(): array
+    {
+        return [
+            self::variable('app.tags', 'App tags', 'App tags prefixed with #, separated by spaces.', '#ios #production'),
+            self::variable('app.tags_str', 'App tags (plain)', 'App tags as plain text, separated by spaces.', 'ios production'),
+        ];
+    }
+
+    private static function buildTagVariables(): array
+    {
+        return [
+            self::variable('build.tags', 'Build tags', 'Build tags prefixed with #, separated by spaces.', '#release #hotfix'),
+            self::variable('build.tags_str', 'Build tags (plain)', 'Build tags as plain text, separated by spaces.', 'release hotfix'),
+        ];
+    }
+
+    private static function credentialTagVariables(): array
+    {
+        return [
+            self::variable('credential.tags', 'Credential tags', 'Credential tags prefixed with #, separated by spaces.', '#ios #certificate'),
+            self::variable('credential.tags_str', 'Credential tags (plain)', 'Credential tags as plain text, separated by spaces.', 'ios certificate'),
         ];
     }
 
@@ -236,6 +267,7 @@ final class NotificationEventCatalog
             self::variable('credential.expires_at', 'Expiration date', 'The expiration date, when available.', 'Aug 31, 2026'),
             self::variable('credential.url', 'Credential URL', 'A link to Credentials Vault.', 'https://manager.example/credentials'),
             self::variable('actor.name', $actorLabel, 'The person or automation that made the change.', 'Maya Chen'),
+            ...self::credentialTagVariables(),
         ];
     }
 
@@ -249,6 +281,7 @@ final class NotificationEventCatalog
             self::variable('credential.expires_at', 'Expiration date', 'The credential expiration date.', 'Aug 31, 2026'),
             self::variable('credential.days_remaining', 'Days remaining', 'The reminder milestone for this event.', $daysRemaining),
             self::variable('credential.url', 'Credential URL', 'A link to Credentials Vault.', 'https://manager.example/credentials'),
+            ...self::credentialTagVariables(),
         ];
     }
 
@@ -276,7 +309,7 @@ final class NotificationEventCatalog
         return collect(self::all())->firstWhere('key', $eventKey);
     }
 
-    public static function renderExample(string $eventKey, string $template): string
+    public static function renderExample(string $eventKey, string $template, array $tags = []): string
     {
         $event = self::find($eventKey);
 
@@ -287,6 +320,10 @@ final class NotificationEventCatalog
         $examples = collect($event['variables'])
             ->mapWithKeys(fn (array $variable) => [$variable['key'] => $variable['example']])
             ->all();
+
+        $tags = array_filter($tags, fn (string $tag) => $tag !== '');
+        $examples['tags'] = implode(' ', array_map(fn (string $tag) => '#'.$tag, $tags));
+        $examples['tags_str'] = implode(' ', $tags);
 
         return preg_replace_callback(
             '/{{\s*([a-zA-Z0-9_.]+)\s*}}/',
@@ -322,9 +359,21 @@ final class NotificationEventCatalog
         }
 
         preg_match_all('/{{\s*([a-zA-Z0-9_.]+)\s*}}/', $template, $matches);
-        $allowed = array_column($event['variables'], 'key');
+        $allowed = array_merge(
+            array_column($event['variables'], 'key'),
+            array_column(self::globalVariables(), 'key'),
+        );
 
         return array_values(array_diff(array_unique($matches[1] ?? []), $allowed));
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function globalVariables(): array
+    {
+        return [
+            self::variable('tags', 'Tags', 'All tags prefixed with #, separated by spaces.', '#urgent #prod'),
+            self::variable('tags_str', 'Tags (plain)', 'All tags as plain text, separated by spaces.', 'urgent prod'),
+        ];
     }
 
     /** @param list<array<string, string>> $variables */

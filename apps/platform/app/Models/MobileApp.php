@@ -38,6 +38,16 @@ class MobileApp extends Model implements Auditable, HasMedia
         return $this->hasMany(BuildRecord::class);
     }
 
+    public function sentryEvents(): HasMany
+    {
+        return $this->hasMany(SentryEvent::class);
+    }
+
+    public function sentryIssues(): HasMany
+    {
+        return $this->hasMany(SentryIssue::class);
+    }
+
     public function ciCdPipelines(): HasMany
     {
         return $this->hasMany(CiCdPipeline::class);

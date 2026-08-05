@@ -23,7 +23,7 @@
  */
 
 import { chromium } from 'playwright';
-import { mkdir, readdir, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,26 +53,58 @@ if (!PASSWORD) {
  * present before the shot is taken, so a screen that failed to load cannot be
  * recorded as a blank page.
  */
+
+// Build detail requires the UUID of the completed build, which is auto-generated
+// by the seed script. Read it from the file the seed writes.
+let buildDetailPath = '/apps/customer-app/builds';
+try {
+  const buildIds = JSON.parse(await readFile(join(DOCS_ROOT, 'src', 'data', 'build-ids.json'), 'utf8'));
+  // The first build UUID in the seed is the completed manual build.
+  const completedBuildId = Object.values(buildIds)[0];
+  if (completedBuildId) {
+    buildDetailPath = `/apps/customer-app/builds/${completedBuildId}`;
+  }
+} catch {
+  // If the file is missing, build-detail will be skipped at capture time.
+}
+
 const SCREENS = [
   { slug: 'applications', path: '/apps', wait: 'Applications' },
+  { slug: 'new-application-modal', path: '/apps', wait: 'Applications', click: 'New application' },
   { slug: 'application-overview', path: '/apps/customer-app', wait: 'Customer App' },
   { slug: 'identifiers', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer' },
+  { slug: 'add-identifier-modal', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer', click: 'Add' },
+  { slug: 'identifier-detail', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer', click: 'com.acme.customer' },
+  { slug: 'add-credential-existing', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer', clickSequence: ['com.acme.customer', 'Add credential'] },
+  { slug: 'add-credential-new', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer', clickSequence: ['com.acme.customer', 'Add credential', 'Create new'] },
   { slug: 'files-and-assets', path: '/apps/customer-app/media', wait: 'release-checklist.md' },
+  { slug: 'files-metadata', path: '/apps/customer-app/media', wait: 'release-checklist.md', click: 'Metadata' },
+  { slug: 'app-assets', path: '/apps/customer-app/media', wait: 'release-checklist.md', click: 'App assets' },
+  { slug: 'upload-file-modal', path: '/apps/customer-app/media', wait: 'release-checklist.md', click: 'Upload file' },
   { slug: 'builds', path: '/apps/customer-app/builds', wait: 'production' },
+  { slug: 'build-detail', path: buildDetailPath, wait: 'All builds' },
   { slug: 'credentials-vault', path: '/credentials', wait: 'Team credentials' },
+  { slug: 'credentials-vault-external', path: '/credentials?storage=external', wait: 'Team credentials' },
+  { slug: 'credential-detail-expanded', path: '/credentials', wait: 'Team credentials', click: 'Customer App Keystore' },
   { slug: 'api-keys', path: '/api-keys', wait: 'CI build reporter' },
   { slug: 'audit-log', path: '/audit', wait: 'Audit' },
   { slug: 'team-access', path: '/team', wait: 'Maria Lopez' },
   { slug: 'integrations-cicd', path: '/integrations', wait: 'acme/customer-app' },
   { slug: 'integrations-eas', path: '/integrations/eas', wait: 'Expo' },
+  { slug: 'integrations-eas-linked', path: '/integrations/eas', wait: 'Customer App' },
+  { slug: 'expo-app-setup', path: '/apps/delivery-driver/expo', wait: 'Set up on Expo' },
+  { slug: 'expo-app-linked', path: '/apps/customer-app/expo', wait: 'LINKED' },
   { slug: 'integrations-webhooks', path: '/integrations/webhooks', wait: 'hooks.acme.example' },
+  { slug: 'integrations-webhooks-new', path: '/integrations/webhooks', wait: 'hooks.acme.example', click: 'New endpoint' },
+  { slug: 'integrations-webhooks-delivery', path: '/integrations/webhooks', wait: 'hooks.acme.example', click: 'exhausted' },
   { slug: 'integrations-notifications', path: '/integrations/notifications', wait: 'mobile-releases' },
+  { slug: 'notifications-destination-form', path: '/integrations/notifications', wait: 'Destinations' },
+  { slug: 'notifications-template-editor', path: '/integrations/notifications', wait: 'Destinations', clickSequence: ['Build completed'] },
+  { slug: 'integrations-sentry', path: '/integrations/sentry', wait: 'Customer telemetry relay' },
+  { slug: 'telemetry-errors-traces', path: '/apps/customer-app/telemetry', wait: 'Payment authorization failed' },
+  { slug: 'telemetry-issue-detail', path: '/apps/customer-app/telemetry', wait: 'Payment authorization failed', click: 'Payment authorization failed' },
   { slug: 'push-notifications', path: '/tools/push-notifications', wait: 'Push' },
 ];
-
-// Not captured: /apps/{slug}/expo, the per-application Expo screen. It 404s unless
-// the app has a linked Expo project, and rendering it calls Expo's API, so it needs
-// real Expo credentials that the documentation data deliberately does not carry.
 
 
 const only = process.argv.slice(2);
@@ -151,6 +183,23 @@ try {
       await page.getByText(screen.wait, { exact: false }).first().waitFor({ timeout: 10000 });
       // Inertia pages animate in; settle before shooting so nothing is mid-fade.
       await page.waitForTimeout(400);
+
+      // Some screens require clicking a button to open a modal or navigate
+      // deeper before the screenshot is taken.
+      if (screen.clickSequence) {
+        for (const text of screen.clickSequence) {
+          await page.getByText(text, { exact: false }).first().click();
+          await page.waitForTimeout(300);
+        }
+      } else if (screen.click) {
+        await page.getByText(screen.click, { exact: false }).first().click();
+        await page.waitForTimeout(300);
+      }
+
+      if (screen.scrollY) {
+        await page.evaluate((y) => window.scrollTo({ top: y, behavior: 'instant' }), screen.scrollY);
+        await page.waitForTimeout(200);
+      }
 
       const file = join(OUT_DIR, `${screen.slug}.png`);
       await page.screenshot({ path: file, type: 'png' });

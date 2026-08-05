@@ -117,6 +117,11 @@ class IntegrationIndexController extends Controller
         return $this->render($request, $team, 'notifications');
     }
 
+    public function sentry(Request $request, Team $team): Response
+    {
+        return $this->render($request, $team, 'sentry');
+    }
+
     private function render(Request $request, Team $team, string $activeTab): Response
     {
         Gate::forUser($request->user())->authorize('manageIntegrations', $team);
@@ -139,6 +144,7 @@ class IntegrationIndexController extends Controller
                 'last_delivered_at' => $destination->last_delivered_at,
                 'events' => $destination->subscribed_events,
                 'templates' => $destination->templates,
+                'tags' => $destination->tags ?? [],
                 'update_url' => route(
                     'accounts.integrations.notifications.update',
                     [$team, $destination],
@@ -214,6 +220,7 @@ class IntegrationIndexController extends Controller
                 'expo' => route('accounts.integrations.eas.index', $team),
                 'webhooks' => route('accounts.integrations.webhooks.index', $team),
                 'notifications' => route('accounts.integrations.notifications.index', $team),
+                'sentry' => route('accounts.integrations.sentry.index', $team),
             ],
             'notificationsEnabled' => (bool) config('integrations.enabled')
                 && (bool) config('integrations.notifications.enabled'),
@@ -239,8 +246,67 @@ class IntegrationIndexController extends Controller
                 },
             ])->values(),
             'notificationEvents' => NotificationEventCatalog::all(),
+            'notificationGlobalVariables' => NotificationEventCatalog::globalVariables(),
             'notificationDestinations' => $notificationDestinations,
             'selectedNotificationDestinationId' => $selectedNotificationDestinationId,
+            'sentryEnabled' => (bool) config('integrations.enabled')
+                && (bool) config('integrations.sentry.enabled'),
+            'storeSentryUrl' => route('accounts.integrations.sentry.store', $team),
+            'sentryDsns' => $team->sentryDsns()
+                ->with(['integration', 'routes.mobileApp', 'routes.appIdentifier'])
+                ->withCount('events')
+                ->latest()
+                ->get()
+                ->map(fn ($dsn) => [
+                    'id' => $dsn->id,
+                    'name' => $dsn->integration->name,
+                    'status' => $dsn->integration->status->value,
+                    'dsn' => $dsn->dsn(),
+                    'routing_method' => $dsn->routing_method->value,
+                    'event_source' => $dsn->event_source?->value,
+                    'app_key' => $dsn->app_key,
+                    'identifier_key' => $dsn->identifier_key,
+                    'upstream_configured' => filled($dsn->upstream_dsn),
+                    'events_count' => $dsn->events_count,
+                    'consecutive_forward_failures' => $dsn->consecutive_forward_failures,
+                    'last_event_at' => $dsn->last_event_at,
+                    'last_forwarded_at' => $dsn->last_forwarded_at,
+                    'routes' => $dsn->routes->map(fn ($route) => [
+                        'mobile_app_id' => $route->mobile_app_id,
+                        'app_identifier_id' => $route->app_identifier_id,
+                        'app_name' => $route->mobileApp->name,
+                        'app_slug' => $route->mobileApp->slug,
+                        'identifier' => $route->appIdentifier?->identifier,
+                        'identifier_name' => $route->appIdentifier?->name,
+                        'platform' => $route->appIdentifier?->platform?->value,
+                        'dsn' => $route->public_key ? $dsn->dsn($route->public_key) : $dsn->dsn(),
+                    ])->values(),
+                    'update_url' => route('accounts.integrations.sentry.update', [$team, $dsn]),
+                    'destroy_url' => route('accounts.integrations.sentry.destroy', [$team, $dsn]),
+                ])->values(),
+            'sentryEvents' => $team->sentryEvents()
+                ->with(['mobileApp', 'appIdentifier', 'sentryDsn.integration', 'envelope'])
+                ->latest('occurred_at')
+                ->limit(50)
+                ->get()
+                ->map(fn ($event) => [
+                    'id' => $event->id,
+                    'event_id' => $event->event_id,
+                    'dsn_name' => $event->sentryDsn->integration->name,
+                    'app_name' => $event->mobileApp->name,
+                    'app_slug' => $event->mobileApp->slug,
+                    'identifier' => $event->appIdentifier?->identifier,
+                    'platform' => $event->appIdentifier?->platform?->value,
+                    'item_type' => $event->item_type,
+                    'level' => $event->level,
+                    'title' => $event->title,
+                    'transaction' => $event->transaction,
+                    'trace_id' => $event->trace_id,
+                    'release' => $event->release,
+                    'environment' => $event->environment,
+                    'occurred_at' => $event->occurred_at,
+                    'forward_status' => $event->envelope->status->value,
+                ])->values(),
             'storeWebhookUrl' => route('accounts.integrations.webhooks.store', $team),
             'webhooksEnabled' => (bool) config('integrations.enabled')
                 && (bool) config('integrations.webhooks.enabled'),
@@ -321,11 +387,13 @@ class IntegrationIndexController extends Controller
             ->map(fn ($app) => [
                 'id' => $app->id,
                 'name' => $app->name,
+                'slug' => $app->slug,
                 'tags' => collect($app->tagList())->pluck(0)->values(),
                 'expo_project_id' => $app->expoProject?->external_id,
                 'identifiers' => $app->appIdentifiers->map(fn ($identifier) => [
                     'id' => $identifier->id,
                     'name' => $identifier->name ?: $identifier->identifier,
+                    'identifier' => $identifier->identifier,
                     'platform' => $identifier->platform->value,
                 ]),
             ]);

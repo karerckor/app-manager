@@ -65,6 +65,9 @@ class AppContext
                 'media_regenerate' => route('accounts.apps.media.regenerate', [$team, $app]),
                 'identifiers_page' => route('accounts.apps.identifiers.index', [$team, $app]),
                 'builds_page' => route('accounts.apps.builds.index', [$team, $app]),
+                'telemetry_page' => config('integrations.enabled') && config('integrations.sentry.enabled')
+                    ? route('accounts.apps.telemetry.index', [$team, $app])
+                    : null,
                 'expo_page' => ExpoAppContext::available($team, $app)
                     ? route('accounts.apps.expo.index', [$team, $app])
                     : null,

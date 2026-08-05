@@ -27,6 +27,8 @@ Resources:
   eas             Manage the Expo/EAS integration
   pipelines       Manage CI/CD pipelines
   webhooks        Manage webhook endpoints
+  sentry          Manage routed Sentry DSNs
+  telemetry       Inspect application issues and traces
 
 Required environment:
   APP_MANAGER_API_KEY       API key used as a Bearer token
@@ -91,7 +93,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks)
+      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -122,6 +124,8 @@ dispatch_command() {
     eas) source "$cmd_dir/eas.sh"; command_eas "${REMAINING_ARGS[@]}" ;;
     pipelines) source "$cmd_dir/pipelines.sh"; command_pipelines "${REMAINING_ARGS[@]}" ;;
     webhooks) source "$cmd_dir/webhooks.sh"; command_webhooks "${REMAINING_ARGS[@]}" ;;
+    sentry) source "$cmd_dir/sentry.sh"; command_sentry "${REMAINING_ARGS[@]}" ;;
+    telemetry) source "$cmd_dir/telemetry.sh"; command_telemetry "${REMAINING_ARGS[@]}" ;;
     '') usage; return 1 ;;
   esac
 }

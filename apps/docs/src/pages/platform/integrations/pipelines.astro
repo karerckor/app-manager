@@ -13,19 +13,44 @@ import Screenshot from '../../../components/Screenshot.astro';
 
   <Screenshot
     src="integrations-cicd"
-    alt="The CI/CD tab showing a connected GitHub provider with one linked app and one pipeline"
+    alt="The CI/CD tab showing connected providers with linked apps and pipeline counts"
     caption="Pipelines are reached through their connection: Manage opens it."
   />
 
-  <h2>Defining one</h2>
+  <h2>The connection detail</h2>
   <p>
-    The form fills itself from the provider, in this order:
+    Clicking <strong>Manage</strong> on a connection opens its detail page. This is where pipelines
+    are created, configured, and run. The page lists all pipeline bindings grouped by configuration,
+    with actions for each: Run build, Edit, Rename, and Remove.
   </p>
+
+  <Screenshot
+    src="pipeline-configured"
+    alt="Connection detail page showing a configured pipeline with its workflow, app, and profile"
+    caption="A configured pipeline: the Android release pipeline pointing at the Release workflow on main."
+  />
+
+  <h2>Defining a pipeline</h2>
+  <p>
+    <strong>Configure pipeline</strong> opens a multi-step form that discovers repositories, workflows,
+    and refs live from the provider:
+  </p>
+
+  <Screenshot
+    src="pipeline-form"
+    alt="Pipeline creation form showing repository selector, workflow dropdown, application checkboxes, and build profile"
+    caption="Creating a pipeline: select a repository, pick a workflow_dispatch workflow, and bind it to one or more applications."
+  />
+
   <ol>
     <li><strong>Repository</strong> — the repositories this connection can see</li>
     <li><strong>Workflow</strong> — for GitHub, the <code>workflow_dispatch</code> workflows in that repository</li>
-    <li><strong>Ref</strong> — the default branch or tag to build</li>
-    <li><strong>Application and profile</strong> — where the resulting build record lands</li>
+    <li><strong>Pipeline name</strong> — auto-populated from the workflow name, editable</li>
+    <li><strong>Applications</strong> — one or more apps; each selected app gets its own pipeline binding</li>
+    <li><strong>App identifier</strong> — optional target (specific platform or bundle ID)</li>
+    <li><strong>Build profile</strong> — Production, App Store, etc.</li>
+    <li><strong>Default ref</strong> — the branch or tag to build by default</li>
+    <li><strong>Reporting mode</strong> — Automatic (polls provider) or Manual (runner reports via API)</li>
   </ol>
   <p>
     Those lists are fetched live from the provider rather than cached, which has a practical
@@ -51,11 +76,22 @@ import Screenshot from '../../../components/Screenshot.astro';
     inputs and a release with another — instead of being reconfigured each run.
   </p>
 
-  <h2>Running</h2>
+  <h2>Running a pipeline build</h2>
   <p>
     A run can be started from the pipeline itself or from <strong>Run build → Pipeline build</strong> on
-    an application. Either way the platform creates a build record in <code>automatic</code> reporting
-    mode, dispatches the workflow, and then mirrors what the provider reports.
+    an application. The pipeline build modal shows the workflow details and accepts a branch override
+    and workflow inputs.
+  </p>
+
+  <Screenshot
+    src="pipeline-build-modal"
+    alt="Pipeline build modal showing the workflow name, branch input, and workflow inputs JSON field"
+    caption="Running an automated build: the branch defaults to main, and workflow inputs can be overridden per run."
+  />
+
+  <p>
+    Either way the platform creates a build record in <code>automatic</code> reporting mode, dispatches
+    the workflow, and then mirrors what the provider reports.
   </p>
   <p>
     <code>dispatch_status</code> on the resulting build is the field to read first when a run seems to

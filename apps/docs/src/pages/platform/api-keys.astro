@@ -71,6 +71,10 @@ import Screenshot from '../../components/Screenshot.astro';
         <td>Triggering pipelines only</td>
         <td><code>pipelines:run</code>, <code>builds:read</code></td>
       </tr>
+      <tr>
+        <td>A release preflight that checks external vault references</td>
+        <td><code>credentials:read</code> and <code>credentials:verify</code> — no <code>reveal</code></td>
+      </tr>
     </tbody>
   </table>
   <p>

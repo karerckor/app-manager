@@ -6,22 +6,23 @@ import Screenshot from '../../components/Screenshot.astro';
 <DocsLayout title="Files and assets" activeNav="/platform/files-and-assets">
   <h1>Files and assets</h1>
   <p>
-    An application's media library holds two different things. <strong>Files</strong> are arbitrary
-    attachments with metadata — mapping files, release checklists, provisioning notes.
-    <strong>App assets</strong> are the icon and splash screen, from which the platform generates
-    every per-platform size you need at build time.
+    An application's media library holds two different things, separated into tabs:
+    <strong>Files</strong> are arbitrary attachments with metadata — mapping files, release
+    checklists, provisioning notes. <strong>App assets</strong> are the icon and splash screen,
+    from which the platform generates every per-platform size you need at build time.
   </p>
 
+  <h2>Files</h2>
   <Screenshot
     src="files-and-assets"
-    alt="Files and Media Library tab showing two attached files as cards with metadata, download and delete actions"
-    caption="Files and App assets are separate tabs with separate rules."
+    alt="Files tab showing two attached files as cards with file type icons, sizes, and action buttons"
+    caption="Each file card shows the type preview, name, size, upload date, and action buttons."
   />
-
-  <h2>Files</h2>
   <p>
-    Any file type, up to 100 MB each. Each card shows the extension, size, upload time, and three
-    actions: inspect <strong>Metadata</strong>, download, delete.
+    Any file type, up to 100 MB each. Each card shows a preview (image thumbnail, video player,
+    or a themed icon for documents, archives, and other types), the file name, size, and upload
+    time. Below the preview, three actions are available: inspect <strong>Metadata</strong>,
+    download, and delete.
   </p>
   <p>
     Files are addressed <strong>by name</strong>, not by id — in the URL, in the API, and in the
@@ -39,15 +40,41 @@ import Screenshot from '../../components/Screenshot.astro';
     </li>
   </ul>
 
+  <h3>Uploading a file</h3>
+  <Screenshot
+    src="upload-file-modal"
+    alt="Upload file modal with file picker and optional metadata JSON textarea"
+    caption="Metadata can be set during upload or added later from the file card."
+  />
+  <p>
+    The upload modal accepts any file type. An optional <strong>Metadata</strong> field lets you
+    attach a JSON object at upload time — for example to record the build that produced the file
+    or the version it belongs to.
+  </p>
+
   <h3>Metadata</h3>
   <p>
     Metadata is a free-form JSON object attached to a file. It is the practical way to record where
-    a file came from, and it is what makes an old file identifiable a year later:
+    a file came from, and it is what makes an old file identifiable a year later.
+  </p>
+  <Screenshot
+    src="files-metadata"
+    alt="File card with metadata preview open showing formatted JSON and an edit button"
+    caption="Click Metadata on any file card to inspect or edit its JSON payload."
+  />
+  <p>
+    Click the <strong>Metadata</strong> button on a file card to toggle the metadata preview. The
+    preview shows formatted JSON. Click the pencil icon to enter edit mode, change the JSON, and
+    save. The value must be a JSON object (not an array, null, or a primitive).
+  </p>
+  <p>
+    Saving replaces the whole object rather than merging into it, so send every key you want to
+    keep. Example:
   </p>
   <pre><code>&#123;"build_id": "019fc789-47b5-7034-9291-4cd3c57b75d5", "version": "1.4.0"&#125;</code></pre>
   <p>
-    Saving replaces the whole object rather than merging into it, so send every key you want to
-    keep.
+    Through the CLI, metadata is set with
+    <a href="/cli/files"><code>appmctl files update --metadata</code></a>.
   </p>
 
   <h3>What belongs here, and what does not</h3>
@@ -59,26 +86,54 @@ import Screenshot from '../../components/Screenshot.astro';
   </p>
 
   <h2>App assets</h2>
+  <Screenshot
+    src="app-assets"
+    alt="App assets tab showing the icon collection with source preview and generated platform variants"
+    caption="One source image produces every iOS and Android size automatically."
+  />
   <p>
-    The <strong>App assets</strong> tab holds one icon and one splash screen. Uploading replaces
-    what is there — there is no version history — and both must be images.
+    The <strong>App assets</strong> tab holds two static collections: an <strong>icon</strong> and a
+    <strong>splash screen</strong>. Unlike files, assets are <strong>images only</strong> (PNG,
+    JPEG, or WEBP), have <strong>no metadata</strong>, and trigger automatic processing on upload.
   </p>
   <p>
-    From the original, the platform generates every platform-specific size: iOS icon sizes from 40
-    to 1024 points, Android density buckets from mdpi to xxxhdpi plus the Play Store icon, and
-    splash screens for the common iOS and Android resolutions. Each generated variant is
-    downloadable on its own, so a build script can fetch exactly the size it needs instead of
-    resizing at build time.
+    The detail view is split into a source preview on the left and a grid of generated variants on
+    the right, grouped by platform:
   </p>
+  <table>
+    <thead>
+      <tr><th>Asset</th><th>iOS variants</th><th>Android variants</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>App icon</td><td>11 sizes (40 px to 1024 px)</td><td>6 densities (mdpi to xxxhdpi) + Play Store icon</td></tr>
+      <tr><td>Splash screen</td><td>12 sizes (640×1136 to 2048×2732)</td><td>5 densities (320×480 to 1280×1920)</td></tr>
+    </tbody>
+  </table>
   <p>
-    Generation runs after upload rather than during it, so a variant list can briefly show fewer
-    entries than it will a moment later. A variant that never appears has not been generated, and
-    requesting it answers <code>404</code> rather than silently falling back to the original.
+    Uploading replaces the previous source — there is no version history. Generation runs after
+    upload rather than during it, so a variant list can briefly show fewer entries than it will a
+    moment later. A variant that never appears has not been generated, and requesting it answers
+    <code>404</code> rather than silently falling back to the original.
   </p>
   <p>
     Replacing an icon also triggers an Expo sync when the app is linked to an Expo project, so the
     two sides do not drift — see <a href="/platform/integrations/eas">EAS</a>.
   </p>
+
+  <h3>Key differences: Files vs. App assets</h3>
+  <table>
+    <thead>
+      <tr><th></th><th>Files</th><th>App assets</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Content types</td><td>Any file type</td><td>Image only (PNG, JPEG, WEBP)</td></tr>
+      <tr><td>Metadata</td><td>Free-form JSON, user-editable</td><td>None</td></tr>
+      <tr><td>Processing</td><td>Stored as-is</td><td>Auto-generates platform-specific sizes</td></tr>
+      <tr><td>Upload</td><td>Modal with file picker + optional JSON</td><td>Inline file input, no metadata</td></tr>
+      <tr><td>Delete</td><td>Per-file with confirmation</td><td>Source can only be replaced, not deleted</td></tr>
+      <tr><td>Variants</td><td>N/A</td><td>Per-platform grid with status and download</td></tr>
+    </tbody>
+  </table>
 
   <h2>Doing the same from the CLI</h2>
   <ul>

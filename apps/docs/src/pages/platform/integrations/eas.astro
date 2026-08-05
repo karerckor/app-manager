@@ -11,17 +11,6 @@ import Screenshot from '../../../components/Screenshot.astro';
     where both sides hold overlapping state, so most of this page is about which side owns what.
   </p>
 
-  <Screenshot
-    src="integrations-eas"
-    alt="The Expo EAS tab with no account connected, offering a Connect Expo action"
-    caption="The empty state. Everything below requires a connected Expo account."
-  />
-  <p>
-    The screenshot shows the tab with nothing connected, which is what a new workspace looks like.
-    The connected views are not captured here: rendering them calls Expo's API, so they need real
-    Expo credentials that the documentation data deliberately does not carry.
-  </p>
-
   <h2>Two scopes: the account and the project link</h2>
   <p>
     This distinction runs through the whole feature, including the CLI:
@@ -60,43 +49,107 @@ import Screenshot from '../../../components/Screenshot.astro';
     a script.
   </p>
 
-  <h2>Importing and linking projects</h2>
+  <h2>Creating or linking a project</h2>
   <p>
-    Once connected, the tab lists the projects the account can see, with whether each still exists on
-    Expo. From there:
+    Each application has an Expo screen (<strong>Expo EAS</strong> in the sidebar) that handles
+    linking. Two paths are available:
   </p>
+
+  <Screenshot
+    src="expo-app-setup"
+    alt="The Expo setup form with two options: Create a new project and Link an existing project"
+    caption="The setup screen for an unlinked application. Choose between creating a new Expo project or linking to one that already exists."
+  />
+
   <ul>
     <li>
-      <strong>Import</strong> creates an App Manager application from an Expo project — the quick path
-      when Expo is already your source of truth.
+      <strong>Create a new project</strong> — creates <code>@&lt;account&gt;/&lt;app-slug&gt;</code>
+      on Expo, pushes the app's identifiers and supported credentials, and links the project. This is
+      the right choice when Expo is new for this application.
     </li>
     <li>
-      <strong>Link</strong> attaches an existing application to an Expo project, either to one that
-      already exists or by creating a new Expo project for it.
+      <strong>Link an existing project</strong> — picks from projects the connected account can see
+      that are not yet linked to another application. Optionally syncs the display name and description
+      from Expo into App Manager.
     </li>
   </ul>
   <p>
-    Projects can be imported in batches, which matters when an account holds dozens.
+    Both paths create a one-to-one link: each Expo project can be linked to at most one application,
+    and each application can hold at most one Expo project.
   </p>
 
-  <h2>The per-application Expo screen</h2>
+  <h2>The linked application</h2>
   <p>
-    A linked application gains an Expo screen of its own, reachable from the application. It shows the
-    linked project, its account, whether it still exists upstream, the last sync, and recent Expo
-    builds and submissions.
+    Once linked, the Expo screen transforms into a dashboard for the connection. The header shows
+    the project name, its full Expo path (<code>@account/slug</code>), and provides buttons to open
+    the project on expo.dev, pull changes, or unlink.
   </p>
-  <p>
-    That screen returns <code>404</code> when the app has no linked project — the absence of a link is
-    not an empty state but a missing resource, which is worth knowing before assuming the page is
-    broken.
-  </p>
+
+  <Screenshot
+    src="expo-app-linked"
+    alt="Linked Expo screen showing project name, LINKED badge, automatic sync section, stats, EAS workflows, credentials, and activity tabs"
+    caption="A linked application: project header, automatic sync toggle, credential sets, and EAS activity."
+  />
 
   <h3>Automatic sync</h3>
   <p>
-    With automatic sync on, the platform keeps the link current without being asked: mirrored EAS build
-    records advance on their own, and identifier and icon changes propagate. It cannot be enabled while
-    the project is missing upstream or the account's token is broken — the platform refuses with a
-    message telling you to reconnect, rather than silently enabling something that cannot work.
+    The <strong>Automatic sync</strong> section controls a one-way push from App Manager to Expo.
+    When enabled, local changes to the app's name, icon, identifiers, and supported credentials are
+    pushed to Expo automatically. Expo never pushes back — use <strong>Pull from Expo</strong> when
+    you want to import remote changes.
+  </p>
+  <p>
+    The sync status indicator shows whether the push is idle, queued, syncing, or has failed. A
+    failed sync displays the error message and can be retried by toggling the switch off and on.
+    Automatic sync cannot be enabled while the project is missing upstream or the account's token is
+    broken — the platform refuses rather than silently enabling something that cannot work.
+  </p>
+
+  <h3>EAS Workflows</h3>
+  <p>
+    When the Expo project has a GitHub repository connected, this section shows the workflow files and
+    pipeline configuration state. If GitHub is not yet connected, a button links directly to Expo's
+    settings to configure it.
+  </p>
+
+  <h3>EAS Credentials</h3>
+  <p>
+    The credentials section shows metadata only — secret key material is never returned to this page.
+    For each platform (Android, iOS) it lists the signing profiles and whether a submit key is
+    configured. To upload a local credential from the <a href="/platform/credentials-vault">vault</a>,
+    open an app identifier and use <strong>Expo</strong> on that credential.
+  </p>
+
+  <h3>EAS Activity</h3>
+  <p>
+    The activity section has two tabs: <strong>Builds</strong> and <strong>Submissions</strong>.
+    Builds created by EAS CLI, EAS triggers, or an App Manager pipeline appear here with their
+    status, platform, and version. From this table you can inspect, cancel, retry, and submit builds
+    to app stores. Submissions track the Google Play and App Store delivery status.
+  </p>
+  <p>
+    Both tabs support importing builds into App Manager — select the builds you want and click
+    <strong>Import selected builds from EAS</strong>. Already-imported builds are marked with a
+    checkmark.
+  </p>
+
+  <h2>Workspace-level view</h2>
+  <p>
+    The <strong>Integrations &gt; Expo EAS</strong> tab in workspace settings shows all connected
+    Expo accounts and their projects. From here you can sync the project list, import projects in
+    bulk, or disconnect an account.
+  </p>
+
+  <Screenshot
+    src="integrations-eas-linked"
+    alt="Workspace Integrations page showing a connected Expo account with one linked project"
+    caption="The Expo EAS tab after connecting an account and linking a project. Each project shows its local link status."
+  />
+
+  <p>
+    <strong>Import</strong> creates an App Manager application from an Expo project — the quick path
+    when Expo is already your source of truth. Projects can be imported in batches, which matters
+    when an account holds dozens.
   </p>
 
   <h2>Identifiers</h2>

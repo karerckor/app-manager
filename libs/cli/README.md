@@ -16,6 +16,8 @@ It provides domain-aware subcommands for all major API resources, plus generic a
 - **`eas`** — connect an Expo account, link projects, and sync identifiers and credentials
 - **`pipelines`** — manage and trigger CI/CD pipelines
 - **`webhooks`** — manage webhook endpoints, deliveries, and secrets
+- **`sentry`** — manage routed Sentry-compatible DSNs
+- **`telemetry`** — inspect grouped issues and traces for an application
 - **`request`** — generic access to any team API endpoint
 - **`stream`** — run a command locally while uploading stdout/stderr to a manual build
 
@@ -394,6 +396,31 @@ appmctl webhooks rotate <webhook-id>
 appmctl webhooks deliveries <webhook-id>
 appmctl webhooks redeliver --webhook-id ID <delivery-id>
 ```
+
+### `appmctl sentry`
+
+```bash
+appmctl sentry list
+appmctl sentry get <dsn-id>
+appmctl sentry create --config sentry.json
+appmctl sentry update <dsn-id> --config sentry.json
+appmctl sentry delete <dsn-id>
+```
+
+The JSON config uses the same fields and validation as the Web UI: `name`,
+`routing_method`, optional `event_source`, `app_key`, `identifier_key`, `routes`,
+`forward_enabled`, optional `upstream_dsn`, and `enabled`.
+
+### `appmctl telemetry`
+
+```bash
+appmctl --app customer-app telemetry issues [--environment ENV] [--identifier UUID] [--search TEXT]
+appmctl --app customer-app telemetry issue <issue-id> [--event UUID]
+appmctl --app customer-app telemetry traces [--environment ENV] [--identifier UUID] [--search TEXT]
+appmctl --app customer-app telemetry trace <trace-id> [--event UUID]
+```
+
+Issue and trace detail responses contain a timeline plus the complete selected Sentry SDK event.
 
 ### `appmctl request` (legacy)
 

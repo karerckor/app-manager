@@ -26,6 +26,9 @@ use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Enums\SentryEnvelopeStatus;
+use App\Enums\SentryEventSource;
+use App\Enums\SentryRoutingMethod;
 use App\Enums\TeamRole;
 use App\Enums\WebhookDeliveryStatus;
 use App\Models\Artifact;
@@ -35,6 +38,10 @@ use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
+use App\Models\SentryDsn;
+use App\Models\SentryDsnRoute;
+use App\Models\SentryEnvelope;
+use App\Models\SentryEvent;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
@@ -128,7 +135,113 @@ $certificate = Credential::firstOrCreate(
     ['payload' => ['password' => 'docs-demo']],
 );
 $iosProfile->credentials()->syncWithoutDetaching([$certificate->id]);
-$out("credentials: {$keystore->id} {$certificate->id}");
+
+// A credential that references an external vault (AWS Secrets Manager) instead
+// of storing the file locally. This exists so the "Reference my vault" mode has
+// something to show in the documentation screenshots.
+$externalCredential = Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::IosCertificate,
+        'name' => 'CI Distribution Certificate',
+    ],
+    [
+        'storage_mode' => \App\Enums\CredentialStorageMode::External,
+        'payload' => ['team_id' => 'ABCDEF1234'],
+    ],
+);
+$iosProfile->credentials()->syncWithoutDetaching([$externalCredential->id]);
+
+\App\Models\CredentialVaultReference::firstOrCreate(
+    ['credential_id' => $externalCredential->id],
+    [
+        'team_id' => $team->id,
+        'provider' => \App\Enums\VaultProvider::AwsSecretsManager,
+        'resource' => 'arn:aws:secretsmanager:eu-central-1:123456789012:secret/mobile/ios-dist-cert',
+        'metadata' => ['region' => 'eu-central-1', 'version_id' => 'docs-capture'],
+    ],
+);
+
+// Expired certificate — builds using this fail now.
+$expiredCert = Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::IosCertificate,
+        'name' => 'Expired Distribution Certificate',
+    ],
+    [
+        'payload' => ['password' => 'docs-demo'],
+        'expires_at' => now()->subDays(10),
+    ],
+);
+
+// Credential approaching expiry — the "Expiring" filter finds these.
+$expiringKeystore = Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::AndroidKeystore,
+        'name' => 'Staging Keystore',
+    ],
+    [
+        'payload' => ['store_password' => 'docs-demo', 'key_alias' => 'staging', 'key_password' => 'docs-demo'],
+        'expires_at' => now()->addDays(5),
+    ],
+);
+
+// Google Play service account — external vault, different provider.
+$googleServiceAccount = Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::GooglePlayServiceAccount,
+        'name' => 'Play Console Service Account',
+    ],
+    [
+        'storage_mode' => \App\Enums\CredentialStorageMode::External,
+        'payload' => ['client_email' => 'play-deploy@docs-capture.iam.gserviceaccount.com'],
+    ],
+);
+$androidProfile->credentials()->syncWithoutDetaching([$googleServiceAccount->id]);
+
+\App\Models\CredentialVaultReference::firstOrCreate(
+    ['credential_id' => $googleServiceAccount->id],
+    [
+        'team_id' => $team->id,
+        'provider' => \App\Enums\VaultProvider::HashicorpVault,
+        'resource' => 'secret/data/mobile/play-service-account',
+        'metadata' => ['namespace' => 'docs-capture', 'engine' => 'kv-v2'],
+        'verification_status' => \App\Enums\CredentialVerificationStatus::Verified,
+        'verified_at' => now()->subHours(6),
+    ],
+);
+
+// Provisioning profile — attached, local, with file info visible.
+$provisioningProfile = Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::ProvisioningProfile,
+        'name' => 'App Store Provisioning Profile',
+    ],
+    [
+        'payload' => ['team_id' => 'ABCDEF1234', 'bundle_id' => 'com.acme.customer'],
+        'expires_at' => now()->addDays(180),
+    ],
+);
+$iosProfile->credentials()->syncWithoutDetaching([$provisioningProfile->id]);
+
+// Unattached credential — not linked to any profile, found by the "Unattached" filter.
+Credential::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'type' => CredentialType::ApnsKey,
+        'name' => 'Unused APNs Key',
+    ],
+    [
+        'payload' => ['key_id' => 'ABC123DEFG', 'team_id' => 'ABCDEF1234', 'issuer_id' => '1234567890'],
+        'expires_at' => now()->addDays(365),
+    ],
+);
+
+$out("credentials: {$keystore->id} {$certificate->id} {$externalCredential->id}");
 
 // --- builds ----------------------------------------------------------------
 
@@ -191,6 +304,7 @@ $builds = [
 ];
 
 $completedBuild = null;
+$createdBuilds = [];
 
 foreach ($builds as $spec) {
     $attributes = [
@@ -222,8 +336,16 @@ foreach ($builds as $spec) {
     if ($spec['status'] === BuildStatus::Completed) {
         $completedBuild = $build;
     }
+
+    $createdBuilds[$spec['uuid']] = $build->id;
 }
 $out('builds: '.$app->buildRecords()->count());
+
+// Write build IDs so the screenshot capture script can navigate to detail pages.
+$buildIdsPath = dirname(__DIR__, 2).'/apps/docs/src/data/build-ids.json';
+@mkdir(dirname($buildIdsPath), 0755, true);
+file_put_contents($buildIdsPath, json_encode($createdBuilds, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+$out("build ids: {$buildIdsPath}");
 
 // --- artifacts on the completed build --------------------------------------
 
@@ -364,6 +486,205 @@ WebhookEndpoint::firstOrCreate(
 );
 $webhookEndpoint = WebhookEndpoint::where('team_id', $team->id)->firstOrFail();
 $out('webhooks: '.WebhookEndpoint::where('team_id', $team->id)->count());
+
+// --- Sentry relay and resolved telemetry ----------------------------------
+//
+// This is deliberately stored locally instead of being sent to a real upstream:
+// documentation screenshots must be deterministic and must never publish a
+// customer's telemetry. The event payload still has the complete Sentry shape
+// used by the inspector, including a source context, request, user and tags.
+
+$sentryIntegration = Integration::firstOrCreate(
+    [
+        'team_id' => $team->id,
+        'kind' => IntegrationKind::Observability,
+        'provider' => IntegrationProvider::Sentry,
+        'name' => 'Customer telemetry relay',
+    ],
+    [
+        'status' => IntegrationStatus::Active,
+        'created_by_user_id' => $user->id,
+        'updated_by_user_id' => $user->id,
+    ],
+);
+
+$sentryDsn = SentryDsn::firstOrCreate(
+    ['integration_id' => $sentryIntegration->id],
+    [
+        'team_id' => $team->id,
+        'public_key' => 'docscapturetelemetry000000000001',
+        'project_id' => '2656211',
+        'routing_method' => SentryRoutingMethod::Event,
+        'event_source' => SentryEventSource::Contexts,
+        'app_key' => 'app.slug',
+        'identifier_key' => 'app.identifier',
+        'upstream_dsn' => 'https://public-docs-key@example.invalid/2656211',
+        'last_event_at' => now()->subMinutes(2),
+        'last_forwarded_at' => now()->subMinutes(2),
+    ],
+);
+
+$sentryIntegration->update(['external_id' => $sentryDsn->id]);
+
+foreach ([
+    [$ios, 'docscaptureiosroute0000000000001'],
+    [$web, 'docscapturewebroute0000000000001'],
+] as [$identifier, $publicKey]) {
+    SentryDsnRoute::firstOrCreate(
+        ['sentry_dsn_id' => $sentryDsn->id, 'app_identifier_id' => $identifier->id],
+        ['mobile_app_id' => $app->id, 'public_key' => $publicKey],
+    );
+}
+
+$sentryTraceId = 'd0c5c6f7a18d4c2fb0bfa4b8c4f0a711';
+$errorEnvelope = SentryEnvelope::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'body_base64' => base64_encode('{"event_id":"docserror00000000000000000000001"}')],
+    [
+        'team_id' => $team->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $web->id,
+        'header' => ['event_id' => 'docserror00000000000000000000001'],
+        'status' => SentryEnvelopeStatus::Forwarded,
+        'forward_attempts' => 1,
+        'upstream_response_status' => 200,
+        'forwarded_at' => now()->subMinute(),
+    ],
+);
+
+SentryEvent::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'event_id' => 'docserror00000000000000000000001'],
+    [
+        'team_id' => $team->id,
+        'sentry_envelope_id' => $errorEnvelope->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $web->id,
+        'item_type' => 'event',
+        'level' => 'error',
+        'title' => 'Payment authorization failed',
+        'release' => 'customer-web@1.4.0',
+        'environment' => 'production',
+        'platform' => 'javascript',
+        'trace_id' => $sentryTraceId,
+        'occurred_at' => now()->subMinute(),
+        'payload' => [
+            'exception' => ['values' => [[
+                'type' => 'PaymentAuthorizationError',
+                'value' => 'The card authorization expired before checkout completed.',
+                'mechanism' => ['handled' => true, 'type' => 'generic'],
+                'stacktrace' => ['frames' => [[
+                    'filename' => '/srv/customer-web/src/checkout/authorizePayment.ts',
+                    'function' => 'authorizePayment',
+                    'lineno' => 42,
+                    'colno' => 15,
+                    'in_app' => true,
+                    'pre_context' => ['const authorization = await gateway.authorize(cart);', 'if (authorization.expired) {'],
+                    'context_line' => '  throw new PaymentAuthorizationError(authorization.reason);',
+                    'post_context' => ['}', 'return authorization;'],
+                ]]],
+            ]]],
+            'contexts' => [
+                'app' => ['slug' => 'customer-app', 'identifier' => 'customer.acme.example', 'version' => '1.4.0'],
+                'trace' => ['trace_id' => $sentryTraceId, 'op' => 'http.server', 'status' => 'internal_error'],
+                'runtime' => ['name' => 'node', 'version' => '22.22.3'],
+            ],
+            'request' => [
+                'method' => 'POST',
+                'url' => 'https://customer.acme.example/api/checkout',
+                'query_string' => 'currency=USD',
+                'headers' => [['Content-Type', 'application/json']],
+                'data' => ['cart_id' => 'cart_42', 'payment_method' => 'card'],
+            ],
+            'user' => ['id' => 'customer_42', 'email' => 'ava@example.test', 'segment' => 'gold'],
+            'tags' => ['feature' => 'checkout', 'payment_provider' => 'acme-pay'],
+            'extra' => ['cart_total' => 149.99, 'order_id' => 'order_42'],
+            'sdk' => ['name' => 'sentry.javascript.node', 'version' => '9.47.1'],
+        ],
+    ],
+);
+
+$repeatEnvelope = SentryEnvelope::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'body_base64' => base64_encode('{"event_id":"docsrepeat0000000000000000000001"}')],
+    [
+        'team_id' => $team->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $web->id,
+        'header' => ['event_id' => 'docsrepeat0000000000000000000001'],
+        'status' => SentryEnvelopeStatus::Forwarded,
+        'forward_attempts' => 1,
+        'upstream_response_status' => 200,
+        'forwarded_at' => now()->subMinutes(2),
+    ],
+);
+
+SentryEvent::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'event_id' => 'docsrepeat0000000000000000000001'],
+    [
+        'team_id' => $team->id,
+        'sentry_envelope_id' => $repeatEnvelope->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $web->id,
+        'item_type' => 'event',
+        'level' => 'error',
+        'title' => 'Payment authorization failed',
+        'release' => 'customer-web@1.4.0',
+        'environment' => 'production',
+        'platform' => 'javascript',
+        'trace_id' => $sentryTraceId,
+        'occurred_at' => now()->subMinutes(2),
+        'payload' => [
+            'exception' => ['values' => [[
+                'type' => 'PaymentAuthorizationError',
+                'value' => 'The card authorization expired before checkout completed.',
+                'stacktrace' => ['frames' => [[
+                    'filename' => '/srv/customer-web/src/checkout/authorizePayment.ts',
+                    'function' => 'authorizePayment',
+                    'in_app' => true,
+                ]]],
+            ]]],
+            'contexts' => ['trace' => ['trace_id' => $sentryTraceId, 'op' => 'http.server', 'status' => 'internal_error']],
+        ],
+    ],
+);
+
+$traceEnvelope = SentryEnvelope::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'body_base64' => base64_encode('{"event_id":"docstrace00000000000000000000001"}')],
+    [
+        'team_id' => $team->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $ios->id,
+        'header' => ['event_id' => 'docstrace00000000000000000000001'],
+        'status' => SentryEnvelopeStatus::Forwarded,
+        'forward_attempts' => 1,
+        'upstream_response_status' => 200,
+        'forwarded_at' => now()->subMinutes(3),
+    ],
+);
+
+SentryEvent::updateOrCreate(
+    ['sentry_dsn_id' => $sentryDsn->id, 'event_id' => 'docstrace00000000000000000000001'],
+    [
+        'team_id' => $team->id,
+        'sentry_envelope_id' => $traceEnvelope->id,
+        'mobile_app_id' => $app->id,
+        'app_identifier_id' => $ios->id,
+        'item_type' => 'transaction',
+        'level' => 'info',
+        'title' => 'POST /api/checkout',
+        'transaction' => 'POST /api/checkout',
+        'release' => 'customer-ios@1.4.0',
+        'environment' => 'production',
+        'platform' => 'ios',
+        'trace_id' => $sentryTraceId,
+        'occurred_at' => now()->subMinutes(3),
+        'payload' => [
+            'start_timestamp' => 100.25,
+            'timestamp' => 101.5,
+            'contexts' => ['trace' => ['trace_id' => $sentryTraceId, 'op' => 'http.client', 'status' => 'internal_error']],
+            'spans' => [['span_id' => 'd0c5c6f7a18d4c2f']],
+        ],
+    ],
+);
+$out('sentry: '.SentryDsn::where('team_id', $team->id)->count().' DSN, '.SentryEvent::where('team_id', $team->id)->count().' events');
 
 // ---------------------------------------------------------------------------
 // Everything below exists so the web UI screenshots have something to show. A

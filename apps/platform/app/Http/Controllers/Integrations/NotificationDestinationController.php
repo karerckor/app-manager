@@ -50,6 +50,7 @@ class NotificationDestinationController extends Controller
                 'credentials' => $credentials,
                 'subscribed_events' => array_values(array_unique($data['events'])),
                 'templates' => $data['templates'],
+                'tags' => $data['tags'] ?? [],
             ]);
 
             $integration->update(['external_id' => $destination->id]);
@@ -95,6 +96,7 @@ class NotificationDestinationController extends Controller
                 'credentials' => $credentials,
                 'subscribed_events' => array_values(array_unique($data['events'])),
                 'templates' => $data['templates'],
+                'tags' => $data['tags'] ?? [],
             ]);
             $notificationDestination->integration->update([
                 'name' => $data['name'],
@@ -136,7 +138,7 @@ class NotificationDestinationController extends Controller
         }
 
         $event = NotificationEventCatalog::find($data['event']);
-        $message = NotificationEventCatalog::renderExample($data['event'], $data['template']);
+        $message = NotificationEventCatalog::renderExample($data['event'], $data['template'], $notificationDestination->tags ?? []);
 
         try {
             $this->sender->send($notificationDestination, $message);
@@ -188,6 +190,8 @@ class NotificationDestinationController extends Controller
             'events.*' => ['string', 'distinct', Rule::in(NotificationEventCatalog::values())],
             'templates' => ['required', 'array'],
             'templates.*' => ['required', 'string', 'max:4000'],
+            'tags' => ['nullable', 'array'],
+            'tags.*' => ['string', 'max:50'],
             'enabled' => ['required', 'boolean'],
         ]);
 

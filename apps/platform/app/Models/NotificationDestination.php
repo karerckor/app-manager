@@ -19,6 +19,7 @@ use OwenIt\Auditing\Contracts\Auditable;
     'credentials',
     'subscribed_events',
     'templates',
+    'tags',
     'consecutive_failures',
     'last_delivered_at',
 ])]
@@ -49,6 +50,7 @@ class NotificationDestination extends Model implements Auditable
             'credentials' => 'encrypted:array',
             'subscribed_events' => 'array',
             'templates' => 'array',
+            'tags' => 'array',
             'last_delivered_at' => 'datetime',
         ];
     }

@@ -63,6 +63,7 @@ class TeamIntegrationAuthorizationTest extends TestCase
             'expo' => route('accounts.integrations.eas.index', $team),
             'webhooks' => route('accounts.integrations.webhooks.index', $team),
             'notifications' => route('accounts.integrations.notifications.index', $team),
+            'sentry' => route('accounts.integrations.sentry.index', $team),
         ];
 
         foreach ([
@@ -70,6 +71,7 @@ class TeamIntegrationAuthorizationTest extends TestCase
             'accounts.integrations.eas.index' => 'expo',
             'accounts.integrations.webhooks.index' => 'webhooks',
             'accounts.integrations.notifications.index' => 'notifications',
+            'accounts.integrations.sentry.index' => 'sentry',
         ] as $routeName => $activeTab) {
             $this->actingAs($owner)
                 ->get(route($routeName, $team))

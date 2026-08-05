@@ -8,4 +8,5 @@ enum IntegrationKind: string
     case AppService = 'app_service';
     case Webhook = 'webhook';
     case Notification = 'notification';
+    case Observability = 'observability';
 }

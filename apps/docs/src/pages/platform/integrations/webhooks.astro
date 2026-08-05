@@ -28,13 +28,23 @@ import Screenshot from '../../../components/Screenshot.astro';
   </p>
   <p>
     Deliveries are signed with HMAC-SHA256 and retried automatically, as the header on the screen
-    states. Verification is covered in the <a href="/guides/webhooks">Webhooks guide</a>.
+    states. The signing secret can be rotated from the command line — see
+    <a href="/cli/integrations/webhooks">CLI webhooks</a>.
   </p>
 
   <h2>Creating an endpoint</h2>
   <p>
-    <strong>New endpoint</strong> needs a name, a URL, and at least one event. The event list is a
-    fixed catalog, and it is worth reading rather than guessing at names:
+    <strong>New endpoint</strong> opens a form that needs a name, a URL, and at least one event.
+  </p>
+
+  <Screenshot
+    src="integrations-webhooks-new"
+    alt="New endpoint form with fields for name, endpoint URL, event checkboxes grouped by category, delivery filters, and an enabled toggle"
+    caption="The endpoint creation form: name, URL, event subscriptions, delivery filters, and an enabled toggle."
+  />
+
+  <p>
+    The event list is a fixed catalog, and it is worth reading rather than guessing at names:
   </p>
   <table>
     <thead>
@@ -98,6 +108,13 @@ import Screenshot from '../../../components/Screenshot.astro';
     The delivery table shows the event, the platform's verdict, the number of attempts, the receiver's
     HTTP status with the request duration, and when it happened.
   </p>
+
+  <Screenshot
+    src="integrations-webhooks-delivery"
+    alt="Delivery inspector showing status, attempts, HTTP response, request payload, response body, and last error for an exhausted delivery"
+    caption="A delivery inspector: the full payload, the receiver's response, and the error that caused exhaustion."
+  />
+
   <table>
     <thead>
       <tr><th>Status</th><th>Meaning</th></tr>
@@ -111,10 +128,8 @@ import Screenshot from '../../../components/Screenshot.astro';
     </tbody>
   </table>
   <p>
-    In the screenshot the <code>build.created</code> delivery is <code>exhausted</code> after five
-    attempts against a receiver answering <code>500</code>. Opening a delivery shows the payload that
-    was sent, the response preview, and the last error, which is usually enough to tell a receiver bug
-    from a signature mismatch.
+    Opening a delivery shows the payload that was sent, the response preview, and the last error,
+    which is usually enough to tell a receiver bug from a signature mismatch.
   </p>
   <p>
     A delivery can be replayed after you fix the receiver. A replay is recorded as a new delivery that
