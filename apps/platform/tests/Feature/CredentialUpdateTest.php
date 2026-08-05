@@ -198,28 +198,15 @@ class CredentialUpdateTest extends TestCase
         $team = Team::factory()->create(['owner_id' => $user->id]);
         $team->addUser($user, 'owner');
         $user->update(['current_team_id' => $team->id]);
-        $app = MobileApp::factory()->create(['team_id' => $team->id]);
-        $identifier = AppIdentifier::factory()->create([
-            'mobile_app_id' => $app->id,
-            'platform' => Platform::Ios,
-            'identifier' => 'com.example.ios',
-        ]);
         $credential = Credential::factory()->create([
             'team_id' => $team->id,
             'type' => CredentialType::ProvisioningProfile,
             'name' => 'Profile',
             'expires_at' => '2027-01-31',
         ]);
-        $profile = $identifier->profiles()->create([
-            'type' => ProfileType::AppStore,
-            'name' => 'App Store',
-        ]);
-        $profile->credentials()->attach($credential);
         $credential->addMediaFromString('profile')->usingFileName('app.mobileprovision')->toMediaCollection('file');
 
         $this->actingAs($user->fresh())->post(route('accounts.credentials.update', [$team, $credential]), [
-            'mobile_app_id' => $app->id,
-            'app_identifier_id' => $identifier->id,
             'type' => CredentialType::ApnsKey->value,
             'name' => 'Push key',
             'payload' => ['key_id' => 'ABC123DEFG', 'team_id' => 'TEAM123456'],

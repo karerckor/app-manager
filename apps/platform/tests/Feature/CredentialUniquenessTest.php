@@ -52,7 +52,6 @@ class CredentialUniquenessTest extends TestCase
                 'app_identifier_id' => $secondIdentifier->id,
                 'type' => CredentialType::GoogleServicesJson->value,
                 'name' => 'A duplicate name that must not be saved',
-                'expires_at' => now()->addYear()->toDateString(),
                 'check_uniqueness' => true,
                 'file' => UploadedFile::fake()->createWithContent('firebase-copy.json', $contents),
             ])

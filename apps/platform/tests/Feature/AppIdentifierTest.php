@@ -60,23 +60,25 @@ class AppIdentifierTest extends TestCase
         $this->assertNull($android->fresh()->build_number);
     }
 
-    public function test_only_one_identifier_can_be_default_per_app_and_platform(): void
+    public function test_setting_a_default_clears_the_previous_default_for_the_same_app_and_platform(): void
     {
         $app = MobileApp::factory()->create();
-        AppIdentifier::factory()->create([
+        $first = AppIdentifier::factory()->create([
             'mobile_app_id' => $app->id,
             'platform' => Platform::Ios,
             'identifier' => 'com.example.app',
             'is_default' => true,
         ]);
 
-        $this->expectException(QueryException::class);
-        AppIdentifier::factory()->create([
+        $second = AppIdentifier::factory()->create([
             'mobile_app_id' => $app->id,
             'platform' => Platform::Ios,
             'identifier' => 'com.example.app.beta',
             'is_default' => true,
         ]);
+
+        $this->assertFalse($first->fresh()->is_default);
+        $this->assertTrue($second->fresh()->is_default);
     }
 
     public function test_identifier_is_unique_per_app_and_platform(): void

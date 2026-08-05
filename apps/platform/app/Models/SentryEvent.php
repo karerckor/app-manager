@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Integrations\Sentry\SentryIssueGrouper;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Integrations\Sentry\SentryIssueGrouper;
 
 #[Fillable([
     'team_id',

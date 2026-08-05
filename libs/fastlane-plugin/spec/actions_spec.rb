@@ -155,7 +155,8 @@ RSpec.describe "App Manager actions" do
       credential_id: nil,
       credential_name: nil,
       output_path: "/tmp/certificate.p12",
-      overwrite: true
+      overwrite: true,
+      allow_expired: false
     )
   end
 
@@ -181,7 +182,8 @@ RSpec.describe "App Manager actions" do
       credential_id: nil,
       credential_name: nil,
       output_path: "/tmp/firebase.json",
-      overwrite: true
+      overwrite: true,
+      allow_expired: false
     )
   ensure
     Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::PLATFORM_NAME] = nil

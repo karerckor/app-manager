@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Enums\TeamPermission;
+use App\Http\Requests\AppTelemetryFilterRequest;
 use App\Models\MobileApp;
 use App\Models\SentryEvent;
 use App\Models\SentryIssue;
 use App\Models\Team;
-use App\Http\Requests\AppTelemetryFilterRequest;
 use App\Support\Apps\AppContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -65,17 +65,33 @@ class AppTelemetryPageController extends Controller
     /** @param array{view: string, environment: string, identifiers: list<string>, search: string} $filters */
     private function applyEventFilters(HasMany $query, array $filters, ?string $itemType = null): void
     {
-        if ($itemType !== null) $query->where('item_type', $itemType);
-        if ($filters['environment'] !== '') $query->where('environment', $filters['environment']);
-        if ($filters['identifiers'] !== []) $query->whereIn('app_identifier_id', $filters['identifiers']);
-        if ($filters['search'] !== '') { $search = "%{$filters['search']}%"; $query->where(fn (Builder $query) => $query->whereLike('title', $search)->orWhereLike('transaction', $search)->orWhereLike('event_id', $search)->orWhereLike('trace_id', $search)->orWhereLike('release', $search)); }
+        if ($itemType !== null) {
+            $query->where('item_type', $itemType);
+        }
+        if ($filters['environment'] !== '') {
+            $query->where('environment', $filters['environment']);
+        }
+        if ($filters['identifiers'] !== []) {
+            $query->whereIn('app_identifier_id', $filters['identifiers']);
+        }
+        if ($filters['search'] !== '') {
+            $search = "%{$filters['search']}%";
+            $query->where(fn (Builder $query) => $query->whereLike('title', $search)->orWhereLike('transaction', $search)->orWhereLike('event_id', $search)->orWhereLike('trace_id', $search)->orWhereLike('release', $search));
+        }
     }
 
     /** @param array{view: string, environment: string, identifiers: list<string>, search: string} $filters */
     private function applyIssueFilters(HasMany $query, array $filters): void
     {
-        if ($filters['environment'] !== '') $query->whereHas('events', fn (Builder $events) => $events->where('environment', $filters['environment']));
-        if ($filters['identifiers'] !== []) $query->whereIn('app_identifier_id', $filters['identifiers']);
-        if ($filters['search'] !== '') { $search = "%{$filters['search']}%"; $query->where(fn (Builder $issues) => $issues->whereLike('title', $search)->orWhereLike('fingerprint', $search)->orWhereHas('events', fn (Builder $events) => $events->whereLike('event_id', $search)->orWhereLike('trace_id', $search)->orWhereLike('release', $search))); }
+        if ($filters['environment'] !== '') {
+            $query->whereHas('events', fn (Builder $events) => $events->where('environment', $filters['environment']));
+        }
+        if ($filters['identifiers'] !== []) {
+            $query->whereIn('app_identifier_id', $filters['identifiers']);
+        }
+        if ($filters['search'] !== '') {
+            $search = "%{$filters['search']}%";
+            $query->where(fn (Builder $issues) => $issues->whereLike('title', $search)->orWhereLike('fingerprint', $search)->orWhereHas('events', fn (Builder $events) => $events->whereLike('event_id', $search)->orWhereLike('trace_id', $search)->orWhereLike('release', $search)));
+        }
     }
 }

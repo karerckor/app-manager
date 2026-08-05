@@ -56,14 +56,15 @@ class DemoApiKeyTest extends TestCase
     {
         $this->getJson($this->api('/apps/example-app/identifiers'))
             ->assertOk()
-            ->assertJsonCount(3, 'data')
+            ->assertJsonCount(4, 'data')
             ->assertJsonFragment(['platform' => 'android', 'identifier' => 'com.example.app'])
             ->assertJsonFragment(['platform' => 'android', 'identifier' => 'com.example.app.beta'])
-            ->assertJsonFragment(['platform' => 'ios', 'identifier' => 'com.example.app']);
+            ->assertJsonFragment(['platform' => 'ios', 'identifier' => 'com.example.app'])
+            ->assertJsonFragment(['platform' => 'web', 'identifier' => 'com.example.app.web']);
 
         $response = $this->getJson($this->api('/apps/example-app/credentials'))
             ->assertOk()
-            ->assertJsonCount(8, 'data')
+            ->assertJsonCount(9, 'data')
             ->assertJsonFragment(['type' => CredentialType::AndroidKeystore->value])
             ->assertJsonFragment(['type' => CredentialType::FirebaseConfig->value])
             ->assertJsonFragment(['type' => CredentialType::IosCertificate->value])

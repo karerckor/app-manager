@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\EncryptionKeyStatus;
 use App\Models\Credential;
 use App\Models\EncryptionKey;
 use App\Support\Encryption\EnvelopeEncryptor;

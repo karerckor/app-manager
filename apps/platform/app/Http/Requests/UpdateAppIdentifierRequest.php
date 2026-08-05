@@ -4,10 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\Platform;
 use App\Http\Requests\Concerns\ValidatesAppIdentifier;
-use App\Models\AppIdentifier;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class UpdateAppIdentifierRequest extends FormRequest
 {

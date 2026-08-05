@@ -194,11 +194,15 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Connect API Key')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase google-services.json')->count());
         $this->assertSame(1, Credential::where('name', 'Firebase GoogleService-Info.plist')->count());
+        $this->assertSame(1, Credential::where('name', 'Beta Preview Keystore')->count());
+        $this->assertSame(1, Credential::where('name', 'Blue Production Keystore')->count());
+        $this->assertSame(1, MobileApp::where('slug', 'example-app-blue')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('app_identifiers', 2);
-        $this->assertDatabaseCount('profiles', 2);
-        $this->assertDatabaseCount('credentialables', 8);
-        $this->assertDatabaseCount('media', 12);
+        $this->assertDatabaseCount('app_identifiers', 6);
+        $this->assertDatabaseCount('profiles', 6);
+        $this->assertDatabaseCount('credentials', 16);
+        $this->assertDatabaseCount('credentialables', 16);
+        $this->assertDatabaseCount('media', 22);
     }
 
     public function test_database_seeder_is_idempotent(): void
@@ -214,6 +218,6 @@ class DemoSeederTest extends TestCase
         $this->assertSame(1, Credential::where('name', 'App Store Certificate')->count());
         $this->assertSame(1, Credential::where('name', 'App Store Provisioning Profile')->count());
         $this->assertDatabaseCount('personal_access_tokens', 1);
-        $this->assertDatabaseCount('media', 12);
+        $this->assertDatabaseCount('media', 22);
     }
 }

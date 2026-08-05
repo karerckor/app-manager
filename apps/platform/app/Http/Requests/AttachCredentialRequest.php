@@ -7,7 +7,6 @@ use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 class AttachCredentialRequest extends FormRequest
 {

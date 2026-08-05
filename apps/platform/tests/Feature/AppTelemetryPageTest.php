@@ -164,15 +164,15 @@ class AppTelemetryPageTest extends TestCase
         $issue = $app->sentryIssues()->sole();
         $this->actingAs($user)->get(route('accounts.apps.telemetry.issues.show', [$team, $app, $issue]))
             ->assertSuccessful()->assertInertia(fn (Assert $page) => $page
-                ->component('Apps/Telemetry/Detail')->where('telemetry.kind', 'issue')
-                ->where('telemetry.selected_event.id', $error->id)->has('telemetry.selected_event.exceptions', 2)
-                ->where('telemetry.selected_event.exceptions.0.frames.0.function', 'reserveInventory')
-                ->where('telemetry.selected_event.request.data.cart_id', 'cart-42')
-                ->where('telemetry.selected_event.user.subscription', 'enterprise'));
+            ->component('Apps/Telemetry/Detail')->where('telemetry.kind', 'issue')
+            ->where('telemetry.selected_event.id', $error->id)->has('telemetry.selected_event.exceptions', 2)
+            ->where('telemetry.selected_event.exceptions.0.frames.0.function', 'reserveInventory')
+            ->where('telemetry.selected_event.request.data.cart_id', 'cart-42')
+            ->where('telemetry.selected_event.user.subscription', 'enterprise'));
         $this->actingAs($user)->get(route('accounts.apps.telemetry.traces.show', [$team, $app, $traceId]))
             ->assertSuccessful()->assertInertia(fn (Assert $page) => $page
-                ->component('Apps/Telemetry/Detail')->where('telemetry.kind', 'trace')
-                ->where('telemetry.selected_event.id', $trace->id)->where('telemetry.selected_event.trace.duration_ms', 1250));
+            ->component('Apps/Telemetry/Detail')->where('telemetry.kind', 'trace')
+            ->where('telemetry.selected_event.id', $trace->id)->where('telemetry.selected_event.trace.duration_ms', 1250));
     }
 
     public function test_application_telemetry_filters_by_type_environment_and_search(): void

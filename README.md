@@ -1,5 +1,9 @@
 # App Manager
 
+[![Platform CI](https://github.com/karerckor/app-manager/actions/workflows/platform-ci.yml/badge.svg)](https://github.com/karerckor/app-manager/actions/workflows/platform-ci.yml)
+[![Platform image](https://img.shields.io/badge/GHCR-app--manager--platform-2496ED?logo=docker&logoColor=white)](https://github.com/karerckor/app-manager/pkgs/container/app-manager-platform)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 App Manager is a self-hosted control plane for application configuration, signing credentials, CI/CD builds, logs, and artifacts. It gives teams one place to manage iOS, Android, and Web application metadata and makes that data available to build runners through a versioned API, a dependency-light CLI, and composable Fastlane actions.
 
 The project is aimed at teams that maintain multiple mobile applications, environments, or white-label variants and want to keep build configuration out of individual repositories and CI-provider-specific scripts.
@@ -440,6 +444,10 @@ Security-sensitive considerations:
 
 ## Contributing and releases
 
-There is not yet a formal contribution or release process. For changes, keep the platform, CLI, plugin, API documentation, and demo behavior aligned, and run the relevant suites above.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, testing, commit, and pull-request guidance. By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues should be reported privately as described in [SECURITY.md](SECURITY.md).
 
-The repository does not currently declare a project-wide license. The Fastlane plugin directory contains its own MIT license; do not assume that license covers the rest of the monorepo until a root license is added.
+Version tags (`v*`) create a GitHub release and publish a multi-architecture container image. Development builds from `main` are tagged `edge`; stable releases also publish `latest` and semantic-version tags.
+
+## License
+
+App Manager is available under the [MIT License](LICENSE).

@@ -9,7 +9,6 @@ use App\Integrations\CiCd\Expo\ExpoProvider;
 use App\Integrations\CiCd\GitHub\GitHubProvider;
 use App\Integrations\CiCd\GitLab\GitLabProvider;
 use App\Models\ApiKey;
-use App\Models\Team;
 use App\Support\Audit\ActorContextManager;
 use App\Support\Installation\SelfHostedConfiguration;
 use App\Support\Storage\MediaStorageConfiguration;

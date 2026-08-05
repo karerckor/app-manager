@@ -34,7 +34,7 @@ class ExpoProjectController extends Controller
         SyncExpoProjects $sync,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
         abort_if(
             $mobileApp->expoProject()
                 ->whereHas('integration', fn ($query) => $query->connectedExpo())
@@ -63,7 +63,7 @@ class ExpoProjectController extends Controller
         $integration = $team->integrations()->findOrFail($data['integration_id']);
 
         if ($data['mode'] === 'create') {
-            $this->authorize($request, $team, TeamPermission::ManageCredentials);
+            $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
 
             try {
                 $remote = $expo->createProject($integration, $mobileApp->slug, $mobileApp->name);
@@ -159,8 +159,8 @@ class ExpoProjectController extends Controller
         ImportExpoProject $importer,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
-        $this->authorize($request, $team, TeamPermission::ManageCredentials);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
         $this->assertProject($team, $integration, $expoProject);
         abort_if($expoProject->mobile_app_id, 409, 'This Expo project is already linked.');
 
@@ -188,8 +188,8 @@ class ExpoProjectController extends Controller
         Integration $integration,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
-        $this->authorize($request, $team, TeamPermission::ManageCredentials);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
         abort_unless(
             $integration->team_id === $team->id
             && $integration->provider === IntegrationProvider::Expo
@@ -233,8 +233,8 @@ class ExpoProjectController extends Controller
         ImportExpoProject $importer,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
-        $this->authorize($request, $team, TeamPermission::ManageCredentials);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
         $project = $mobileApp->expoProject()->with('integration')->firstOrFail();
         abort_unless($project->team_id === $team->id, 404);
 
@@ -268,8 +268,8 @@ class ExpoProjectController extends Controller
         ExpoAutoSyncDispatcher $autoSync,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
-        $this->authorize($request, $team, TeamPermission::ManageCredentials);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
         $project = $mobileApp->expoProject()->with('integration')->firstOrFail();
         abort_unless($project->team_id === $team->id, 404);
         $data = $request->validate(['enabled' => ['required', 'boolean']]);
@@ -305,7 +305,7 @@ class ExpoProjectController extends Controller
         Team $team,
         MobileApp $mobileApp,
     ): RedirectResponse {
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
         $project = $mobileApp->expoProject()->firstOrFail();
         abort_unless($project->team_id === $team->id, 404);
         DB::transaction(function () use ($project, $mobileApp): void {
@@ -341,7 +341,7 @@ class ExpoProjectController extends Controller
         );
     }
 
-    private function authorize(Request $request, Team $team, TeamPermission $permission): void
+    private function authorizeTeamPermission(Request $request, Team $team, TeamPermission $permission): void
     {
         abort_unless($team->allows($request->user(), $permission), 403);
     }

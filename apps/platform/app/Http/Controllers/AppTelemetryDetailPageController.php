@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MobileApp;
 use App\Http\Requests\AppTelemetryEventRequest;
+use App\Models\MobileApp;
 use App\Models\SentryEvent;
 use App\Models\SentryIssue;
 use App\Models\Team;
 use App\Support\Apps\AppContext;
 use App\Support\Sentry\SentryTelemetryPresenter;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -57,10 +58,11 @@ class AppTelemetryDetailPageController extends Controller
         ]);
     }
 
-    /** @param \Illuminate\Support\Collection<int, SentryEvent> $events */
+    /** @param Collection<int, SentryEvent> $events */
     private function selectedEvent(AppTelemetryEventRequest $request, $events): ?SentryEvent
     {
         $eventId = $request->eventId();
+
         return $eventId === null ? $events->first() : $events->firstWhere('id', $eventId);
     }
 

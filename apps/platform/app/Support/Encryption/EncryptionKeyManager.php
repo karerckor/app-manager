@@ -4,6 +4,7 @@ namespace App\Support\Encryption;
 
 use App\Enums\EncryptionKeyStatus;
 use App\Models\EncryptionKey;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
@@ -109,12 +110,12 @@ final class EncryptionKeyManager
         return $encrypter->encryptString($plaintextDEK);
     }
 
-    private static function buildEncrypter(string $kek): \Illuminate\Encryption\Encrypter
+    private static function buildEncrypter(string $kek): Encrypter
     {
         $rawKey = str_starts_with($kek, 'base64:')
             ? base64_decode(substr($kek, 7), true)
             : $kek;
 
-        return new \Illuminate\Encryption\Encrypter($rawKey, config('app.cipher'));
+        return new Encrypter($rawKey, config('app.cipher'));
     }
 }

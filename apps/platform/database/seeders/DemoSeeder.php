@@ -17,6 +17,7 @@ use App\Models\EncryptionKey;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
+use App\Models\Team;
 use App\Models\User;
 use App\Models\WebhookEndpoint;
 use App\Support\Credentials\CredentialFileStorage;
@@ -44,6 +45,16 @@ class DemoSeeder extends Seeder
     private const IOS_CERTIFICATE_PASSWORD = 'DemoCertificate123!';
 
     private const IOS_TEAM_ID = 'DEMO123456';
+
+    private const BLUE_ANDROID_IDENTIFIER = 'com.example.blue';
+
+    private const BLUE_IOS_BUNDLE_IDENTIFIER = 'com.example.blue';
+
+    private const BLUE_KEYSTORE_ALIAS = 'blue-production';
+
+    private const BLUE_KEYSTORE_PASSWORD = 'BlueKeystore123!';
+
+    private const BLUE_IOS_CERTIFICATE_PASSWORD = 'BlueCertificate123!';
 
     public function run(): void
     {
@@ -99,6 +110,12 @@ class DemoSeeder extends Seeder
             ['platform' => Platform::Android, 'identifier' => 'com.example.app'],
             ['name' => 'Example App (Android)'],
         );
+        $identifier->update([
+            'name' => 'Example App (Android)',
+            'version' => '1.0.0',
+            'version_code' => 1,
+            'is_default' => true,
+        ]);
 
         // Production build profile on that identifier.
         $profile = $identifier->profiles()->firstOrCreate(
@@ -134,11 +151,54 @@ class DemoSeeder extends Seeder
             CredentialFileStorage::storeContents($keystore, $this->makeDemoKeystore(), 'production.keystore');
         }
 
+        // A non-default target proves explicit identifier/profile selection.
+        $betaIdentifier = $app->appIdentifiers()->firstOrCreate(
+            ['platform' => Platform::Android, 'identifier' => 'com.example.app.beta'],
+            ['name' => 'Example App Beta (Android)'],
+        );
+        $betaIdentifier->update([
+            'name' => 'Example App Beta (Android)',
+            'version' => '1.1.0-beta.1',
+            'version_code' => 10100,
+            'is_default' => false,
+        ]);
+        $betaProfile = $betaIdentifier->profiles()->firstOrCreate(
+            ['type' => ProfileType::Preview],
+            ['name' => 'Preview'],
+        );
+        $betaKeystore = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::AndroidKeystore,
+                'name' => 'Beta Preview Keystore',
+            ],
+            ['payload' => [
+                'store_password' => self::KEYSTORE_PASSWORD,
+                'key_alias' => 'beta-preview',
+                'key_password' => self::KEYSTORE_PASSWORD,
+            ]],
+        );
+        $betaProfile->credentials()->syncWithoutDetaching([$betaKeystore->id]);
+
+        if (! $betaKeystore->hasMedia('file')) {
+            CredentialFileStorage::storeContents(
+                $betaKeystore,
+                $this->makeDemoKeystore(self::KEYSTORE_PASSWORD, 'beta-preview', 'App Manager Demo Beta'),
+                'beta-preview.keystore',
+            );
+        }
+
         // iOS App Store target and its two required signing credentials.
         $iosIdentifier = $app->appIdentifiers()->firstOrCreate(
             ['platform' => Platform::Ios, 'identifier' => self::IOS_BUNDLE_IDENTIFIER],
             ['name' => 'Example App (iOS)'],
         );
+        $iosIdentifier->update([
+            'name' => 'Example App (iOS)',
+            'version' => '1.0.0',
+            'build_number' => '1',
+            'is_default' => true,
+        ]);
         $iosBuildProfile = $iosIdentifier->profiles()->firstOrCreate(
             ['type' => ProfileType::AppStore],
             ['name' => 'App Store'],
@@ -437,6 +497,8 @@ class DemoSeeder extends Seeder
             $notificationIntegration->update(['external_id' => $notificationDestination->id]);
         }
 
+        $this->seedBlueBrand($team);
+
         // Project files: arbitrary files attached to the app, downloadable
         // via the files API. Demonstrates that Platform can store and serve
         // not just credentials, but any project-related files.
@@ -450,6 +512,195 @@ class DemoSeeder extends Seeder
                 ->usingFileName('app-config.json')
                 ->withCustomProperties(['metadata' => ['environment' => 'development']])
                 ->toMediaCollection('files');
+        }
+    }
+
+    private function seedBlueBrand(Team $team): void
+    {
+        $app = MobileApp::firstOrCreate(
+            ['team_id' => $team->id, 'slug' => 'example-app-blue'],
+            ['name' => 'Blue Example App'],
+        );
+        $app->update([
+            'name' => 'Blue Example App',
+            'description' => 'Second white-label application built from the same demo source.',
+        ]);
+
+        $android = $app->appIdentifiers()->firstOrCreate(
+            ['platform' => Platform::Android, 'identifier' => self::BLUE_ANDROID_IDENTIFIER],
+            ['name' => 'Blue Example App (Android)'],
+        );
+        $android->update([
+            'name' => 'Blue Example App (Android)',
+            'version' => '2.0.0',
+            'version_code' => 20000,
+            'is_default' => true,
+        ]);
+        $androidProfile = $android->profiles()->firstOrCreate(
+            ['type' => ProfileType::Production],
+            ['name' => 'Production'],
+        );
+        $keystore = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::AndroidKeystore,
+                'name' => 'Blue Production Keystore',
+            ],
+            ['payload' => [
+                'store_password' => self::BLUE_KEYSTORE_PASSWORD,
+                'key_alias' => self::BLUE_KEYSTORE_ALIAS,
+                'key_password' => self::BLUE_KEYSTORE_PASSWORD,
+            ]],
+        );
+        $androidProfile->credentials()->syncWithoutDetaching([$keystore->id]);
+
+        if (! $keystore->hasMedia('file')) {
+            CredentialFileStorage::storeContents(
+                $keystore,
+                $this->makeDemoKeystore(
+                    self::BLUE_KEYSTORE_PASSWORD,
+                    self::BLUE_KEYSTORE_ALIAS,
+                    'App Manager Blue Demo',
+                ),
+                'blue-production.keystore',
+            );
+        }
+
+        $ios = $app->appIdentifiers()->firstOrCreate(
+            ['platform' => Platform::Ios, 'identifier' => self::BLUE_IOS_BUNDLE_IDENTIFIER],
+            ['name' => 'Blue Example App (iOS)'],
+        );
+        $ios->update([
+            'name' => 'Blue Example App (iOS)',
+            'version' => '2.0.0',
+            'build_number' => '20000',
+            'is_default' => true,
+        ]);
+        $iosProfile = $ios->profiles()->firstOrCreate(
+            ['type' => ProfileType::AppStore],
+            ['name' => 'App Store'],
+        );
+        $certificate = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::IosCertificate,
+                'name' => 'Blue App Store Certificate',
+            ],
+            ['payload' => ['password' => self::BLUE_IOS_CERTIFICATE_PASSWORD]],
+        );
+        $provisioningProfile = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::ProvisioningProfile,
+                'name' => 'Blue App Store Provisioning Profile',
+            ],
+            ['payload' => null],
+        );
+        $iosProfile->credentials()->syncWithoutDetaching([
+            $certificate->id,
+            $provisioningProfile->id,
+        ]);
+
+        if (! $certificate->hasMedia('file') || ! $provisioningProfile->hasMedia('file')) {
+            $materials = $this->makeIosSigningMaterials(
+                self::BLUE_IOS_BUNDLE_IDENTIFIER,
+                self::IOS_TEAM_ID,
+                self::BLUE_IOS_CERTIFICATE_PASSWORD,
+                'Blue Example App Demo App Store',
+                'Apple Distribution: App Manager Blue Demo',
+            );
+            CredentialFileStorage::storeContents($certificate, $materials['certificate'], 'blue-distribution.p12');
+            CredentialFileStorage::storeContents(
+                $provisioningProfile,
+                $materials['provisioning_profile'],
+                'blue-appstore.mobileprovision',
+            );
+        }
+
+        if (! $app->hasMedia('app_icon')) {
+            $app->addMediaFromString($this->makePng(1024, '#0ea5e9'))
+                ->usingFileName('blue-icon.png')
+                ->toMediaCollection('app_icon');
+        }
+
+        if (! $app->hasMedia('splash_icon')) {
+            $app->addMediaFromString($this->makePng(2048, '#082f49'))
+                ->usingFileName('blue-splash.png')
+                ->toMediaCollection('splash_icon');
+        }
+
+        $googlePlay = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::GooglePlayServiceAccount,
+                'name' => 'Blue Google Play Service Account',
+            ],
+            ['payload' => null],
+        );
+        $android->credentials()->syncWithoutDetaching([$googlePlay->id]);
+        if (! $googlePlay->hasMedia('file')) {
+            CredentialFileStorage::storeContents(
+                $googlePlay,
+                $this->makeDemoServiceAccount('app-manager-blue-demo'),
+                'blue-google-play-service-account.json',
+                'application/json',
+            );
+        }
+
+        $appleKey = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::AppleApiKey,
+                'name' => 'Blue App Store Connect API Key',
+            ],
+            ['payload' => [
+                'key_id' => 'BLUEKEY123',
+                'issuer_id' => '22222222-2222-4222-8222-222222222222',
+            ]],
+        );
+        $ios->credentials()->syncWithoutDetaching([$appleKey->id]);
+        if (! $appleKey->hasMedia('file')) {
+            openssl_pkey_export(openssl_pkey_new([
+                'private_key_bits' => 2048,
+                'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            ]), $p8);
+            CredentialFileStorage::storeContents($appleKey, $p8, 'blue-appstore-api-key.p8', 'application/x-pem-file');
+        }
+
+        $androidFirebase = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::GoogleServicesJson,
+                'name' => 'Blue Firebase google-services.json',
+            ],
+            ['payload' => null],
+        );
+        $android->credentials()->syncWithoutDetaching([$androidFirebase->id]);
+        if (! $androidFirebase->hasMedia('file')) {
+            CredentialFileStorage::storeContents(
+                $androidFirebase,
+                $this->makeGoogleServicesJson(self::BLUE_ANDROID_IDENTIFIER, 'app-manager-blue-demo'),
+                'blue-google-services.json',
+                'application/json',
+            );
+        }
+
+        $iosFirebase = Credential::updateOrCreate(
+            [
+                'team_id' => $team->id,
+                'type' => CredentialType::GoogleServiceInfoPlist,
+                'name' => 'Blue Firebase GoogleService-Info.plist',
+            ],
+            ['payload' => null],
+        );
+        $ios->credentials()->syncWithoutDetaching([$iosFirebase->id]);
+        if (! $iosFirebase->hasMedia('file')) {
+            CredentialFileStorage::storeContents(
+                $iosFirebase,
+                $this->makeGoogleServiceInfoPlist(self::BLUE_IOS_BUNDLE_IDENTIFIER, 'app-manager-blue-demo'),
+                'Blue-GoogleService-Info.plist',
+                'application/xml',
+            );
         }
     }
 
@@ -472,7 +723,7 @@ class DemoSeeder extends Seeder
         return $contents;
     }
 
-    private function makeDemoServiceAccount(): string
+    private function makeDemoServiceAccount(string $projectId = 'app-manager-demo'): string
     {
         openssl_pkey_export(openssl_pkey_new([
             'private_key_bits' => 2048,
@@ -481,27 +732,29 @@ class DemoSeeder extends Seeder
 
         return json_encode([
             'type' => 'service_account',
-            'project_id' => 'app-manager-demo',
+            'project_id' => $projectId,
             'private_key_id' => 'demo-key-id',
             'private_key' => $privateKey,
-            'client_email' => 'demo@app-manager-demo.iam.gserviceaccount.com',
+            'client_email' => "demo@{$projectId}.iam.gserviceaccount.com",
             'client_id' => '000000000000000000000',
             'token_uri' => 'https://oauth2.googleapis.com/token',
         ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
     }
 
-    private function makeGoogleServicesJson(): string
-    {
+    private function makeGoogleServicesJson(
+        string $packageName = self::IOS_BUNDLE_IDENTIFIER,
+        string $projectId = 'app-manager-demo',
+    ): string {
         return json_encode([
             'project_info' => [
                 'project_number' => '000000000000',
-                'project_id' => 'app-manager-demo',
-                'storage_bucket' => 'app-manager-demo.appspot.com',
+                'project_id' => $projectId,
+                'storage_bucket' => "{$projectId}.appspot.com",
             ],
             'client' => [[
                 'client_info' => [
                     'mobilesdk_app_id' => '1:000000000000:android:0000000000000000',
-                    'android_client_info' => ['package_name' => self::IOS_BUNDLE_IDENTIFIER],
+                    'android_client_info' => ['package_name' => $packageName],
                 ],
                 'api_key' => [['current_key' => 'DEMO-ANDROID-API-KEY']],
             ]],
@@ -509,17 +762,17 @@ class DemoSeeder extends Seeder
         ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
     }
 
-    private function makeGoogleServiceInfoPlist(): string
-    {
-        $bundleId = self::IOS_BUNDLE_IDENTIFIER;
-
+    private function makeGoogleServiceInfoPlist(
+        string $bundleId = self::IOS_BUNDLE_IDENTIFIER,
+        string $projectId = 'app-manager-demo',
+    ): string {
         return <<<PLIST
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
             <key>BUNDLE_ID</key><string>{$bundleId}</string>
-            <key>PROJECT_ID</key><string>app-manager-demo</string>
+            <key>PROJECT_ID</key><string>{$projectId}</string>
             <key>GOOGLE_APP_ID</key><string>1:000000000000:ios:0000000000000000</string>
             <key>API_KEY</key><string>DEMO-IOS-API-KEY</string>
             <key>GCM_SENDER_ID</key><string>000000000000</string>
@@ -529,18 +782,23 @@ class DemoSeeder extends Seeder
         PLIST;
     }
 
-    private function isValidDemoKeystore(string $path): bool
-    {
+    private function isValidDemoKeystore(
+        string $path,
+        string $password = self::KEYSTORE_PASSWORD,
+    ): bool {
         $contents = @file_get_contents($path);
         $certificates = [];
 
         return is_string($contents)
-            && @openssl_pkcs12_read($contents, $certificates, self::KEYSTORE_PASSWORD)
+            && @openssl_pkcs12_read($contents, $certificates, $password)
             && isset($certificates['pkey'], $certificates['cert']);
     }
 
-    private function makeDemoKeystore(): string
-    {
+    private function makeDemoKeystore(
+        string $password = self::KEYSTORE_PASSWORD,
+        string $alias = self::KEYSTORE_ALIAS,
+        string $commonName = 'App Manager Demo',
+    ): string {
         $key = openssl_pkey_new([
             'private_key_bits' => 2048,
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
@@ -551,7 +809,7 @@ class DemoSeeder extends Seeder
         }
 
         $subject = [
-            'commonName' => 'App Manager Demo',
+            'commonName' => $commonName,
             'organizationName' => 'App Manager',
             'organizationalUnitName' => 'Development',
             'countryName' => 'ES',
@@ -572,8 +830,8 @@ class DemoSeeder extends Seeder
             $certificate,
             $contents,
             $key,
-            self::KEYSTORE_PASSWORD,
-            ['friendly_name' => self::KEYSTORE_ALIAS],
+            $password,
+            ['friendly_name' => $alias],
         );
 
         if (! $exported) {
@@ -583,18 +841,23 @@ class DemoSeeder extends Seeder
         return $contents;
     }
 
-    private function isValidIosCertificate(string $path): bool
-    {
+    private function isValidIosCertificate(
+        string $path,
+        string $password = self::IOS_CERTIFICATE_PASSWORD,
+    ): bool {
         $contents = @file_get_contents($path);
         $certificates = [];
 
         return is_string($contents)
-            && @openssl_pkcs12_read($contents, $certificates, self::IOS_CERTIFICATE_PASSWORD)
+            && @openssl_pkcs12_read($contents, $certificates, $password)
             && isset($certificates['pkey'], $certificates['cert']);
     }
 
-    private function isValidDemoProvisioningProfile(string $path): bool
-    {
+    private function isValidDemoProvisioningProfile(
+        string $path,
+        string $bundleIdentifier = self::IOS_BUNDLE_IDENTIFIER,
+        string $teamId = self::IOS_TEAM_ID,
+    ): bool {
         $decodedPath = tempnam(sys_get_temp_dir(), 'app-manager-profile-');
 
         if ($decodedPath === false) {
@@ -618,16 +881,21 @@ class DemoSeeder extends Seeder
             return is_string($contents)
                 && str_contains(
                     $contents,
-                    '<string>'.self::IOS_TEAM_ID.'.'.self::IOS_BUNDLE_IDENTIFIER.'</string>',
+                    '<string>'.$teamId.'.'.$bundleIdentifier.'</string>',
                 )
-                && str_contains($contents, '<string>'.self::IOS_TEAM_ID.'</string>');
+                && str_contains($contents, '<string>'.$teamId.'</string>');
         } finally {
             @unlink($decodedPath);
         }
     }
 
-    private function makeIosSigningMaterials(): array
-    {
+    private function makeIosSigningMaterials(
+        string $bundleIdentifier = self::IOS_BUNDLE_IDENTIFIER,
+        string $teamId = self::IOS_TEAM_ID,
+        string $certificatePassword = self::IOS_CERTIFICATE_PASSWORD,
+        string $profileName = 'Example App Demo App Store',
+        string $commonName = 'Apple Distribution: App Manager Demo',
+    ): array {
         $key = openssl_pkey_new([
             'private_key_bits' => 2048,
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
@@ -638,9 +906,9 @@ class DemoSeeder extends Seeder
         }
 
         $subject = [
-            'commonName' => 'Apple Distribution: App Manager Demo ('.self::IOS_TEAM_ID.')',
+            'commonName' => $commonName.' ('.$teamId.')',
             'organizationName' => 'App Manager',
-            'organizationalUnitName' => self::IOS_TEAM_ID,
+            'organizationalUnitName' => $teamId,
             'countryName' => 'ES',
         ];
         $request = openssl_csr_new($subject, $key, ['digest_alg' => 'sha256']);
@@ -659,7 +927,7 @@ class DemoSeeder extends Seeder
             $certificate,
             $certificateContents,
             $key,
-            self::IOS_CERTIFICATE_PASSWORD,
+            $certificatePassword,
             ['friendly_name' => 'distribution'],
         );
 
@@ -686,6 +954,9 @@ class DemoSeeder extends Seeder
                 $certificate,
                 $key,
                 $certificateDer,
+                $bundleIdentifier,
+                $teamId,
+                $profileName,
             ),
         ];
     }
@@ -694,12 +965,13 @@ class DemoSeeder extends Seeder
         \OpenSSLCertificate $certificate,
         \OpenSSLAsymmetricKey $key,
         string $certificateDer,
+        string $bundleIdentifier,
+        string $teamId,
+        string $profileName,
     ): string {
         $createdAt = now()->utc();
         $expiresAt = $createdAt->copy()->addYears(10);
         $encodedCertificate = base64_encode($certificateDer);
-        $bundleIdentifier = self::IOS_BUNDLE_IDENTIFIER;
-        $teamId = self::IOS_TEAM_ID;
         $profile = <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -725,7 +997,7 @@ class DemoSeeder extends Seeder
     <key>ExpirationDate</key>
     <date>{$expiresAt->format('Y-m-d\TH:i:s\Z')}</date>
     <key>Name</key>
-    <string>Example App Demo App Store</string>
+    <string>{$profileName}</string>
     <key>Platform</key>
     <array><string>iOS</string></array>
     <key>TeamIdentifier</key>

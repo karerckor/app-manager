@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Enums\ApiKeyScope;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
@@ -30,9 +31,11 @@ class BuildContextApiTest extends TestCase
     public function test_team_membership_is_required(): void
     {
         $user = User::factory()->create();
+        $authTeam = Team::factory()->create(['owner_id' => $user->id]);
+        $authTeam->addUser($user, 'owner');
         $team = Team::factory()->create();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
-        $this->authenticate($user);
+        $this->authenticate($user, $authTeam);
 
         $this->getJson($this->url($team, $app, Platform::Android, ProfileType::Production))
             ->assertForbidden();
@@ -41,7 +44,7 @@ class BuildContextApiTest extends TestCase
     public function test_platform_and_profile_type_are_required(): void
     {
         [$user, $team, $app] = $this->application();
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson("/api/v1/{$team->slug}/apps/{$app->slug}/build-context")
             ->assertUnprocessable()
@@ -114,7 +117,7 @@ class BuildContextApiTest extends TestCase
         $foreignIdentifier->credentials()->attach($foreignCredential);
 
         $app->addMediaFromString('icon-bytes')->usingFileName('icon.png')->toMediaCollection('app_icon');
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $response = $this->getJson($this->url($team, $app, Platform::Android, ProfileType::Production))
             ->assertOk()
@@ -171,7 +174,7 @@ class BuildContextApiTest extends TestCase
             'identifier' => 'com.example.app.beta',
             'is_default' => false,
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson($this->url(
             $team,
@@ -195,7 +198,7 @@ class BuildContextApiTest extends TestCase
             'build_number' => '42',
             'is_default' => false,
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson($this->url($team, $app, Platform::Ios, ProfileType::AppStore))
             ->assertOk()
@@ -211,7 +214,7 @@ class BuildContextApiTest extends TestCase
             'platform' => Platform::Android,
             'is_default' => false,
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson($this->url($team, $app, Platform::Android, ProfileType::Production))
             ->assertUnprocessable()
@@ -226,7 +229,7 @@ class BuildContextApiTest extends TestCase
             'platform' => Platform::Android,
             'is_default' => true,
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson($this->url($team, $app, Platform::Android, ProfileType::AppStore))
             ->assertUnprocessable()
@@ -240,7 +243,7 @@ class BuildContextApiTest extends TestCase
             'platform' => Platform::Android,
             'identifier' => 'com.example.foreign',
         ]);
-        $this->authenticate($user);
+        $this->authenticate($user, $team);
 
         $this->getJson($this->url(
             $team,
@@ -265,9 +268,15 @@ class BuildContextApiTest extends TestCase
         return [$user, $team, $app];
     }
 
-    private function authenticate(User $user): void
+    private function authenticate(User $user, Team $team): void
     {
-        $this->withToken($user->createToken('CI')->plainTextToken);
+        $this->withToken($user->createTeamApiKey($team, 'CI', [
+            ApiKeyScope::AppsRead->value,
+            ApiKeyScope::IdentifiersRead->value,
+            ApiKeyScope::AssetsRead->value,
+            ApiKeyScope::CredentialsRead->value,
+            ApiKeyScope::CredentialsReveal->value,
+        ])->plainTextToken);
     }
 
     private function credential(

@@ -21,22 +21,26 @@
     const firstConfiguredApp = () => apps.find((app) => app.identifiers.length) ?? apps[0] ?? null;
     const defaultVault = () => ({ provider: vaultProviders[0]?.value ?? 'custom', resource: '', metadata: {} });
 
-    const initialApp = firstConfiguredApp();
-    const initialIdentifier = initialApp?.identifiers[0] ?? null;
-    const initialType = credentialTypes.find((type) => type.platforms.includes(initialIdentifier?.platform)) ?? credentialTypes[0];
-    const form = useForm({
-        mobile_app_id: initialApp?.id ?? '',
-        app_identifier_id: initialIdentifier?.id ?? '',
-        name: '',
-        type: initialType?.value ?? '',
-        profile_type: profilesFor(initialType, initialIdentifier?.platform)[0]?.value ?? '',
-        expires_at: '',
-        payload: payloadFor(initialType),
-        file: null,
-        check_uniqueness: checkUniquenessByDefault,
-        storage_mode: allowedStorageModes[0],
-        vault: defaultVault(),
-    });
+    const initialForm = () => {
+        const app = firstConfiguredApp();
+        const identifier = app?.identifiers[0] ?? null;
+        const type = credentialTypes.find((candidate) => candidate.platforms.includes(identifier?.platform)) ?? credentialTypes[0];
+
+        return {
+            mobile_app_id: app?.id ?? '',
+            app_identifier_id: identifier?.id ?? '',
+            name: '',
+            type: type?.value ?? '',
+            profile_type: profilesFor(type, identifier?.platform)[0]?.value ?? '',
+            expires_at: '',
+            payload: payloadFor(type),
+            file: null,
+            check_uniqueness: checkUniquenessByDefault,
+            storage_mode: allowedStorageModes[0],
+            vault: defaultVault(),
+        };
+    };
+    const form = useForm(initialForm());
     let credentialTypeChanged = $state(false);
 
     const selectedApp = $derived(apps.find((app) => String(app.id) === String(form.mobile_app_id)));

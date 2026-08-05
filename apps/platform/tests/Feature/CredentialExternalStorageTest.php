@@ -36,7 +36,6 @@ class CredentialExternalStorageTest extends TestCase
                     'metadata' => ['region' => 'eu-central-1'],
                 ],
                 'payload' => ['key_id' => 'ABCDEFGHIJ', 'team_id' => 'KLMNOPQRST'],
-                'expires_at' => now()->addYear()->toDateString(),
             ])
             ->assertRedirect();
 

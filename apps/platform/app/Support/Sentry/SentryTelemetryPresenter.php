@@ -3,7 +3,6 @@
 namespace App\Support\Sentry;
 
 use App\Models\SentryEvent;
-use Illuminate\Support\Facades\Date;
 
 class SentryTelemetryPresenter
 {
@@ -71,25 +70,57 @@ class SentryTelemetryPresenter
                 'context_line' => is_scalar($frame['context_line'] ?? null) ? (string) $frame['context_line'] : null,
                 'post_context' => $this->sourceContext($frame['post_context'] ?? []),
             ])->values()->all();
+
             return ['type' => $exception['type'] ?? null, 'value' => $exception['value'] ?? null, 'module' => $exception['module'] ?? null,
                 'mechanism' => $this->structuredData($exception['mechanism'] ?? []), 'frames' => $frames, 'raw' => $exception];
         })->values()->all();
     }
 
     /** @return array<array-key, mixed> */
-    private function structuredData(mixed $value): array { return is_array($value) ? $value : []; }
+    private function structuredData(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
+    }
+
     /** @return list<array{key: string, value: string}> */
     private function tags(mixed $tags): array
     {
-        if (! is_array($tags)) return [];
+        if (! is_array($tags)) {
+            return [];
+        }
+
         return collect($tags)->map(function ($value, $key) {
-            if (is_array($value) && array_is_list($value) && count($value) >= 2) return ['key' => (string) $value[0], 'value' => (string) $value[1]];
+            if (is_array($value) && array_is_list($value) && count($value) >= 2) {
+                return ['key' => (string) $value[0], 'value' => (string) $value[1]];
+            }
+
             return ['key' => (string) $key, 'value' => is_scalar($value) ? (string) $value : json_encode($value)];
         })->values()->all();
     }
+
     /** @return list<string> */
-    private function sourceContext(mixed $lines): array { return is_array($lines) ? collect($lines)->filter(fn ($line) => is_scalar($line) || $line === null)->map(fn ($line) => (string) $line)->take(20)->values()->all() : []; }
+    private function sourceContext(mixed $lines): array
+    {
+        return is_array($lines) ? collect($lines)->filter(fn ($line) => is_scalar($line) || $line === null)->map(fn ($line) => (string) $line)->take(20)->values()->all() : [];
+    }
+
     /** @param array<string, mixed> $payload */
-    private function durationMilliseconds(array $payload): ?int { $start = $this->timestamp(data_get($payload, 'start_timestamp')); $end = $this->timestamp(data_get($payload, 'timestamp')); return $start !== null && $end !== null && $end >= $start ? (int) round(($end - $start) * 1000) : null; }
-    private function timestamp(mixed $value): ?float { if (is_numeric($value)) return (float) $value; if (! is_string($value) || trim($value) === '') return null; $timestamp = strtotime($value); return $timestamp === false ? null : (float) $timestamp; }
+    private function durationMilliseconds(array $payload): ?int
+    {
+        $start = $this->timestamp(data_get($payload, 'start_timestamp'));
+        $end = $this->timestamp(data_get($payload, 'timestamp'));
+
+        return $start !== null && $end !== null && $end >= $start ? (int) round(($end - $start) * 1000) : null;
+    }
+
+    private function timestamp(mixed $value): ?float
+    {
+        if (is_numeric($value)) {
+            return (float) $value;
+        } if (! is_string($value) || trim($value) === '') {
+            return null;
+        } $timestamp = strtotime($value);
+
+        return $timestamp === false ? null : (float) $timestamp;
+    }
 }

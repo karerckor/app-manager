@@ -6,6 +6,10 @@
 # requirements against exactly the runtime the app will use — no
 # --ignore-platform-req flags, no version drift between build and run.
 FROM serversideup/php:8.4.23-fpm-nginx-bookworm AS php-base
+LABEL org.opencontainers.image.source="https://github.com/karerckor/app-manager" \
+      org.opencontainers.image.title="App Manager Platform" \
+      org.opencontainers.image.description="Self-hosted control plane for mobile application configuration and builds" \
+      org.opencontainers.image.licenses="MIT"
 USER root
 RUN install-php-extensions gd exif
 USER www-data

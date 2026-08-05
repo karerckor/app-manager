@@ -4,7 +4,6 @@ namespace App\Integrations\Sentry;
 
 use App\Models\SentryEvent;
 use App\Models\SentryIssue;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 

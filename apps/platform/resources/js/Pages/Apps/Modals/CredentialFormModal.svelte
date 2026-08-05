@@ -23,22 +23,26 @@
     const profilesFor = (type, platform) => (type?.profiles ?? []).filter((profile) => profile.platform === platform);
     const defaultVault = () => ({ provider: vaultProviders[0]?.value ?? 'custom', resource: '', metadata: {} });
 
-    const initialIdentifier = identifiers[0] ?? null;
-    const initialType = credentialTypes.find((type) => type.platforms.includes(initialIdentifier?.platform)) ?? credentialTypes[0];
-    const initialProfile = profilesFor(initialType, initialIdentifier?.platform)[0];
-    const credentialForm = useForm({
-        mobile_app_id: app.id,
-        app_identifier_id: initialIdentifier?.id ?? '',
-        name: '',
-        type: initialType?.value ?? '',
-        profile_type: initialProfile?.value ?? '',
-        expires_at: '',
-        payload: payloadFor(initialType),
-        file: null,
-        check_uniqueness: checkUniquenessByDefault,
-        storage_mode: allowedStorageModes[0],
-        vault: defaultVault(),
-    });
+    const initialForm = () => {
+        const identifier = identifiers[0] ?? null;
+        const type = credentialTypes.find((candidate) => candidate.platforms.includes(identifier?.platform)) ?? credentialTypes[0];
+        const profile = profilesFor(type, identifier?.platform)[0];
+
+        return {
+            mobile_app_id: app.id,
+            app_identifier_id: identifier?.id ?? '',
+            name: '',
+            type: type?.value ?? '',
+            profile_type: profile?.value ?? '',
+            expires_at: '',
+            payload: payloadFor(type),
+            file: null,
+            check_uniqueness: checkUniquenessByDefault,
+            storage_mode: allowedStorageModes[0],
+            vault: defaultVault(),
+        };
+    };
+    const credentialForm = useForm(initialForm());
     let credentialTypeChanged = $state(false);
     const reuseForm = useForm({
         credential_id: '',

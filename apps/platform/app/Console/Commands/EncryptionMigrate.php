@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\EncryptionKeyStatus;
 use App\Models\Credential;
 use App\Models\EncryptionKey;
 use App\Support\Credentials\CredentialFileStorage;
 use App\Support\Encryption\EncryptionKeyManager;
+use App\Support\Encryption\EnvelopeEncryptor;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\DB;
@@ -57,7 +57,7 @@ class EncryptionMigrate extends Command
             foreach ($credentials as $credential) {
                 $rawPayload = DB::table('credentials')->where('id', $credential->id)->value('payload');
 
-                if ($rawPayload !== null && ! \App\Support\Encryption\EnvelopeEncryptor::isEnvelopeEncrypted($rawPayload)) {
+                if ($rawPayload !== null && ! EnvelopeEncryptor::isEnvelopeEncrypted($rawPayload)) {
                     $migratedPayloads++;
 
                     if (! $dryRun) {

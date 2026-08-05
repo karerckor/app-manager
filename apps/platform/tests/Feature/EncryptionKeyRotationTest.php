@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Support\Credentials\CredentialFileStorage;
 use App\Support\Encryption\EncryptionKeyManager;
 use App\Support\Encryption\EnvelopeEncryptor;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -165,11 +166,11 @@ class EncryptionKeyRotationTest extends TestCase
 
         config(['app.key' => $newKEK]);
         app()->forgetInstance('encrypter');
-        app()->singleton('encrypter', fn () => new \Illuminate\Encryption\Encrypter(
+        app()->singleton('encrypter', fn () => new Encrypter(
             base64_decode(substr($newKEK, 7), true),
             config('app.cipher'),
         ));
-        \Illuminate\Support\Facades\Crypt::clearResolvedInstances();
+        Crypt::clearResolvedInstances();
         EncryptionKeyManager::clearCache();
 
         $this->assertSame('kek-rotation-test', $credential->fresh()->payload['password']);

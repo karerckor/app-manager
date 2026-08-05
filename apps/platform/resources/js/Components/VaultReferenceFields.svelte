@@ -6,9 +6,9 @@
 
     const selected = $derived(providers.find((provider) => provider.value === form.vault.provider) ?? providers[0]);
 
-    let rows = $state(
-        Object.entries(form.vault.metadata ?? {}).map(([key, value]) => ({ key, value })),
-    );
+    const initialRows = () => Object.entries(form.vault.metadata ?? {})
+        .map(([key, value]) => ({ key, value }));
+    let rows = $state(initialRows());
 
     const syncMetadata = () => {
         form.vault.metadata = Object.fromEntries(

@@ -3,7 +3,6 @@
 namespace App\Http\Requests;
 
 use App\Http\Requests\Concerns\ValidatesAppIdentifier;
-use App\Models\MobileApp;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreAppIdentifierRequest extends FormRequest

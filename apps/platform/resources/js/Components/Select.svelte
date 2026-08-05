@@ -92,7 +92,7 @@
             class:mb-1.5={menuPlacement === 'top'}
         >
             {#if searchable}
-                <div class="flex items-center gap-2 border-b border-border-subtle px-2.5 py-2" on:pointerdown={preventClose}>
+                <div role="presentation" class="flex items-center gap-2 border-b border-border-subtle px-2.5 py-2" on:pointerdown={preventClose}>
                     <Search class="h-3.5 w-3.5 shrink-0 text-faint" />
                     <input
                         bind:this={searchInput}
