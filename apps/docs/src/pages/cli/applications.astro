@@ -15,8 +15,8 @@ import CommandOutput from '../../components/CommandOutput.astro';
   <h2><code>appmctl apps</code></h2>
   <CodeBlock lang="bash" code={`appmctl apps list
 appmctl apps get SLUG
-appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]
-appmctl apps update SLUG [--name NAME] [--description DESC] [--metadata JSON]
+appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON] [--blueprint-id UUID]
+appmctl apps update SLUG [--name NAME] [--description DESC] [--metadata JSON] [--blueprint-id UUID|--no-blueprint]
 appmctl apps delete SLUG`} />
 
   <h3>List</h3>
@@ -41,6 +41,10 @@ appmctl apps delete SLUG`} />
   --metadata '{"owner":"mobile-team"}'
 
 appmctl apps update customer-app --description "Consumer client, iOS and Android."
+
+# Attach or detach an optional blueprint.
+appmctl apps update customer-app --blueprint-id "$BLUEPRINT_ID"
+appmctl apps update customer-app --no-blueprint
 
 appmctl apps delete customer-app`} />
   <p>
@@ -106,6 +110,8 @@ appmctl assets delete --type splashscreen`} />
   <p>
     <code>apps:read</code> and <code>assets:read</code> for the read commands;
     <code>apps:write</code> and <code>assets:write</code> for the writes. Asset writes also
-    need the <code>manage_applications</code> team permission.
+    need the <code>manage_applications</code> team permission. Attaching a known blueprint uses
+    <code>apps:write</code>; managing the blueprint itself uses the separate scopes documented under
+    <a href="/cli/blueprints">Blueprints</a>.
   </p>
 </DocsLayout>

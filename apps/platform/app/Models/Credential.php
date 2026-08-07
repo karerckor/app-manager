@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\MediaLibrary\HasMedia;
@@ -22,7 +23,7 @@ use Spatie\MediaLibrary\InteractsWithMedia;
 #[Fillable(['team_id', 'type', 'storage_mode', 'name', 'payload', 'expires_at', 'tags', 'fingerprint'])]
 class Credential extends Model implements Auditable, HasMedia
 {
-    use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia;
+    use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia, SoftDeletes;
 
     protected array $auditExclude = ['payload', 'fingerprint'];
 

@@ -52,6 +52,19 @@ import Screenshot from '../../components/Screenshot.astro';
     <a href="/cli/applications"><code>appmctl apps</code></a>.
   </p>
 
+  <h3>Blueprint attachment</h3>
+  <p>
+    An application may optionally follow a <a href="/platform/blueprints">blueprint</a>. Select it
+    in the <strong>Edit application</strong> form, or leave the application unattached. Attaching a
+    blueprint does not require the current metadata, files, or identifiers to be complete; the
+    application overview reports the missing requirements and conditional hooks can update its tags.
+  </p>
+  <p>
+    The selection can be replaced or cleared later without deleting application data. From the CLI,
+    use <code>appmctl apps update SLUG --blueprint-id UUID</code> to attach and
+    <code>appmctl apps update SLUG --no-blueprint</code> to detach.
+  </p>
+
   <h2>Application overview</h2>
   <Screenshot
     src="application-overview"

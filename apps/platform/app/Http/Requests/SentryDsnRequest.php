@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\SentryEventSource;
 use App\Enums\SentryRoutingMethod;
+use App\Enums\SentryTargetMode;
 use App\Integrations\Sentry\SentryDsnUrl;
 use App\Models\AppIdentifier;
 use App\Models\SentryDsn;
@@ -23,6 +24,7 @@ class SentryDsnRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'target_mode' => $this->input('target_mode', SentryTargetMode::Selected->value),
             'identifier_key' => trim((string) $this->input('identifier_key', '')),
             'upstream_dsn' => trim((string) $this->input('upstream_dsn', '')),
         ]);
@@ -34,6 +36,8 @@ class SentryDsnRequest extends FormRequest
         $team = $this->route('team');
         /** @var ?SentryDsn $dsn */
         $dsn = $this->route('sentryDsn');
+        $selectedTargets = $this->input('target_mode') === SentryTargetMode::Selected->value;
+        $blueprintTargets = $this->input('target_mode') === SentryTargetMode::Blueprints->value;
 
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -41,7 +45,10 @@ class SentryDsnRequest extends FormRequest
             'event_source' => ['nullable', Rule::requiredIf($this->input('routing_method') === SentryRoutingMethod::Event->value), Rule::enum(SentryEventSource::class)],
             'app_key' => ['required', 'string', 'max:120', 'regex:/^[A-Za-z][A-Za-z0-9_.-]*$/'],
             'identifier_key' => ['nullable', 'string', 'max:120', 'regex:/^[A-Za-z][A-Za-z0-9_.-]*$/', 'different:app_key'],
-            'routes' => ['required', 'array', 'min:1', 'max:100'],
+            'target_mode' => ['required', Rule::enum(SentryTargetMode::class)],
+            'blueprint_ids' => [$blueprintTargets ? 'required' : 'nullable', 'array', 'max:100', ...($blueprintTargets ? ['min:1'] : [])],
+            'blueprint_ids.*' => ['uuid', 'distinct', Rule::exists('blueprints', 'id')->where('team_id', $team->id)],
+            'routes' => [$selectedTargets ? 'required' : 'nullable', 'array', 'max:500', ...($selectedTargets ? ['min:1'] : [])],
             'routes.*.mobile_app_id' => ['required', 'uuid', Rule::exists('mobile_apps', 'id')->where('team_id', $team->id)],
             'routes.*.app_identifier_id' => ['nullable', 'uuid', Rule::exists('app_identifiers', 'id')],
             'forward_enabled' => ['required', 'boolean'],
@@ -54,6 +61,10 @@ class SentryDsnRequest extends FormRequest
     {
         $validator->after(function (Validator $validator) {
             if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            if ($this->input('target_mode') !== SentryTargetMode::Selected->value) {
                 return;
             }
 
@@ -83,6 +94,11 @@ class SentryDsnRequest extends FormRequest
     /** @return array<string, mixed> */
     public function sentryData(): array
     {
-        return [...$this->validated(), 'enabled' => $this->boolean('enabled', true)];
+        return [
+            ...$this->validated(),
+            'blueprint_ids' => $this->validated('blueprint_ids', []),
+            'routes' => $this->validated('routes', []),
+            'enabled' => $this->boolean('enabled', true),
+        ];
     }
 }

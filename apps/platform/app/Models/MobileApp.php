@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\Image\Enums\Fit;
@@ -18,14 +19,19 @@ use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
-#[Fillable(['team_id', 'slug', 'name', 'description', 'metadata', 'tags'])]
+#[Fillable(['team_id', 'blueprint_id', 'slug', 'name', 'description', 'metadata', 'tags'])]
 class MobileApp extends Model implements Auditable, HasMedia
 {
-    use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia;
+    use AuditableTrait, HasFactory, HasTags, HasUuids, InteractsWithMedia, SoftDeletes;
 
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);
+    }
+
+    public function blueprint(): BelongsTo
+    {
+        return $this->belongsTo(Blueprint::class);
     }
 
     public function appIdentifiers(): HasMany
@@ -46,6 +52,11 @@ class MobileApp extends Model implements Auditable, HasMedia
     public function sentryIssues(): HasMany
     {
         return $this->hasMany(SentryIssue::class);
+    }
+
+    public function sentryEnvelopes(): HasMany
+    {
+        return $this->hasMany(SentryEnvelope::class);
     }
 
     public function ciCdPipelines(): HasMany
@@ -93,12 +104,20 @@ class MobileApp extends Model implements Auditable, HasMedia
     protected static function booted(): void
     {
         static::deleting(function (MobileApp $mobileApp) {
+            if (! $mobileApp->isForceDeleting()) {
+                return;
+            }
+
             // Build records must be deleted via Eloquent (and thus purged) before the
             // app identifiers, whose deletion cascades build_records away at the DB
             // level (app_identifier_id has cascadeOnDelete), which would bypass the
             // BuildRecord::deleting hook and leave artifact media orphaned.
-            $mobileApp->buildRecords()->cursor()->each(fn (BuildRecord $build) => $build->delete());
-            $mobileApp->appIdentifiers->each->delete();
+            $mobileApp->buildRecords()->withTrashed()->cursor()
+                ->each(fn (BuildRecord $build) => $build->forceDelete());
+            $mobileApp->appIdentifiers()->withTrashed()->cursor()
+                ->each(fn (AppIdentifier $identifier) => $identifier->forceDelete());
+            $mobileApp->sentryEnvelopes()->cursor()
+                ->each(fn (SentryEnvelope $envelope) => $envelope->delete());
         });
     }
 }

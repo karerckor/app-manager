@@ -28,6 +28,8 @@ appmctl sentry delete DSN_ID`} />
   "event_source": null,
   "app_key": "app_slug",
   "identifier_key": "app_identifier",
+  "target_mode": "selected",
+  "blueprint_ids": [],
   "routes": [
     {
       "mobile_app_id": "019fc789-478f-71a0-9177-0ed28c77cff2",
@@ -42,6 +44,12 @@ appmctl sentry delete DSN_ID`} />
     For event-metadata routing set <code>routing_method</code> to <code>event</code> and choose
     <code>event_source</code> from <code>auto</code>, <code>contexts</code>, <code>extra</code>,
     <code>tags</code>, or <code>attributes</code>. The API never returns the upstream DSN.
+  </p>
+  <p>
+    Set <code>target_mode</code> to <code>all</code> for every current and future team application,
+    <code>blueprints</code> with one or more <code>blueprint_ids</code> for a dynamic blueprint scope,
+    or <code>selected</code> with explicit <code>routes</code>. An application-wide route accepts all
+    identifiers and platforms attached to that application.
   </p>
 
   <h2>List issues and traces</h2>
@@ -71,11 +79,36 @@ appmctl --json --app customer-app telemetry trace TRACE_ID --event EVENT_ID`} />
     <code>raw_payload</code>. Use <code>--event</code> to move through the case without changing its ID.
   </p>
 
+  <h2>Resolve or reopen an issue</h2>
+  <CodeBlock lang="bash" code={`appmctl --app customer-app telemetry resolve ISSUE_ID \
+  --comment "Fixed in customer-web@1.4.1"
+appmctl --app customer-app telemetry reopen ISSUE_ID \
+  --comment "Regression reproduced in production"`} />
+  <p>
+    The comment is optional. Each status change records it together with the API key, its owner, and
+    the time in the Issue and audit log. A later occurrence with the same fingerprint automatically
+    reopens the issue as a system action, so a regression returns to the inbox.
+  </p>
+
+  <h2>Attach App Manager tags</h2>
+  <CodeBlock lang="bash" code={`appmctl --app customer-app telemetry tags ISSUE_ID \
+  --tag 'production-regression:#f43f5e:heartbeat' \
+  --tag checkout
+
+appmctl --app customer-app telemetry tags ISSUE_ID --clear`} />
+  <p>
+    Repeat <code>--tag</code> to replace the Issue tag list. Its compact tuple syntax is
+    <code>text[:#hex[:animation]]</code>; animations are <code>pulse</code>, <code>ping</code>,
+    <code>flash</code>, <code>tada</code>, or <code>heartbeat</code>. These editable App Manager tags
+    are separate from Sentry SDK tags, which stay unchanged on their original occurrences.
+  </p>
+
   <h2>Scopes</h2>
   <ul>
     <li><code>sentry list/get</code>: <code>integrations:read</code> and the team integration-management permission.</li>
     <li><code>sentry create/update/delete</code>: <code>integrations:write</code>.</li>
-    <li><code>telemetry</code>: <code>apps:read</code> and normal application view access.</li>
+    <li><code>telemetry issues/issue/traces/trace</code>: <code>apps:read</code> and normal application view access.</li>
+    <li><code>telemetry resolve/reopen/tags</code>: <code>apps:write</code> and application-management access.</li>
   </ul>
   <p>The complete request and response schemas are also available in the <a href="/api-reference">API reference</a>.</p>
 </DocsLayout>

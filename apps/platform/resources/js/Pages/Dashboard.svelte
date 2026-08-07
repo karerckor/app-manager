@@ -1,7 +1,7 @@
 <script>
     import { onDestroy } from 'svelte';
     import { Link, router, useForm } from '@inertiajs/svelte';
-    import { Plus, LayoutGrid, Cpu, KeyRound, Search, ChevronRight, SquarePlus, SlidersHorizontal, X } from '@lucide/svelte';
+    import { Plus, LayoutGrid, Cpu, KeyRound, Search, ChevronRight, RotateCcw, SquarePlus, SlidersHorizontal, X } from '@lucide/svelte';
     import WorkspacePage from '../Components/WorkspacePage.svelte';
     import TabSelector from '../Components/TabSelector.svelte';
     import TagEditor from '../Components/TagEditor.svelte';
@@ -11,11 +11,13 @@
     export let auth;
     export let flash = {};
     export let apps = { data: [], links: [], total: 0 };
+    export let archivedApps = [];
     export let filters = {};
     export let stats = { apps: 0, identifiers: 0, credentials: 0 };
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let createAppUrl;
+    export let blueprintOptions = [];
     export let filterOptions = { tags: [], platforms: [], credentials: [] };
 
     let query = filters.search ?? '';
@@ -31,7 +33,7 @@
     let showCreate = false;
     let metadataText = '';
     let metadataError = '';
-    const form = useForm({ name: '', slug: '', description: '', metadata: null });
+    const form = useForm({ name: '', slug: '', description: '', blueprint_id: null, metadata: null });
 
     $: appItems = apps?.data ?? [];
     $: pageLinks = (apps?.links ?? []).slice(1, -1);
@@ -98,6 +100,7 @@
     };
     const formatDate = (value) => new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(new Date(value));
     const initials = (name) => name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+    const restoreApp = (app) => router.post(app.restore_url, {}, { preserveScroll: true });
 
     onDestroy(() => clearTimeout(searchTimer));
 </script>
@@ -223,6 +226,23 @@
                 <div class="border-t border-border-subtle px-6 py-16 text-center"><span class="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-md bg-brand-soft text-brand"><SquarePlus class="h-6 w-6" strokeWidth={1.7} /></span><h3 class="text-sm font-bold">{filters.search || hasAdvancedFilters ? 'No matching applications' : 'Create your first application'}</h3><p class="mx-auto mt-2 max-w-sm text-sm text-muted">{filters.search || hasAdvancedFilters ? 'Try another search term or clear the filters.' : 'Applications group your platform identifiers, signing credentials, and assets.'}</p>{#if hasAdvancedFilters}<button class="secondary mt-5" on:click={clearAdvancedFilters}>Clear filters</button>{:else if !filters.search}<button class="mt-5" on:click={() => showCreate = true}>New application</button>{/if}</div>
             {/if}
         </section>
+
+        {#if archivedApps.length}
+            <section class="card mt-4 overflow-clip p-0">
+                <div class="border-b border-border-subtle px-5 py-3.5">
+                    <h2 class="text-xs font-bold text-text">Recently deleted</h2>
+                    <p class="mt-0.5 text-[11px] text-faint">Applications remain recoverable until the configured trash retention expires.</p>
+                </div>
+                <div class="divide-y divide-border-subtle">
+                    {#each archivedApps as app (app.id)}
+                        <div class="flex items-center justify-between gap-4 px-5 py-3">
+                            <div class="min-w-0"><p class="truncate text-xs font-semibold text-text">{app.name}</p><p class="truncate font-mono text-[10px] text-faint">{app.slug} · deleted {formatDate(app.deleted_at)}</p></div>
+                            <button type="button" class="secondary shrink-0 px-3 py-1.5 text-xs" on:click={() => restoreApp(app)}><RotateCcw class="h-3.5 w-3.5" />Restore</button>
+                        </div>
+                    {/each}
+                </div>
+            </section>
+        {/if}
 </WorkspacePage>
 
 {#if showCreate}
@@ -233,6 +253,17 @@
                 <label><span class="label">Application name</span><input bind:value={form.name} placeholder="e.g. Atlas Mobile" required />{#if form.errors.name}<span class="error">{form.errors.name}</span>{/if}</label>
                 <label><span class="label">Slug <span class="font-normal text-faint">(optional)</span></span><input bind:value={form.slug} placeholder="Generated from application name" />{#if form.errors.slug}<span class="error">{form.errors.slug}</span>{/if}</label>
                 <label><span class="label">Description <span class="font-normal text-faint">(optional)</span></span><textarea bind:value={form.description} placeholder="What is this application for?"></textarea>{#if form.errors.description}<span class="error">{form.errors.description}</span>{/if}</label>
+                <label>
+                    <span class="label">Blueprint <span class="font-normal text-faint">(optional)</span></span>
+                    <select bind:value={form.blueprint_id}>
+                        <option value={null}>No blueprint</option>
+                        {#each blueprintOptions as blueprint}
+                            <option value={blueprint.value}>{blueprint.label}</option>
+                        {/each}
+                    </select>
+                    <span class="mt-1 block text-2xs text-faint">Attach a contract now or later. Missing JSON, files, and platforms will not block creation.</span>
+                    {#if form.errors.blueprint_id}<span class="error">{form.errors.blueprint_id}</span>{/if}
+                </label>
                 <label><span class="label">Metadata (JSON) <span class="font-normal text-faint">(optional)</span></span><textarea class="min-h-36 font-mono text-xs leading-5" bind:value={metadataText} spellcheck="false" placeholder={'{\n  "owner": "mobile-team",\n  "channel": "production"\n}'}></textarea><span class="mt-1 block text-[10px] text-faint">Add any JSON object with application-specific values.</span>{#if metadataError || form.errors.metadata}<span class="error">{metadataError || form.errors.metadata}</span>{/if}</label>
             </div>
             <div class="flex justify-end gap-3 border-t border-border bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={closeModal}>Cancel</button><button disabled={form.processing}>{form.processing ? 'Creating…' : 'Create application'}</button></div>

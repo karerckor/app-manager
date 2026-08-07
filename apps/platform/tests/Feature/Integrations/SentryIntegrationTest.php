@@ -9,9 +9,11 @@ use App\Enums\Platform;
 use App\Enums\SentryEnvelopeStatus;
 use App\Enums\SentryEventSource;
 use App\Enums\SentryRoutingMethod;
+use App\Enums\SentryTargetMode;
 use App\Enums\TeamRole;
 use App\Jobs\Sentry\ForwardSentryEnvelope;
 use App\Models\AppIdentifier;
+use App\Models\Blueprint;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\SentryDsn;
@@ -76,9 +78,112 @@ class SentryIntegrationTest extends TestCase
                 ->where('sentryDsns.0.routes.0.app_slug', $app->slug)
                 ->where('sentryDsns.0.routes.0.identifier', $identifier->identifier)
                 ->where('sentryDsns.0.routes.0.dsn', $dsn->dsn($route->public_key))
-                ->has('sentryEvents', 1)
-                ->where('sentryEvents.0.app_name', $app->name)
-                ->where('sentryEvents.0.title', 'TypeError: cart is missing'));
+                ->where('sentryAppsCount', 1)
+                ->where('sentryApps.total', 0)
+                ->has('sentryEvents.data', 1)
+                ->where('sentryEvents.data.0.app_name', $app->name)
+                ->where('sentryEvents.data.0.title', 'TypeError: cart is missing'));
+    }
+
+    public function test_sentry_page_paginates_and_searches_application_targets_and_telemetry(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        [$app, $identifier] = $this->appTarget($team, 'telemetry-target');
+        $dsn = $this->dsn($team, $owner, SentryRoutingMethod::Event, SentryEventSource::Auto);
+        $route = $this->route($dsn, $app, $identifier);
+
+        foreach (range(1, 26) as $number) {
+            MobileApp::factory()->create([
+                'team_id' => $team->id,
+                'name' => sprintf('Sentry application %02d', $number),
+                'slug' => sprintf('sentry-application-%02d', $number),
+            ]);
+
+            $envelope = $this->storedEnvelope($dsn, $route);
+            SentryEvent::create([
+                'team_id' => $team->id,
+                'sentry_dsn_id' => $dsn->id,
+                'sentry_envelope_id' => $envelope->id,
+                'mobile_app_id' => $app->id,
+                'app_identifier_id' => $identifier->id,
+                'event_id' => str_pad((string) $number, 32, '0', STR_PAD_LEFT),
+                'item_type' => 'event',
+                'level' => 'error',
+                'title' => $number === 26 ? 'Needle failure' : "Failure {$number}",
+                'occurred_at' => now()->addSeconds($number),
+                'payload' => [],
+            ]);
+        }
+
+        $this->actingAs($owner)
+            ->get(route('accounts.integrations.sentry.index', [
+                'team' => $team,
+                'sentry_app_picker' => 1,
+                'sentry_apps_page' => 2,
+                'sentry_events_page' => 2,
+            ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('sentryApps.current_page', 2)
+                ->where('sentryApps.total', 27)
+                ->has('sentryApps.data', 2)
+                ->where('sentryEvents.current_page', 2)
+                ->where('sentryEvents.total', 26)
+                ->has('sentryEvents.data', 1));
+
+        $this->actingAs($owner)
+            ->get(route('accounts.integrations.sentry.index', [
+                'team' => $team,
+                'sentry_app_picker' => 1,
+                'sentry_app_search' => 'sentry-application-26',
+                'sentry_event_search' => 'Needle failure',
+            ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('sentryAppFilters.search', 'sentry-application-26')
+                ->where('sentryApps.total', 1)
+                ->where('sentryEventFilters.search', 'Needle failure')
+                ->where('sentryEvents.total', 1)
+                ->where('sentryEvents.data.0.title', 'Needle failure'));
+    }
+
+    public function test_edit_picker_keeps_every_selected_application_on_the_first_page(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $dsn = $this->dsn($team, $owner, SentryRoutingMethod::Query);
+        $selectedApps = collect(range(1, 26))->map(function (int $number) use ($team, $dsn) {
+            $app = MobileApp::factory()->create([
+                'team_id' => $team->id,
+                'name' => sprintf('Selected application %02d', $number),
+                'slug' => sprintf('selected-application-%02d', $number),
+            ]);
+            $this->route($dsn, $app);
+
+            return $app;
+        });
+
+        foreach (range(1, 30) as $number) {
+            MobileApp::factory()->create([
+                'team_id' => $team->id,
+                'name' => sprintf('AAA unselected application %02d', $number),
+                'slug' => sprintf('unselected-application-%02d', $number),
+            ]);
+        }
+
+        $this->actingAs($owner)
+            ->get(route('accounts.integrations.sentry.index', [
+                'team' => $team,
+                'sentry_app_picker' => 1,
+                'sentry_dsn' => $dsn->id,
+            ]))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('sentryApps.total', 56)
+                ->where('sentryApps.per_page', 51)
+                ->has('sentryApps.data', 51)
+                ->where('sentryApps.data.0.id', $selectedApps->first()->id)
+                ->where('sentryApps.data.25.id', $selectedApps->last()->id)
+                ->where('sentryApps.data.26.name', 'AAA unselected application 01'));
     }
 
     public function test_owner_can_create_update_disable_and_remove_a_routed_dsn(): void
@@ -146,6 +251,115 @@ class SentryIntegrationTest extends TestCase
             IntegrationStatus::Disconnected,
             Integration::findOrFail($dsn->integration_id)->status,
         );
+    }
+
+    public function test_all_applications_scope_resolves_current_and_future_identifiers_without_materialized_routes(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.sentry.store', $team), [
+                'name' => 'Team-wide telemetry',
+                'routing_method' => 'query',
+                'event_source' => null,
+                'app_key' => 'app_slug',
+                'identifier_key' => 'app_identifier',
+                'target_mode' => 'all',
+                'blueprint_ids' => [],
+                'routes' => [],
+                'forward_enabled' => false,
+                'upstream_dsn' => '',
+                'enabled' => true,
+            ])
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $dsn = SentryDsn::sole();
+        $this->assertSame(SentryTargetMode::All, $dsn->target_mode);
+        $this->assertDatabaseCount('sentry_dsn_routes', 0);
+
+        // The application is created after the DSN to prove that the scope is dynamic.
+        [$app, $identifier] = $this->appTarget($team, 'future-app', Platform::Web, 'future.example.test');
+        $eventId = str_repeat('f', 32);
+        $body = $this->envelope($dsn, [
+            'event_id' => $eventId,
+            'timestamp' => now()->toIso8601String(),
+            'message' => 'Future application failure',
+        ]);
+        $url = route('sentry.envelope.store', $dsn->project_id).'?'.http_build_query([
+            'sentry_key' => $dsn->public_key,
+            'app_slug' => $app->slug,
+            'app_identifier' => $identifier->platform->value,
+        ]);
+
+        $this->call('POST', $url, [], [], [], [
+            'CONTENT_TYPE' => 'application/x-sentry-envelope',
+        ], $body)->assertSuccessful();
+
+        $event = SentryEvent::sole();
+        $this->assertSame($app->id, $event->mobile_app_id);
+        $this->assertSame($identifier->id, $event->app_identifier_id);
+    }
+
+    public function test_blueprint_scope_only_accepts_apps_from_selected_team_blueprints(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        [, $otherTeam] = $this->member(TeamRole::Owner);
+        $includedBlueprint = Blueprint::factory()->create(['team_id' => $team->id, 'name' => 'Consumer apps']);
+        $excludedBlueprint = Blueprint::factory()->create(['team_id' => $team->id, 'name' => 'Internal tools']);
+        $foreignBlueprint = Blueprint::factory()->create(['team_id' => $otherTeam->id]);
+        [$includedApp, $includedIdentifier] = $this->appTarget($team, 'included');
+        [$excludedApp] = $this->appTarget($team, 'excluded');
+        $includedApp->update(['blueprint_id' => $includedBlueprint->id]);
+        $excludedApp->update(['blueprint_id' => $excludedBlueprint->id]);
+
+        $payload = [
+            'name' => 'Consumer telemetry',
+            'routing_method' => 'query',
+            'event_source' => null,
+            'app_key' => 'app_slug',
+            'identifier_key' => 'app_identifier',
+            'target_mode' => 'blueprints',
+            'blueprint_ids' => [$includedBlueprint->id],
+            'routes' => [],
+            'forward_enabled' => false,
+            'upstream_dsn' => '',
+            'enabled' => true,
+        ];
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.sentry.store', $team), $payload)
+            ->assertRedirect()
+            ->assertSessionDoesntHaveErrors();
+
+        $dsn = SentryDsn::sole();
+        $this->assertSame(SentryTargetMode::Blueprints, $dsn->target_mode);
+        $this->assertSame([$includedBlueprint->id], $dsn->blueprints()->pluck('blueprints.id')->all());
+        $this->assertDatabaseCount('sentry_dsn_routes', 0);
+
+        $body = $this->envelope($dsn, [
+            'event_id' => str_repeat('b', 32),
+            'timestamp' => now()->toIso8601String(),
+            'message' => 'Blueprint application failure',
+        ]);
+        $baseUrl = route('sentry.envelope.store', $dsn->project_id).'?'.http_build_query([
+            'sentry_key' => $dsn->public_key,
+            'app_identifier' => $includedIdentifier->identifier,
+        ]);
+
+        $this->call('POST', $baseUrl.'&app_slug='.$includedApp->slug, [], [], [], [], $body)
+            ->assertSuccessful();
+        $this->call('POST', $baseUrl.'&app_slug='.$excludedApp->slug, [], [], [], [], $body)
+            ->assertStatus(400)
+            ->assertJsonPath('detail', 'The routing values do not identify an application allowed by this DSN.');
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.sentry.store', $team), [
+                ...$payload,
+                'name' => 'Invalid foreign blueprint',
+                'blueprint_ids' => [$foreignBlueprint->id],
+            ])
+            ->assertSessionHasErrors('blueprint_ids.0');
     }
 
     public function test_routed_dsn_rejects_cross_team_and_mismatched_identifier_targets(): void

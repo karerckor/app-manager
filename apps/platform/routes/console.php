@@ -26,6 +26,8 @@ Artisan::command('inspire', function () {
 
 Schedule::call(function () {
     CiCdRun::query()
+        ->whereHas('team')
+        ->whereHas('pipeline.mobileApp')
         ->where('reporting_mode', BuildReportingMode::Automatic->value)
         ->whereIn('dispatch_status', [CiCdDispatchStatus::Accepted->value, CiCdDispatchStatus::Unknown->value])
         ->whereNotNull('external_run_id')
@@ -40,6 +42,8 @@ Schedule::call(function () {
 
 Schedule::call(function () {
     CiCdRun::query()
+        ->whereHas('team')
+        ->whereHas('pipeline.mobileApp')
         ->where('reporting_mode', BuildReportingMode::Automatic->value)
         ->whereNotNull('external_run_id')
         ->whereHas('buildRecord', fn ($query) => $query
@@ -113,3 +117,7 @@ Schedule::call(function () {
 
 Schedule::command('audits:prune')->daily()->name('prune-audits')->withoutOverlapping();
 Schedule::command('build-logs:archive')->daily()->name('archive-build-logs')->withoutOverlapping();
+Schedule::command('build-logs:prune-archives')->daily()->name('prune-build-log-archives')->withoutOverlapping();
+Schedule::command('sentry:archive')->daily()->name('archive-sentry-telemetry')->withoutOverlapping();
+Schedule::command('sentry:prune-archives')->daily()->name('prune-sentry-archives')->withoutOverlapping();
+Schedule::command('data-lifecycle:purge')->daily()->name('purge-deleted-data')->withoutOverlapping();

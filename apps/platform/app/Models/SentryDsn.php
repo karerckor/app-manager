@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\SentryEventSource;
 use App\Enums\SentryRoutingMethod;
+use App\Enums\SentryTargetMode;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable as AuditableTrait;
@@ -22,6 +24,7 @@ use OwenIt\Auditing\Contracts\Auditable;
     'event_source',
     'app_key',
     'identifier_key',
+    'target_mode',
     'upstream_dsn',
     'consecutive_forward_failures',
     'last_event_at',
@@ -48,6 +51,11 @@ class SentryDsn extends Model implements Auditable
         return $this->hasMany(SentryDsnRoute::class);
     }
 
+    public function blueprints(): BelongsToMany
+    {
+        return $this->belongsToMany(Blueprint::class)->withTimestamps();
+    }
+
     public function envelopes(): HasMany
     {
         return $this->hasMany(SentryEnvelope::class);
@@ -56,6 +64,20 @@ class SentryDsn extends Model implements Auditable
     public function events(): HasMany
     {
         return $this->hasMany(SentryEvent::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (SentryDsn $dsn): void {
+            if (! $dsn->isForceDeleting()) {
+                return;
+            }
+
+            // Database cascades do not dispatch SentryEnvelope model events, so
+            // delete envelopes explicitly to remove their cold archive objects.
+            $dsn->envelopes()->cursor()
+                ->each(fn (SentryEnvelope $envelope) => $envelope->delete());
+        });
     }
 
     public function dsn(?string $publicKey = null): string
@@ -75,6 +97,7 @@ class SentryDsn extends Model implements Auditable
         return [
             'routing_method' => SentryRoutingMethod::class,
             'event_source' => SentryEventSource::class,
+            'target_mode' => SentryTargetMode::class,
             'upstream_dsn' => 'encrypted',
             'last_event_at' => 'datetime',
             'last_forwarded_at' => 'datetime',

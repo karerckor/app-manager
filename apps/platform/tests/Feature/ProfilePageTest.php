@@ -146,10 +146,10 @@ class ProfilePageTest extends TestCase
             ->assertRedirect(route('login'));
 
         $this->assertGuest();
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
-        $this->assertDatabaseMissing('teams', ['id' => $ownedTeam->id]);
+        $this->assertSoftDeleted('users', ['id' => $user->id]);
+        $this->assertSoftDeleted('teams', ['id' => $ownedTeam->id]);
         $this->assertDatabaseHas('teams', ['id' => $sharedTeam->id]);
-        $this->assertDatabaseMissing('team_user', [
+        $this->assertDatabaseHas('team_user', [
             'team_id' => $sharedTeam->id,
             'user_id' => $user->id,
         ]);

@@ -105,12 +105,18 @@ class ArtifactApiTest extends TestCase
 
         $this->deleteJson($this->url($team, $app, $build).'/'.$artifact->id)->assertNoContent();
 
-        $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
+        $this->assertSoftDeleted('artifacts', ['id' => $artifact->id]);
+        $this->assertDatabaseHas('media', ['model_id' => $artifact->id]);
         $this->assertDatabaseHas('webhook_events', [
             'team_id' => $team->id,
             'event_type' => WebhookEventType::ArtifactDeleted->value,
             'aggregate_id' => $artifact->id,
         ]);
+
+        $this->postJson($this->url($team, $app, $build)."/trash/{$artifact->id}/restore")
+            ->assertOk()
+            ->assertJsonPath('data.id', $artifact->id);
+        $this->assertDatabaseHas('artifacts', ['id' => $artifact->id, 'deleted_at' => null]);
     }
 
     public function test_destroy_requires_the_write_scope(): void

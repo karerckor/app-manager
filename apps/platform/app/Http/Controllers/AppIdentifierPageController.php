@@ -18,6 +18,7 @@ use App\Models\Team;
 use App\Support\Apps\AppContext;
 use App\Support\Apps\ExpoAppContext;
 use App\Support\Apps\IdentifierPresenter;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Credentials\CredentialSchema;
 use App\Support\Credentials\StorageModePolicy;
@@ -170,6 +171,7 @@ class AppIdentifierPageController extends Controller
         MobileApp $mobileApp,
         ExpoClient $expoClient,
         ExpoCredentialExporter $exporter,
+        BlueprintComplianceEvaluator $blueprints,
     ): RedirectResponse {
         abort_unless(
             config('integrations.enabled') && config('integrations.expo.enabled'),
@@ -227,6 +229,7 @@ class AppIdentifierPageController extends Controller
         $pushed = 0;
         $errors = [];
         $mobileApp->load('appIdentifiers');
+        $blueprints->evaluate($mobileApp);
 
         foreach ($mobileApp->appIdentifiers as $identifier) {
             if ($identifier->platform === Platform::Web) {

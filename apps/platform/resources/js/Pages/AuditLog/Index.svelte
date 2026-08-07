@@ -215,6 +215,9 @@
                                     {:else if entry.action_description}
                                         <p class="mt-1.5 text-[11px] leading-4 text-muted">{entry.action_description}</p>
                                     {/if}
+                                    {#if entry.comment}
+                                        <blockquote class="mt-2 border-l-2 border-brand-soft-line pl-3 text-[11px] leading-4 whitespace-pre-wrap text-muted">{entry.comment}</blockquote>
+                                    {/if}
                                 </div>
                             </div>
 

@@ -65,7 +65,7 @@ class ExpoBuildController extends Controller
         ImportEasBuilds $import,
     ): RedirectResponse {
         $this->ensureEnabled();
-        $this->authorize($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
 
         $data = $request->validate([
             'build_ids' => ['required', 'array', 'min:1', 'max:50'],
@@ -97,7 +97,7 @@ class ExpoBuildController extends Controller
         );
     }
 
-    private function authorize(Request $request, Team $team, TeamPermission $permission): void
+    private function authorizeTeamPermission(Request $request, Team $team, TeamPermission $permission): void
     {
         abort_unless($team->allows($request->user(), $permission), 403);
     }

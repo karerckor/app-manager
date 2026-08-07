@@ -1,0 +1,152 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import CommandOutput from '../../components/CommandOutput.astro';
+---
+
+<DocsLayout title="CLI blueprints" activeNav="/cli/blueprints">
+  <h1>Blueprints</h1>
+  <p>
+    <code>appmctl blueprints</code> manages application contracts and their conditional hooks.
+    Blueprint and hook IDs are UUIDs returned by <code>list</code> or <code>get</code>; they are not
+    application slugs.
+  </p>
+
+  <h2>Blueprint commands</h2>
+  <CodeBlock lang="bash" code={`appmctl blueprints list
+appmctl blueprints get BLUEPRINT_ID
+appmctl blueprints create --name NAME [fields]
+appmctl blueprints update BLUEPRINT_ID [fields]
+appmctl blueprints evaluate BLUEPRINT_ID
+appmctl blueprints delete BLUEPRINT_ID`} />
+  <CommandOutput command="appmctl blueprints list" capture="blueprints-list" />
+  <CommandOutput command="appmctl blueprints get BLUEPRINT_ID" capture="blueprints-get" />
+
+  <h3>Create a draft or complete contract</h3>
+  <p>
+    Only <code>--name</code> is required. JSON Schema can be inline or read from a file;
+    <code>--required-files</code> and <code>--platforms</code> accept JSON arrays. Omitting any field
+    leaves it open so the blueprint can be attached as a draft.
+  </p>
+  <CodeBlock lang="bash" code={`# A name-only draft
+appmctl blueprints create --name "Production app"
+
+# A complete contract
+appmctl blueprints create \
+  --name "Production app" \
+  --description "Shared release contract" \
+  --json-schema-file ./app-metadata.schema.json \
+  --required-files '["associated-domains.json","privacy-manifest.json"]' \
+  --platforms '["ios","android"]'`} />
+  <table>
+    <thead>
+      <tr><th>Option</th><th>Accepted value</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>--name</code></td><td>Blueprint name; required on create</td></tr>
+      <tr><td><code>--description</code></td><td>Free text; use <code>--clear-description</code> on update to set it to null</td></tr>
+      <tr><td><code>--json-schema</code></td><td>JSON object or <code>null</code></td></tr>
+      <tr><td><code>--json-schema-file</code></td><td>File containing a JSON object; mutually exclusive with <code>--json-schema</code></td></tr>
+      <tr><td><code>--required-files</code></td><td>JSON array of exact file names, <code>[]</code>, or <code>null</code></td></tr>
+      <tr><td><code>--platforms</code></td><td>JSON array containing <code>ios</code>, <code>android</code>, and/or <code>web</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    JSON values are checked locally with <code>jq</code> before the request. The server performs the
+    same validation as the Web UI, including unique platform values and file names without path
+    separators.
+  </p>
+
+  <h3>Update and clear requirements</h3>
+  <CodeBlock lang="bash" code={`appmctl blueprints update "$BLUEPRINT_ID" \
+  --required-files '[]' \
+  --platforms '["web"]'
+
+# An explicit null also clears the requirement.
+appmctl blueprints update "$BLUEPRINT_ID" --json-schema null`} />
+  <p>
+    Update sends only supplied fields. After a successful update, every attached application is
+    evaluated against the new contract.
+  </p>
+
+  <h3>Attach applications</h3>
+  <CodeBlock lang="bash" code={`appmctl apps update customer-app --blueprint-id "$BLUEPRINT_ID"
+
+# Detach without deleting either record.
+appmctl apps update customer-app --no-blueprint`} />
+  <p>
+    An app can be attached while incomplete. Use <code>appmctl --json apps get customer-app</code>
+    to inspect its <code>blueprint_id</code>.
+  </p>
+
+  <h3>Evaluate and delete</h3>
+  <CodeBlock lang="bash" code={`appmctl blueprints evaluate "$BLUEPRINT_ID"
+appmctl blueprints delete "$BLUEPRINT_ID"`} />
+  <p>
+    <code>evaluate</code> prints the number of attached applications checked. Deleting a blueprint
+    deletes its hooks and detaches its applications, but leaves application data and tags intact.
+  </p>
+
+  <h2>Conditional hooks</h2>
+  <CodeBlock lang="bash" code={`appmctl blueprints hooks list BLUEPRINT_ID
+appmctl blueprints hooks get BLUEPRINT_ID HOOK_ID
+appmctl blueprints hooks create BLUEPRINT_ID --name NAME --condition CONDITION --actions JSON
+appmctl blueprints hooks update BLUEPRINT_ID HOOK_ID [fields]
+appmctl blueprints hooks delete BLUEPRINT_ID HOOK_ID`} />
+  <CommandOutput
+    command="appmctl blueprints hooks list BLUEPRINT_ID"
+    capture="blueprint-hooks-list"
+  />
+  <p>
+    A hook has one condition and an ordered JSON array of actions. Every action has a
+    <code>type</code> of <code>add_tag</code> or <code>remove_tag</code> and one or more tag tuples.
+    A tuple is <code>[label]</code>, <code>[label, color]</code>, or
+    <code>[label, color, animation]</code>. Use <code>null</code> as the color placeholder when an
+    animation has no color.
+  </p>
+
+  <h3>One condition, multiple actions</h3>
+  <CodeBlock lang="json" code={`[
+  {
+    "type": "remove_tag",
+    "tags": [["blueprint-incomplete"]]
+  },
+  {
+    "type": "add_tag",
+    "tags": [["ready", "#10b981", "pulse"]]
+  }
+]`} />
+  <CodeBlock lang="bash" code={`appmctl blueprints hooks create "$BLUEPRINT_ID" \
+  --name "Mark matching apps ready" \
+  --condition blueprint_matches \
+  --actions-file ./ready-actions.json`} />
+  <p>
+    Actions execute in array order. The API evaluates attached applications immediately after a
+    hook is created or updated.
+  </p>
+
+  <h3>Conditions and configuration</h3>
+  <table>
+    <thead>
+      <tr><th>Condition</th><th><code>--condition-config</code></th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>metadata_incomplete</code>, <code>metadata_matches</code></td><td>Omit</td></tr>
+      <tr><td><code>file_missing</code>, <code>file_present</code></td><td><code>'&#123;"file_name":"associated-domains.json"&#125;'</code></td></tr>
+      <tr><td><code>platform_missing</code>, <code>platform_present</code></td><td><code>'&#123;"platform":"ios"&#125;'</code></td></tr>
+      <tr><td><code>blueprint_mismatch</code>, <code>blueprint_matches</code></td><td>Omit</td></tr>
+    </tbody>
+  </table>
+  <p>
+    A file or platform in the configuration must already be declared by that blueprint. Set
+    <code>--enabled false</code> to pause a hook without deleting it. Deleting a hook does not undo
+    tags written during earlier evaluations.
+  </p>
+
+  <h2>Scopes</h2>
+  <p>
+    List and get commands require <code>blueprints:read</code>. Create, update, evaluate, delete, and
+    every hook write require <code>blueprints:write</code>. Attaching or detaching a blueprint through
+    <code>appmctl apps update</code> separately requires <code>apps:write</code>.
+  </p>
+</DocsLayout>

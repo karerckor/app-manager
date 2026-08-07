@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# "builds" subcommands: list, get, create, cancel, patch.
+# "builds" subcommands plus short "build" lifecycle aliases.
 
 # Turn repeated --tag specs ("name" or "name:#rrggbb") into the [[text, color]]
 # tuples the API expects. Colorless tags carry a null color.
@@ -56,6 +56,43 @@ Options:
   --timeout SECONDS   Maximum wait time (wait, when-running)
 
 Run "appmctl builds <action> --help" for action-specific help.
+EOF
+}
+
+build_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] build <action> [build-id] [options]
+
+Lifecycle aliases:
+  start               Set the build status to running
+  completed           Set the build status to completed
+  failed              Set the build status to failed
+
+BUILD_ID defaults to APP_MANAGER_BUILD_ID when omitted. These commands are
+short aliases for "appmctl builds patch BUILD_ID --status STATUS" and apply to
+manually reported builds only.
+
+Examples:
+  appmctl build start
+  appmctl build completed "$APP_MANAGER_BUILD_ID"
+  appmctl build failed --app customer-app bld-abc123
+EOF
+}
+
+build_action_usage() {
+  local action="$1"
+  local status="$2"
+
+  cat <<EOF
+Usage:
+  appmctl build $action [build-id] [--app APP] [--tag NAME[:#HEX]]
+
+Set a manually reported build's status to $status. BUILD_ID defaults to
+APP_MANAGER_BUILD_ID when omitted.
+
+Equivalent to:
+  appmctl builds patch BUILD_ID --status $status
 EOF
 }
 
@@ -202,6 +239,55 @@ command_builds() {
     -h|--help|"") builds_usage; [ -z "$action" ] && return 1; return 0 ;;
     *) die "unknown builds action: $action (use list, get, create, cancel, patch, wait, when-running)" ;;
   esac
+}
+
+command_build() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    start) _build_status_alias start running "$@" ;;
+    completed) _build_status_alias completed completed "$@" ;;
+    failed) _build_status_alias failed failed "$@" ;;
+    -h|--help|"") build_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown build action: $action (use start, completed, failed)" ;;
+  esac
+}
+
+_build_status_alias() {
+  local action="$1"
+  local status="$2"
+  shift 2
+
+  local has_build_id=0
+  local skip_value=0
+  local arg
+
+  # Detect whether the caller supplied the positional build ID while accounting
+  # for the value-taking options supported by builds patch.
+  for arg in "$@"; do
+    if [ "$skip_value" -eq 1 ]; then
+      skip_value=0
+      continue
+    fi
+
+    case "$arg" in
+      --app|--tag|-o|--output) skip_value=1 ;;
+      --app=*|--tag=*|--dry-run|--json|--force) ;;
+      --status|--status=*) die "appmctl build $action fixes the status to $status; do not pass --status" ;;
+      -h|--help) build_action_usage "$action" "$status"; return 0 ;;
+      -*) ;;
+      *) has_build_id=1 ;;
+    esac
+  done
+
+  if [ "$has_build_id" -eq 0 ]; then
+    [ -n "${APP_MANAGER_BUILD_ID:-}" ] \
+      || die "build ID is required (pass it as an argument or set APP_MANAGER_BUILD_ID)"
+    set -- "$APP_MANAGER_BUILD_ID" "$@"
+  fi
+
+  _builds_patch "$@" --status "$status"
 }
 
 _builds_list() {

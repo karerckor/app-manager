@@ -9,11 +9,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['app_identifier_id', 'type', 'name'])]
 class Profile extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, SoftDeletes;
 
     public function appIdentifier(): BelongsTo
     {
@@ -35,7 +36,9 @@ class Profile extends Model
     protected static function booted(): void
     {
         static::deleting(function (Profile $profile) {
-            $profile->credentials()->detach();
+            if ($profile->isForceDeleting()) {
+                $profile->credentials()->detach();
+            }
         });
     }
 }

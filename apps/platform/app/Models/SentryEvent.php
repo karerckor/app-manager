@@ -53,7 +53,7 @@ class SentryEvent extends Model
 
     public function appIdentifier(): BelongsTo
     {
-        return $this->belongsTo(AppIdentifier::class);
+        return $this->belongsTo(AppIdentifier::class)->withTrashed();
     }
 
     protected function casts(): array

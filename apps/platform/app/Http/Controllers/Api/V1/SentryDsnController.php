@@ -21,7 +21,7 @@ class SentryDsnController extends Controller
     {
         $this->ensureEnabled();
 
-        return SentryDsnResource::collection($team->sentryDsns()->with(['integration', 'routes.mobileApp', 'routes.appIdentifier'])->latest()->get());
+        return SentryDsnResource::collection($team->sentryDsns()->with(['integration', 'blueprints', 'routes.mobileApp', 'routes.appIdentifier'])->latest()->get());
     }
 
     public function show(Team $team, SentryDsn $sentryDsn): SentryDsnResource
@@ -29,7 +29,7 @@ class SentryDsnController extends Controller
         $this->ensureEnabled();
         $this->assertDsn($team, $sentryDsn);
 
-        return new SentryDsnResource($sentryDsn->load(['integration', 'routes.mobileApp', 'routes.appIdentifier']));
+        return new SentryDsnResource($sentryDsn->load(['integration', 'blueprints', 'routes.mobileApp', 'routes.appIdentifier']));
     }
 
     public function store(SentryDsnRequest $request, Team $team): JsonResponse

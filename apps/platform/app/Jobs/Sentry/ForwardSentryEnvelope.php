@@ -21,14 +21,15 @@ class ForwardSentryEnvelope implements ShouldQueue
 
     public function handle(SentryDsnUrl $dsnUrl): void
     {
-        $envelope = SentryEnvelope::query()->with('sentryDsn.integration')->findOrFail($this->envelopeId);
+        $envelope = SentryEnvelope::query()->with(['team', 'mobileApp', 'sentryDsn.integration'])->findOrFail($this->envelopeId);
         $dsn = $envelope->sentryDsn;
 
         if (in_array($envelope->status, [SentryEnvelopeStatus::Forwarded, SentryEnvelopeStatus::Exhausted], true)) {
             return;
         }
 
-        if (! $dsn || $dsn->integration->status !== IntegrationStatus::Active || ! filled($dsn->upstream_dsn)) {
+        if (! $envelope->team || ! $envelope->mobileApp
+            || ! $dsn || $dsn->integration->status !== IntegrationStatus::Active || ! filled($dsn->upstream_dsn)) {
             $envelope->update([
                 'status' => SentryEnvelopeStatus::Stored,
                 'next_forward_at' => null,

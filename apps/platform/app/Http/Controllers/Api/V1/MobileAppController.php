@@ -12,6 +12,7 @@ use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -23,12 +24,22 @@ class MobileAppController extends Controller
 {
     use ResolvesPageSize;
 
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly BlueprintComplianceEvaluator $blueprints,
+    ) {}
 
     public function index(Request $request, Team $team): AnonymousResourceCollection
     {
         return MobileAppResource::collection(
             $team->mobileApps()->latest()->paginate($this->perPage($request)),
+        );
+    }
+
+    public function trash(Request $request, Team $team): AnonymousResourceCollection
+    {
+        return MobileAppResource::collection(
+            $team->mobileApps()->onlyTrashed()->latest('deleted_at')->paginate($this->perPage($request)),
         );
     }
 
@@ -39,6 +50,7 @@ class MobileAppController extends Controller
 
         $mobileApp = DB::transaction(function () use ($team, $data) {
             $mobileApp = $team->mobileApps()->create($data);
+            $this->blueprints->evaluate($mobileApp);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppCreated,
@@ -63,6 +75,8 @@ class MobileAppController extends Controller
     {
         DB::transaction(function () use ($mobileApp, $team, $request) {
             $mobileApp->update($request->validated());
+            $mobileApp->unsetRelation('blueprint');
+            $this->blueprints->evaluate($mobileApp);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::MobileAppUpdated,
@@ -90,13 +104,21 @@ class MobileAppController extends Controller
         return response()->noContent();
     }
 
+    public function restore(Team $team, string $mobileApp): MobileAppResource
+    {
+        $app = $team->mobileApps()->onlyTrashed()->whereKey($mobileApp)->firstOrFail();
+        $app->restore();
+
+        return new MobileAppResource($app->refresh());
+    }
+
     private function availableSlug(Team $team, string $value): string
     {
         $baseSlug = Str::slug($value) ?: 'app';
         $slug = $baseSlug;
         $suffix = 2;
 
-        while ($team->mobileApps()->where('slug', $slug)->exists()) {
+        while ($team->mobileApps()->withTrashed()->where('slug', $slug)->exists()) {
             $slug = $baseSlug.'-'.$suffix++;
         }
 

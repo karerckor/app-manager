@@ -103,6 +103,15 @@ class ArtifactController extends Controller
         return response()->noContent();
     }
 
+    public function restore(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): ArtifactResource
+    {
+        $this->assertBuildBelongs($team, $mobileApp, $buildRecord);
+        $artifactModel = $buildRecord->artifacts()->onlyTrashed()->with('media')->whereKey($artifact)->firstOrFail();
+        $artifactModel->restore();
+
+        return new ArtifactResource($artifactModel->refresh()->load('media'));
+    }
+
     protected function assertBuildBelongs(Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): void
     {
         abort_unless($mobileApp->team_id === $team->id, 404);

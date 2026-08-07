@@ -11,6 +11,8 @@
     export let align = 'left';
     export let emptyLabel = '';
     export let quiet = false;
+    export let onChange = null;
+    export let maxTags = null;
 
     const PALETTE = [
         { name: 'None', value: null },
@@ -34,7 +36,8 @@
     let pos = { top: 0, left: 0, ready: false };
 
     $: working = (tags || []).map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]));
-    $: canEdit = !disabled && !!url;
+    $: canEdit = !disabled && (!!url || typeof onChange === 'function');
+    $: canAdd = canEdit && (maxTags === null || working.length < maxTags);
     $: toolClass = quiet && working.length ? 'row-tools' : '';
     $: available = (suggestions || [])
         .map((t) => (Array.isArray(t) ? [t[0], t[1] ?? null, t[2] ?? null] : [t, null, null]))
@@ -57,8 +60,15 @@
     const compact = (t) => (t[2] ? [t[0], t[1] ?? null, t[2]] : t[1] ? [t[0], t[1]] : [t[0]]);
 
     function submit(next) {
+        const value = next.map(compact);
+
+        if (typeof onChange === 'function') {
+            onChange(value);
+            return;
+        }
+
         saving = true;
-        router.patch(url, { tags: next.map(compact) }, { preserveScroll: true, onFinish: () => (saving = false) });
+        router.patch(url, { tags: value }, { preserveScroll: true, onFinish: () => (saving = false) });
     }
 
     function place() {
@@ -164,7 +174,7 @@
         </span>
     {/each}
 
-    {#if canEdit}
+    {#if canAdd}
         <button
             type="button"
             bind:this={anchorEl}

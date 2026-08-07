@@ -32,7 +32,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
   run: |
     set -euo pipefail
 
-    BUILD_ID=$(
+    APP_MANAGER_BUILD_ID=$(
       appmctl --json builds create \\
         --profile production \\
         --request-uuid "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \\
@@ -40,17 +40,19 @@ import CodeBlock from '../../components/CodeBlock.astro';
         --tag "$GITHUB_REF_NAME" |
         jq -er '.data.id'
     )
-    echo "BUILD_ID=$BUILD_ID" >> "$GITHUB_ENV"
+    export APP_MANAGER_BUILD_ID
+    echo "APP_MANAGER_BUILD_ID=$APP_MANAGER_BUILD_ID" >> "$GITHUB_ENV"
 
-    trap 'appmctl builds patch "$BUILD_ID" --status failed || true' ERR
+    trap 'appmctl build failed || true' ERR
 
-    appmctl stream --build-id "$BUILD_ID" --manage-status --track --step Install -- pnpm install
-    appmctl stream --build-id "$BUILD_ID" --track --step Build -- pnpm build
+    appmctl build start
+    appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --track --step Install -- pnpm install
+    appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --track --step Build -- pnpm build
 
-    appmctl artifacts upload --build-id "$BUILD_ID" \\
+    appmctl artifacts upload --build-id "$APP_MANAGER_BUILD_ID" \\
       --name app-release.aab --file build/app-release.aab
 
-    appmctl builds patch "$BUILD_ID" --status completed`} />
+    appmctl build completed`} />
   <p>
     <code>$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT</code> as the idempotency key is deliberate: a
     re-run of the same attempt reuses the build, while a genuine re-run attempt creates a new
@@ -71,9 +73,12 @@ before_script:
 build:
   script:
     - set -euo pipefail
-    - BUILD_ID=$(appmctl --json builds create --profile production --request-uuid "$(uuidgen)" | jq -er '.data.id')
-    - appmctl stream --build-id "$BUILD_ID" --manage-status --track --step Build -- pnpm build
-    - appmctl artifacts upload --build-id "$BUILD_ID" --name app-release.aab --file build/app-release.aab`} />
+    - APP_MANAGER_BUILD_ID=$(appmctl --json builds create --profile production --request-uuid "$(uuidgen)" | jq -er '.data.id')
+    - export APP_MANAGER_BUILD_ID
+    - appmctl build start
+    - appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --track --step Build -- pnpm build
+    - appmctl artifacts upload --build-id "$APP_MANAGER_BUILD_ID" --name app-release.aab --file build/app-release.aab
+    - appmctl build completed`} />
 
   <h2>Gating one job on another build</h2>
   <p>

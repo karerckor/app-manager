@@ -13,6 +13,7 @@ use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
+use App\Models\SentryIssue;
 use App\Models\Team;
 use App\Models\WebhookEndpoint;
 use App\Support\Tags\TagRules;
@@ -58,6 +59,7 @@ final class AuditEntryPresenter
         'finished_at' => 'Finished',
         'file_name' => 'File',
         'file_metadata' => 'Metadata',
+        'resolved_at' => 'Resolved at',
     ];
 
     /** @return array<string, mixed> */
@@ -70,12 +72,17 @@ final class AuditEntryPresenter
         return [
             'id' => $audit->id,
             'event' => $audit->event,
-            'action_label' => self::actionLabel($audit->event, $changedKeys),
+            'action_label' => self::actionLabel($audit, $changedKeys),
             'action_description' => self::actionDescription($audit->event, $changedKeys, $changes),
             'auditable_type' => class_basename($audit->auditable_type),
             'auditable_id' => $audit->auditable_id,
             'target' => self::target($audit, $team, $canManageApiKeys),
             'changes' => $changes,
+            'comment' => $audit->auditable_type === SentryIssue::class
+                && in_array('status', $changedKeys, true)
+                && is_string($audit->new_values['status_comment'] ?? null)
+                    ? $audit->new_values['status_comment']
+                    : null,
             'source' => $audit->source,
             'source_label' => self::sourceLabel($audit->source),
             'actor' => self::actor($audit, $apiKey),
@@ -138,7 +145,21 @@ final class AuditEntryPresenter
         $label = self::snapshotLabel($values) ?? "{$type} #{$shortId}";
         $meta = null;
 
-        if ($resource instanceof MobileApp && str_starts_with($audit->event, 'file_')) {
+        if ($resource instanceof SentryIssue) {
+            $type = 'Sentry issue';
+            $label = $resource->title;
+            $meta = self::join([
+                $resource->mobileApp?->name,
+                $resource->appIdentifier?->identifier,
+            ]);
+            if ($resource->mobileApp) {
+                $href = route('accounts.apps.telemetry.issues.show', [
+                    'team' => $team,
+                    'mobileApp' => $resource->mobileApp,
+                    'sentryIssue' => $resource,
+                ]);
+            }
+        } elseif ($resource instanceof MobileApp && str_starts_with($audit->event, 'file_')) {
             $type = 'File';
             $label = is_string($values['file_name'] ?? null)
                 ? $values['file_name']
@@ -333,8 +354,18 @@ final class AuditEntryPresenter
     }
 
     /** @param list<string> $changedKeys */
-    private static function actionLabel(string $event, array $changedKeys): string
+    private static function actionLabel(Audit $audit, array $changedKeys): string
     {
+        $event = $audit->event;
+
+        if ($audit->auditable_type === SentryIssue::class && in_array('status', $changedKeys, true)) {
+            return match ($audit->new_values['status'] ?? null) {
+                'resolved' => 'Issue resolved',
+                'unresolved' => 'Issue reopened',
+                default => 'Issue status changed',
+            };
+        }
+
         if ($event !== 'updated') {
             return match ($event) {
                 'created' => 'Created',

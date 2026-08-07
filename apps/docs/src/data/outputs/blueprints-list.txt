@@ -1,0 +1,3 @@
+id                                    name                             platforms     files  apps  hooks
+------------------------------------  -------------------------------  ------------  -----  ----  -----
+019fd621-94fe-7264-84e5-e3a6c2a985e2  Production application standard  ios, android  2      2     2

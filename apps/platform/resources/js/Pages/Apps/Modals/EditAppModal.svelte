@@ -11,7 +11,7 @@
     let metadataText = formatMetadata(app.metadata);
     let metadataError = '';
 
-    const editForm = useForm({ name: app.name, description: app.description ?? '', metadata: app.metadata ?? null });
+    const editForm = useForm({ name: app.name, description: app.description ?? '', metadata: app.metadata ?? null, blueprint_id: app.blueprint_id ?? null });
 
     let wasOpen = false;
     $: if (open !== wasOpen) {
@@ -21,6 +21,7 @@
             editForm.name = app.name;
             editForm.description = app.description ?? '';
             editForm.metadata = app.metadata ?? null;
+            editForm.blueprint_id = app.blueprint_id ?? null;
             metadataText = formatMetadata(app.metadata);
             metadataError = '';
             editForm.clearErrors();
@@ -55,6 +56,17 @@
             <div class="space-y-5 p-6">
                 <label><span class="label">Name</span><input bind:value={editForm.name} required />{#if editForm.errors.name}<span class="error">{editForm.errors.name}</span>{/if}</label>
                 <label><span class="label">Description <span class="font-normal text-faint">(optional)</span></span><textarea class="min-h-24" bind:value={editForm.description} placeholder="What is this project?"></textarea>{#if editForm.errors.description}<span class="error">{editForm.errors.description}</span>{/if}</label>
+                <label>
+                    <span class="label">Blueprint <span class="font-normal text-faint">(optional)</span></span>
+                    <select bind:value={editForm.blueprint_id}>
+                        <option value={null}>No blueprint</option>
+                        {#each app.blueprint_options ?? [] as blueprint}
+                            <option value={blueprint.value}>{blueprint.label}</option>
+                        {/each}
+                    </select>
+                    <span class="mt-1 block text-2xs text-faint">Attach now or later. Missing JSON, files, and platforms will not block saving.</span>
+                    {#if editForm.errors.blueprint_id}<span class="error">{editForm.errors.blueprint_id}</span>{/if}
+                </label>
                 <label><span class="label">Metadata (JSON) <span class="font-normal text-faint">(optional)</span></span><textarea class="min-h-40 font-mono text-xs leading-5" bind:value={metadataText} spellcheck="false" placeholder={'{\n  "owner": "mobile-team",\n  "channel": "production"\n}'}></textarea><span class="mt-1 block text-[10px] text-faint">Add any JSON object with application-specific values.</span>{#if metadataError || editForm.errors.metadata}<span class="error">{metadataError || editForm.errors.metadata}</span>{/if}</label>
                 <div class="rounded-md border border-danger/30 bg-danger/10 p-4">
                     {#if confirmingDelete}

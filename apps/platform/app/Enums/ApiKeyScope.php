@@ -6,6 +6,8 @@ enum ApiKeyScope: string
 {
     case AppsRead = 'apps:read';
     case AppsWrite = 'apps:write';
+    case BlueprintsRead = 'blueprints:read';
+    case BlueprintsWrite = 'blueprints:write';
     case IdentifiersRead = 'identifiers:read';
     case IdentifiersWrite = 'identifiers:write';
     case AssetsRead = 'assets:read';
@@ -124,10 +126,10 @@ enum ApiKeyScope: string
     public function requiredPermission(): ?TeamPermission
     {
         return match ($this) {
-            self::AppsRead, self::IdentifiersRead, self::AssetsRead,
+            self::AppsRead, self::BlueprintsRead, self::IdentifiersRead, self::AssetsRead,
             self::FilesRead, self::CredentialsRead, self::BuildsRead, self::LogsRead,
             self::ArtifactsRead => TeamPermission::View,
-            self::AppsWrite, self::IdentifiersWrite, self::AssetsWrite,
+            self::AppsWrite, self::BlueprintsWrite, self::IdentifiersWrite, self::AssetsWrite,
             self::FilesWrite, self::BuildsWrite, self::LogsWrite,
             self::ArtifactsWrite => TeamPermission::ManageApplications,
             self::CredentialsReveal, self::CredentialsVerify, self::CredentialsWrite => TeamPermission::ManageCredentials,
@@ -150,6 +152,7 @@ enum ApiKeyScope: string
     {
         return match ($this->resource()) {
             'apps' => 'Applications',
+            'blueprints' => 'Blueprints',
             'identifiers' => 'App identifiers',
             'assets' => 'Assets',
             'files' => 'App files',
@@ -180,6 +183,8 @@ enum ApiKeyScope: string
         return match ($this) {
             self::AppsRead => 'List and inspect applications.',
             self::AppsWrite => 'Create, update and delete applications.',
+            self::BlueprintsRead => 'List and inspect blueprints and conditional hooks.',
+            self::BlueprintsWrite => 'Create, update, evaluate and delete blueprints and conditional hooks.',
             self::IdentifiersRead => 'List and inspect platform identifiers.',
             self::IdentifiersWrite => 'Create, update and delete platform identifiers.',
             self::AssetsRead => 'View and download application assets.',

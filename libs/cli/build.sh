@@ -17,7 +17,7 @@ cat <<'EOF'
 
 set -o pipefail
 
-APPMCTL_VERSION="0.2.0"
+APPMCTL_VERSION="0.3.0"
 APPMCTL_NAME="appmctl"
 EOF
 
@@ -36,6 +36,8 @@ dispatch_command() {\
     request) command_request "${REMAINING_ARGS[@]}" ;;\
     stream) command_stream "${REMAINING_ARGS[@]}" ;;\
     apps) command_apps "${REMAINING_ARGS[@]}" ;;\
+    blueprints) command_blueprints "${REMAINING_ARGS[@]}" ;;\
+    build) command_build "${REMAINING_ARGS[@]}" ;;\
     builds) command_builds "${REMAINING_ARGS[@]}" ;;\
     logs) command_logs "${REMAINING_ARGS[@]}" ;;\
     artifacts) command_artifacts "${REMAINING_ARGS[@]}" ;;\
@@ -54,7 +56,7 @@ dispatch_command() {\
 }'
 
 # Command modules (strip shebang lines)
-for cmd in request stream builds logs artifacts files assets identifiers apps credentials integrations eas pipelines webhooks sentry telemetry; do
+for cmd in request stream builds logs artifacts files assets identifiers apps blueprints credentials integrations eas pipelines webhooks sentry telemetry; do
   printf '\n'
   grep -v '^#!/usr/bin/env bash' "$LIB_DIR/commands/$cmd.sh"
 done

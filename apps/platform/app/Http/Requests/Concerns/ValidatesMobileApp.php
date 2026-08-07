@@ -23,6 +23,12 @@ trait ValidatesMobileApp
             ],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'metadata' => ['sometimes', 'nullable', 'array'],
+            'blueprint_id' => [
+                'sometimes',
+                'nullable',
+                'uuid',
+                Rule::exists('blueprints', 'id')->where('team_id', $team->id),
+            ],
         ];
     }
 }

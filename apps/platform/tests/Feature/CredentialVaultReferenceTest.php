@@ -44,12 +44,17 @@ class CredentialVaultReferenceTest extends TestCase
         $this->assertNull($credential->vaultReference);
     }
 
-    public function test_deleting_the_credential_deletes_the_reference(): void
+    public function test_soft_delete_preserves_the_reference_until_permanent_purge(): void
     {
         $credential = Credential::factory()->external()->create();
         $referenceId = $credential->vaultReference->id;
 
         $credential->delete();
+
+        $this->assertSoftDeleted('credentials', ['id' => $credential->id]);
+        $this->assertDatabaseHas('credential_vault_references', ['id' => $referenceId]);
+
+        $credential->forceDelete();
 
         $this->assertDatabaseMissing('credential_vault_references', ['id' => $referenceId]);
     }

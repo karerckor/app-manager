@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 #[Fillable([
     'team_id',
@@ -16,6 +17,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'app_identifier_id',
     'header',
     'body_base64',
+    'archive_disk',
+    'archive_path',
+    'archive_size',
+    'archive_checksum',
+    'archived_at',
     'status',
     'forward_attempts',
     'upstream_response_status',
@@ -30,6 +36,11 @@ class SentryEnvelope extends Model
     public function sentryDsn(): BelongsTo
     {
         return $this->belongsTo(SentryDsn::class)->withTrashed();
+    }
+
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
     }
 
     public function mobileApp(): BelongsTo
@@ -49,7 +60,18 @@ class SentryEnvelope extends Model
 
     public function body(): string
     {
-        return base64_decode($this->body_base64, true) ?: '';
+        return is_string($this->body_base64)
+            ? (base64_decode($this->body_base64, true) ?: '')
+            : '';
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (SentryEnvelope $envelope): void {
+            if ($envelope->archive_disk && $envelope->archive_path) {
+                Storage::disk($envelope->archive_disk)->delete($envelope->archive_path);
+            }
+        });
     }
 
     protected function casts(): array
@@ -57,6 +79,8 @@ class SentryEnvelope extends Model
         return [
             'header' => 'array',
             'status' => SentryEnvelopeStatus::class,
+            'archive_size' => 'integer',
+            'archived_at' => 'datetime',
             'next_forward_at' => 'datetime',
             'forwarded_at' => 'datetime',
         ];

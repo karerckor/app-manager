@@ -32,7 +32,11 @@ class SentryEnvelopeController extends Controller
             return $this->json(['detail' => 'Sentry ingestion is disabled.'], 404);
         }
 
-        $dsn = SentryDsn::query()->with('integration')->where('project_id', $sentryProjectId)->first();
+        $dsn = SentryDsn::query()
+            ->with('integration')
+            ->whereHas('team')
+            ->where('project_id', $sentryProjectId)
+            ->first();
 
         if (! $dsn || $dsn->integration->status !== IntegrationStatus::Active) {
             return $this->json(['detail' => 'Unknown Sentry project.'], 404);
@@ -75,7 +79,11 @@ class SentryEnvelopeController extends Controller
         try {
             $directRoute = $publicKey === $dsn->public_key
                 ? null
-                : $dsn->routes()->where('public_key', $publicKey)->first();
+                : $dsn->routes()->with(['mobileApp', 'appIdentifier'])->where('public_key', $publicKey)->first();
+            if ($directRoute && ($directRoute->mobileApp === null
+                || ($directRoute->app_identifier_id !== null && $directRoute->appIdentifier === null))) {
+                throw new SentryRoutingException('This Sentry target is archived.');
+            }
             $route = $directRoute ?? $this->resolver->resolve($dsn, $request, $parsed->routingPayload());
         } catch (SentryRoutingException $exception) {
             return $this->json(['detail' => $exception->getMessage()], 400);
@@ -112,14 +120,18 @@ class SentryEnvelopeController extends Controller
             $this->keyFromDsn((string) ($header['dsn'] ?? '')),
         ];
 
-        $accepted = [$dsn->public_key, ...$dsn->routes()->pluck('public_key')->filter()->all()];
-
         foreach ($candidates as $candidate) {
-            foreach ($accepted as $publicKey) {
-                if (is_string($candidate) && strlen($candidate) === strlen($publicKey)
-                    && hash_equals($publicKey, $candidate)) {
-                    return $publicKey;
-                }
+            if (! is_string($candidate)) {
+                continue;
+            }
+
+            if (strlen($candidate) === strlen($dsn->public_key)
+                && hash_equals($dsn->public_key, $candidate)) {
+                return $dsn->public_key;
+            }
+
+            if ($dsn->routes()->where('public_key', $candidate)->exists()) {
+                return $candidate;
             }
         }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Models\Blueprint;
 use App\Models\Credential;
 use App\Models\ExpoProject;
 use App\Models\Integration;
@@ -209,10 +210,12 @@ class PlatformDashboardTest extends TestCase
     public function test_user_can_create_an_application_in_the_current_team(): void
     {
         [$user, $team] = $this->userWithTeam();
+        $blueprint = Blueprint::factory()->create(['team_id' => $team->id]);
 
         $response = $this->actingAs($user)->post(route('accounts.apps.store', $team), [
             'name' => 'Atlas Mobile',
             'description' => 'Customer application',
+            'blueprint_id' => $blueprint->id,
             'metadata' => [
                 'owner' => 'mobile-team',
                 'release' => ['channel' => 'production'],
@@ -222,11 +225,28 @@ class PlatformDashboardTest extends TestCase
         $app = MobileApp::firstOrFail();
         $response->assertRedirect("/accounts/{$team->slug}/apps/{$app->slug}");
         $this->assertSame($team->id, $app->team_id);
+        $this->assertSame($blueprint->id, $app->blueprint_id);
         $this->assertSame('atlas-mobile', $app->slug);
         $this->assertSame([
             'owner' => 'mobile-team',
             'release' => ['channel' => 'production'],
         ], $app->metadata);
+    }
+
+    public function test_dashboard_exposes_only_current_team_blueprints_for_application_creation(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $second = Blueprint::factory()->create(['team_id' => $team->id, 'name' => 'Second standard']);
+        $first = Blueprint::factory()->create(['team_id' => $team->id, 'name' => 'First standard']);
+        Blueprint::factory()->create(['name' => 'Foreign standard']);
+
+        $this->actingAs($user)->get(route('accounts.apps.index', $team))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Dashboard')
+                ->has('blueprintOptions', 2)
+                ->where('blueprintOptions.0', ['value' => $first->id, 'label' => 'First standard'])
+                ->where('blueprintOptions.1', ['value' => $second->id, 'label' => 'Second standard']));
     }
 
     public function test_user_can_add_an_identifier_and_view_the_app_drilldown(): void
@@ -545,7 +565,7 @@ class PlatformDashboardTest extends TestCase
             ->assertRedirect(route('accounts.apps.index', $team))
             ->assertSessionHas('status', 'Application deleted.');
 
-        $this->assertDatabaseMissing('mobile_apps', ['id' => $app->id]);
+        $this->assertSoftDeleted('mobile_apps', ['id' => $app->id]);
     }
 
     public function test_viewer_cannot_modify_or_delete_an_application(): void

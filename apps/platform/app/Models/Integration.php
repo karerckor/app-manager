@@ -108,6 +108,11 @@ class Integration extends Model implements Auditable
         return $this->hasOne(SentryDsn::class);
     }
 
+    public function sentryDsnIncludingTrashed(): HasOne
+    {
+        return $this->hasOne(SentryDsn::class)->withTrashed();
+    }
+
     public function expoProjects(): HasMany
     {
         return $this->hasMany(ExpoProject::class);

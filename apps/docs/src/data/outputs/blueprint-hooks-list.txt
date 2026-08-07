@@ -1,0 +1,4 @@
+id                                    name                      condition           actions  enabled
+------------------------------------  ------------------------  ------------------  -------  -------
+019fd621-9505-70a2-8d9f-8bfbe0fac34e  Flag incomplete apps      blueprint_mismatch  2        true
+019fd621-9507-7068-98c6-bab705279a66  Mark matching apps ready  blueprint_matches   2        true

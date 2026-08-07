@@ -27,7 +27,7 @@ class DeliverNotification implements ShouldQueue
 
         $delivery = DB::transaction(function () {
             $delivery = NotificationDelivery::query()
-                ->with(['destination.integration', 'event'])
+                ->with(['team', 'destination.integration', 'event'])
                 ->lockForUpdate()
                 ->findOrFail($this->deliveryId);
 
@@ -43,7 +43,7 @@ class DeliverNotification implements ShouldQueue
                 return null;
             }
 
-            if ($delivery->destination->trashed()
+            if (! $delivery->team || $delivery->destination->trashed()
                 || $delivery->destination->integration->status !== IntegrationStatus::Active) {
                 $delivery->update([
                     'status' => NotificationDeliveryStatus::Exhausted,
@@ -61,7 +61,7 @@ class DeliverNotification implements ShouldQueue
                 'last_error' => null,
             ]);
 
-            return $delivery->refresh()->load(['destination.integration', 'event']);
+            return $delivery->refresh()->load(['team', 'destination.integration', 'event']);
         });
 
         if (! $delivery) {

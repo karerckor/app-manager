@@ -5,19 +5,27 @@ namespace App\Actions\Integrations;
 use App\Integrations\Expo\ExpoClient;
 use App\Models\ExpoProject;
 use App\Models\Integration;
+use App\Models\MobileApp;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Support\Facades\DB;
 
 class SyncExpoProjects
 {
-    public function __construct(private readonly ExpoClient $expo) {}
+    public function __construct(
+        private readonly ExpoClient $expo,
+        private readonly BlueprintComplianceEvaluator $blueprints,
+    ) {}
 
     /** @return array<int, ExpoProject> */
     public function handle(Integration $integration): array
     {
         $projects = $this->expo->projects($integration);
         $seen = collect($projects)->pluck('id')->filter()->map(fn ($id) => (string) $id);
+        $affectedAppIds = $integration->expoProjects()
+            ->whereNotNull('mobile_app_id')
+            ->pluck('mobile_app_id');
 
-        return DB::transaction(function () use ($integration, $projects, $seen): array {
+        $synced = DB::transaction(function () use ($integration, $projects, $seen): array {
             $integration->expoProjects()
                 ->when($seen->isNotEmpty(), fn ($query) => $query->whereNotIn('external_id', $seen))
                 ->when($seen->isEmpty(), fn ($query) => $query)
@@ -46,6 +54,12 @@ class SyncExpoProjects
 
             return $synced;
         });
+
+        MobileApp::query()->whereKey($affectedAppIds)->each(
+            fn (MobileApp $app) => $this->blueprints->evaluate($app),
+        );
+
+        return $synced;
     }
 
     /** @return array<string, mixed> */

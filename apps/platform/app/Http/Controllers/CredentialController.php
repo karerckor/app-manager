@@ -346,6 +346,15 @@ class CredentialController extends Controller
         return back()->with('status', 'Credential removed.');
     }
 
+    public function restore(Request $request, Team $team, string $credential): RedirectResponse
+    {
+        $credentialModel = $team->credentials()->onlyTrashed()->whereKey($credential)->firstOrFail();
+        $credentialModel->restore();
+        $this->expoAutoSync->dispatchForAppIds($this->expoAutoSync->appIdsForCredential($credentialModel));
+
+        return back()->with('status', 'Credential restored.');
+    }
+
     public function upload(UploadCredentialFileRequest $request, Team $team, Credential $credential): RedirectResponse
     {
         abort_if($credential->isExternal(), 404);

@@ -16,6 +16,7 @@ use App\Models\ExpoProject;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,7 @@ class ExpoProjectController extends Controller
         ExpoClient $expo,
         ExpoCredentialExporter $credentials,
         SyncExpoProjects $sync,
+        BlueprintComplianceEvaluator $blueprints,
     ): RedirectResponse {
         $this->ensureEnabled();
         $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
@@ -116,6 +118,7 @@ class ExpoProjectController extends Controller
                 ]);
             }
         });
+        $blueprints->evaluate($mobileApp);
 
         if ($data['mode'] === 'create') {
             $export = $credentials->exportApplication($project, $mobileApp);
@@ -304,6 +307,7 @@ class ExpoProjectController extends Controller
         Request $request,
         Team $team,
         MobileApp $mobileApp,
+        BlueprintComplianceEvaluator $blueprints,
     ): RedirectResponse {
         $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
         $project = $mobileApp->expoProject()->firstOrFail();
@@ -320,6 +324,7 @@ class ExpoProjectController extends Controller
                 'auto_sync_pending_at' => null,
             ]);
         });
+        $blueprints->evaluate($mobileApp);
 
         return back()->with(
             'status',

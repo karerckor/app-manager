@@ -9,6 +9,7 @@ use App\Enums\Platform;
 use App\Enums\SentryEnvelopeStatus;
 use App\Enums\SentryRoutingMethod;
 use App\Models\AppIdentifier;
+use App\Models\Audit;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\SentryDsn;
@@ -311,6 +312,113 @@ class AppTelemetryPageTest extends TestCase
                 ->where('telemetry.stats.errors', 2)
                 ->has('telemetry.issues', 1)
                 ->where('telemetry.issues.0.events_count', 2));
+    }
+
+    public function test_issue_can_be_resolved_and_the_actor_is_visible_on_the_issue_and_audit_log(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        [$app, $identifier, $dsn] = $this->sentryTarget($team, $user, 'storefront');
+        $envelope = $this->envelope($team, $app, $identifier, $dsn);
+        SentryEvent::create([
+            'team_id' => $team->id,
+            'sentry_dsn_id' => $dsn->id,
+            'sentry_envelope_id' => $envelope->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'event_id' => str_repeat('r', 32),
+            'item_type' => 'event',
+            'level' => 'error',
+            'title' => 'Checkout failed',
+            'occurred_at' => now(),
+            'payload' => [],
+        ]);
+        $issue = $app->sentryIssues()->sole();
+        $resolutionComment = 'Fixed in storefront@1.4.1; monitoring production.';
+
+        $this->actingAs($user)
+            ->patch(route('accounts.apps.telemetry.issues.update', [$team, $app, $issue]), [
+                'status' => 'resolved',
+                'comment' => $resolutionComment,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Issue resolved.');
+
+        $this->assertDatabaseHas('sentry_issues', [
+            'id' => $issue->id,
+            'status' => 'resolved',
+            'resolved_by_user_id' => $user->id,
+            'resolved_by_api_key_id' => null,
+            'status_comment' => $resolutionComment,
+            'status_changed_by_user_id' => $user->id,
+            'status_changed_by_api_key_id' => null,
+        ]);
+        $this->actingAs($user)
+            ->get(route('accounts.apps.telemetry.issues.show', [$team, $app, $issue]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('telemetry.status', 'resolved')
+                ->where('telemetry.resolution.actor.type', 'user')
+                ->where('telemetry.resolution.actor.name', $user->name)
+                ->where('telemetry.status_activity.action', 'resolved')
+                ->where('telemetry.status_activity.actor.name', $user->name)
+                ->where('telemetry.status_activity.comment', $resolutionComment)
+                ->where('telemetry.status_url', route('accounts.apps.telemetry.issues.update', [$team, $app, $issue])));
+
+        $this->actingAs($user)
+            ->get(route('accounts.audit.index', ['team' => $team, 'apps' => [$app->id]]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('audits.data.0.action_label', 'Issue resolved')
+                ->where('audits.data.0.actor.name', $user->name)
+                ->where('audits.data.0.source', 'web')
+                ->where('audits.data.0.comment', $resolutionComment)
+                ->where('audits.data.0.target.type', 'Sentry issue')
+                ->where('audits.data.0.target.label', 'Checkout failed')
+                ->where('audits.data.0.target.href', route('accounts.apps.telemetry.issues.show', [$team, $app, $issue])));
+
+        $issueTags = [['needs-review', '#f43f5e', 'pulse'], ['checkout']];
+        $this->actingAs($user)
+            ->patch(route('accounts.apps.telemetry.issues.tags.update', [$team, $app, $issue]), ['tags' => $issueTags])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Issue tags updated.');
+        $this->assertSame($issueTags, $issue->refresh()->tagList());
+        $this->actingAs($user)
+            ->get(route('accounts.apps.telemetry.issues.show', [$team, $app, $issue]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('telemetry.tags', $issueTags)
+                ->where('telemetry.selected_event.tags', []));
+
+        $tagsAudit = Audit::query()
+            ->where('auditable_type', SentryIssue::class)
+            ->where('auditable_id', $issue->id)
+            ->get()
+            ->first(fn (Audit $audit) => array_key_exists('tags', $audit->new_values));
+        $this->assertNotNull($tagsAudit);
+        $this->assertSame($user->id, $tagsAudit->user_id);
+        $this->assertSame($issueTags, json_decode($tagsAudit->new_values['tags'], true, flags: JSON_THROW_ON_ERROR));
+
+        $reopenComment = 'Regression reproduced after the payment provider rollout.';
+        $this->actingAs($user)
+            ->patch(route('accounts.apps.telemetry.issues.update', [$team, $app, $issue]), [
+                'status' => 'unresolved',
+                'comment' => $reopenComment,
+            ])
+            ->assertSessionHas('status', 'Issue reopened.');
+        $this->assertDatabaseHas('sentry_issues', [
+            'id' => $issue->id,
+            'status' => 'unresolved',
+            'resolved_at' => null,
+            'status_comment' => $reopenComment,
+            'status_changed_by_user_id' => $user->id,
+        ]);
+        $this->actingAs($user)
+            ->get(route('accounts.apps.telemetry.issues.show', [$team, $app, $issue]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('telemetry.status_activity.action', 'reopened')
+                ->where('telemetry.status_activity.comment', $reopenComment)
+                ->where('telemetry.status_activity.actor.name', $user->name));
     }
 
     public function test_application_telemetry_is_hidden_when_sentry_integration_is_disabled(): void

@@ -10,8 +10,11 @@ use App\Http\Controllers\AppOverviewController;
 use App\Http\Controllers\AppTelemetryDetailPageController;
 use App\Http\Controllers\AppTelemetryPageController;
 use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\BlueprintController;
+use App\Http\Controllers\BlueprintHookController;
 use App\Http\Controllers\BuildArtifactController;
 use App\Http\Controllers\BuildLogArchiveController;
+use App\Http\Controllers\BuildLogDownloadController;
 use App\Http\Controllers\CredentialController;
 use App\Http\Controllers\CredentialVaultController;
 use App\Http\Controllers\DashboardController;
@@ -37,8 +40,10 @@ use App\Http\Controllers\ManualBuildController;
 use App\Http\Controllers\MobileAppController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PushNotificationToolController;
+use App\Http\Controllers\SentryArchiveController;
 use App\Http\Controllers\TagsController;
 use App\Http\Controllers\TeamApiKeyController;
+use App\Http\Controllers\TeamBuildPageController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\TeamInvitationController;
 use App\Http\Controllers\TeamMemberController;
@@ -198,6 +203,32 @@ Route::middleware('auth')->group(function () {
             Route::post('/integrations/{integration}/pipelines/{pipeline}/runs', [PipelineBuildController::class, 'store'])
                 ->name('integrations.pipelines.runs.store');
             Route::get('/apps', DashboardController::class)->name('apps.index');
+            Route::get('/builds', TeamBuildPageController::class)->name('builds.index');
+            Route::get('/blueprints', [BlueprintController::class, 'index'])->name('blueprints.index');
+            Route::post('/blueprints', [BlueprintController::class, 'store'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.store');
+            Route::patch('/blueprints/{blueprint}', [BlueprintController::class, 'update'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.update');
+            Route::delete('/blueprints/{blueprint}', [BlueprintController::class, 'destroy'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.destroy');
+            Route::post('/blueprints/trash/{blueprint}/restore', [BlueprintController::class, 'restore'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.restore');
+            Route::post('/blueprints/{blueprint}/evaluate', [BlueprintController::class, 'evaluate'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.evaluate');
+            Route::post('/blueprints/{blueprint}/hooks', [BlueprintHookController::class, 'store'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.hooks.store');
+            Route::patch('/blueprints/{blueprint}/hooks/{hook}', [BlueprintHookController::class, 'update'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.hooks.update');
+            Route::delete('/blueprints/{blueprint}/hooks/{hook}', [BlueprintHookController::class, 'destroy'])
+                ->middleware('team.permission:manage_applications')
+                ->name('blueprints.hooks.destroy');
             Route::get('/credentials', CredentialVaultController::class)->name('credentials.index');
             Route::get('/tools/push-notifications', [PushNotificationToolController::class, 'index'])
                 ->name('tools.push-notifications.index');
@@ -214,13 +245,24 @@ Route::middleware('auth')->group(function () {
                 ->middleware('team.permission:manage_team')
                 ->name('api-keys.destroy');
             Route::post('/apps', [MobileAppController::class, 'store'])->middleware('team.permission:manage_applications')->name('apps.store');
+            Route::post('/apps/trash/{mobileApp}/restore', [MobileAppController::class, 'restore'])
+                ->middleware('team.permission:manage_applications')
+                ->name('apps.restore');
             Route::get('/apps/{mobileApp:slug}', AppOverviewController::class)->name('apps.show');
             Route::get('/apps/{mobileApp:slug}/telemetry', AppTelemetryPageController::class)
                 ->name('apps.telemetry.index');
             Route::get('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}', [AppTelemetryDetailPageController::class, 'issue'])
                 ->name('apps.telemetry.issues.show');
+            Route::patch('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}', [AppTelemetryDetailPageController::class, 'updateIssue'])
+                ->middleware('team.permission:manage_applications')
+                ->name('apps.telemetry.issues.update');
+            Route::patch('/apps/{mobileApp:slug}/telemetry/issues/{sentryIssue}/tags', [AppTelemetryDetailPageController::class, 'updateIssueTags'])
+                ->middleware('team.permission:manage_applications')
+                ->name('apps.telemetry.issues.tags.update');
             Route::get('/apps/{mobileApp:slug}/telemetry/traces/{traceId}', [AppTelemetryDetailPageController::class, 'trace'])
                 ->name('apps.telemetry.traces.show');
+            Route::get('/apps/{mobileApp:slug}/telemetry/envelopes/{sentryEnvelope}/archive', SentryArchiveController::class)
+                ->name('apps.telemetry.envelopes.archive');
             Route::get('/apps/{mobileApp:slug}/media', AppMediaLibraryController::class)
                 ->name('apps.media.index');
             Route::post('/apps/{mobileApp:slug}/media/regenerate', [AppMediaLibraryController::class, 'regenerate'])
@@ -272,8 +314,12 @@ Route::middleware('auth')->group(function () {
                 ->name('apps.builds.index');
             Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}', [AppBuildPageController::class, 'show'])
                 ->name('apps.builds.show');
+            Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/state', [AppBuildPageController::class, 'state'])
+                ->name('apps.builds.state');
             Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs/archive', BuildLogArchiveController::class)
                 ->name('apps.builds.logs.archive');
+            Route::get('/apps/{mobileApp:slug}/builds/{buildRecord}/logs/download', BuildLogDownloadController::class)
+                ->name('apps.builds.logs.download');
             Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/cancel', [PipelineBuildController::class, 'cancel'])
                 ->name('apps.builds.cancel');
             Route::patch('/apps/{mobileApp:slug}/builds/{buildRecord}/status', [ForceBuildStatusController::class, 'update'])
@@ -284,6 +330,9 @@ Route::middleware('auth')->group(function () {
                 ->name('apps.builds.artifacts.download');
             Route::delete('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/{artifact}', [BuildArtifactController::class, 'destroy'])
                 ->name('apps.builds.artifacts.destroy');
+            Route::post('/apps/{mobileApp:slug}/builds/{buildRecord}/artifacts/trash/{artifact}/restore', [BuildArtifactController::class, 'restore'])
+                ->middleware('team.permission:manage_applications')
+                ->name('apps.builds.artifacts.restore');
             Route::patch('/apps/{mobileApp:slug}/tags', [TagsController::class, 'updateApp'])
                 ->middleware('team.permission:manage_applications')
                 ->name('apps.tags.update');
@@ -302,6 +351,7 @@ Route::middleware('auth')->group(function () {
                 ->name('apps.identifiers.sync');
             Route::patch('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'update'])->middleware('team.permission:manage_applications')->name('apps.identifiers.update');
             Route::delete('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierController::class, 'destroy'])->middleware('team.permission:manage_applications')->name('apps.identifiers.destroy');
+            Route::post('/apps/{mobileApp:slug}/identifiers/trash/{appIdentifier}/restore', [AppIdentifierController::class, 'restore'])->middleware('team.permission:manage_applications')->name('apps.identifiers.restore');
             Route::get('/apps/{mobileApp:slug}/identifiers', [AppIdentifierPageController::class, 'index'])->name('apps.identifiers.index');
             Route::get('/apps/{mobileApp:slug}/identifiers/{appIdentifier}', [AppIdentifierPageController::class, 'show'])->name('apps.identifiers.show');
             Route::post('/apps/{mobileApp:slug}/identifiers/{appIdentifier}/credentials', [CredentialController::class, 'attach'])
@@ -339,6 +389,9 @@ Route::middleware('auth')->group(function () {
             Route::delete('/credentials/{credential}', [CredentialController::class, 'destroy'])
                 ->middleware(['team.permission:manage_credentials', 'owns.model:credential,team_id,team'])
                 ->name('credentials.destroy');
+            Route::post('/credentials/trash/{credential}/restore', [CredentialController::class, 'restore'])
+                ->middleware('team.permission:manage_credentials')
+                ->name('credentials.restore');
             Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
             Route::put('/switch', [TeamController::class, 'switch'])->name('switch');
         });

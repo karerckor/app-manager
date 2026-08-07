@@ -54,6 +54,8 @@ class StartPipelineBuild
             $pipeline->team_id === $team->id
             && $pipeline->integration_id === $integration->id
             && $pipeline->enabled
+            && $pipeline->mobileApp !== null
+            && ($pipeline->app_identifier_id === null || $pipeline->appIdentifier !== null)
             && $integration->status->canDispatch(),
             404,
         );

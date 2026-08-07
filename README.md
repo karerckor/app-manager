@@ -181,7 +181,11 @@ App Manager supports two reporting modes:
 
 The selected reporting mode is snapshotted onto each build. Manual lifecycle writes are rejected for automatic builds. Build creation is idempotent by team and `request_uuid`, and terminal state transitions are protected from conflicting rewrites.
 
-Completed build logs are retained in the database for 30 days by default. The daily `build-logs:archive` task then moves them to the configured private media storage (local or S3), while authorized users can still download the original `.log` file from the build page or API. Set `BUILD_LOG_RETENTION_DAYS` to change the retention window, and keep the Laravel scheduler running in every deployment.
+Completed build logs are retained in the database for 30 days by default. The daily `build-logs:archive` task then moves them to the configured private media storage (local or S3), while authorized users can still download the original `.log` file from the build page or API. Cold log archives are retained for another 365 days by default and then removed by `build-logs:prune-archives`. Set `BUILD_LOG_RETENTION_DAYS` and `BUILD_LOG_ARCHIVE_RETENTION_DAYS` to change these windows.
+
+Applications, credentials, identifiers, profiles, builds, artifacts, blueprints, teams, and users use recoverable deletion. Deleted records remain in the trash for at least 90 days by default before `data-lifecycle:purge` permanently removes their database rows and private files. Credentials have an independent `CREDENTIAL_TRASH_RETENTION_DAYS` setting so operators can choose a longer recovery window than `TRASH_RETENTION_DAYS`. A parent record is held beyond its trash window when force-deleting it would shorten a build-log or Sentry archive's configured retention.
+
+Terminal Sentry envelopes and event payloads remain hot and searchable for 30 days by default. `sentry:archive` then writes a checksummed, compressed copy to private storage and removes the raw payload from PostgreSQL while retaining searchable issue/event metadata. `sentry:prune-archives` removes the cold object and its database records after 365 archived days. Configure the windows with `SENTRY_HOT_RETENTION_DAYS` and `SENTRY_ARCHIVE_RETENTION_DAYS`, and optionally isolate cold objects with `SENTRY_ARCHIVE_DISK`. Keep the Laravel scheduler running in every deployment.
 
 ### Webhooks and auditing
 
@@ -479,6 +483,7 @@ An operator still has to supply:
 - transactional mail for verification, password reset, and invitations;
 - offsite retention for those backups, and restore testing;
 - monitoring for queue failures, webhook delivery, provider API errors, disk usage, and credential expiry;
+- capacity monitoring and backups for both hot data and private cold archives during their configured retention windows;
 - a rollback path — pin an image tag rather than tracking `latest`, and take a database dump before every upgrade.
 
 Security-sensitive considerations:

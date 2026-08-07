@@ -33,7 +33,7 @@ class CredentialDeleteTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('status', 'Credential removed.');
 
-        $this->assertDatabaseMissing('credentials', ['id' => $credential->id]);
+        $this->assertSoftDeleted('credentials', ['id' => $credential->id]);
         $this->assertDatabaseHas('webhook_events', [
             'team_id' => $team->id,
             'event_type' => WebhookEventType::CredentialDeleted->value,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# "apps" subcommands: list, get, create, update, delete.
+# "apps" subcommands: list, get, create, update, delete, including blueprint attachment.
 
 apps_usage() {
   cat <<'EOF'
@@ -101,7 +101,7 @@ _apps_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","blueprint_id":"blueprint_id","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -110,6 +110,7 @@ _apps_create() {
   local slug=""
   local description=""
   local metadata=""
+  local blueprint_id=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -122,12 +123,14 @@ _apps_create() {
       --description=*) description=${1#*=}; shift ;;
       --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
       --metadata=*) metadata=${1#*=}; shift ;;
+      --blueprint-id) require_value "$1" "$2"; blueprint_id="$2"; shift 2 ;;
+      --blueprint-id=*) blueprint_id=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]\n'
+        printf 'Usage: appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON] [--blueprint-id UUID]\n'
         return 0
         ;;
       *) die "unknown apps create option: $1" ;;
@@ -135,6 +138,7 @@ _apps_create() {
   done
 
   [ -n "$name" ] || die "--name is required"
+  if [ -n "$blueprint_id" ]; then validate_slug "blueprint ID" "$blueprint_id"; fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
   local jq_args=(-n --arg n "$name")
@@ -150,6 +154,10 @@ _apps_create() {
   if [ -n "$metadata" ]; then
     jq_args+=(--argjson m "$metadata")
     jq_expr="$jq_expr, metadata: \$m"
+  fi
+  if [ -n "$blueprint_id" ]; then
+    jq_args+=(--arg blueprint "$blueprint_id")
+    jq_expr="$jq_expr, blueprint_id: \$blueprint"
   fi
   jq_expr="$jq_expr}"
   "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
@@ -177,6 +185,8 @@ _apps_update() {
   local name=""
   local description=""
   local metadata=""
+  local blueprint_id=""
+  local blueprint_id_set=0
   local body_file
   local has_fields=0
 
@@ -188,12 +198,15 @@ _apps_update() {
       --description=*) description=${1#*=}; has_fields=1; shift ;;
       --metadata) require_value "$1" "$2"; metadata="$2"; has_fields=1; shift 2 ;;
       --metadata=*) metadata=${1#*=}; has_fields=1; shift ;;
+      --blueprint-id) require_value "$1" "$2"; blueprint_id="$2"; blueprint_id_set=1; has_fields=1; shift 2 ;;
+      --blueprint-id=*) blueprint_id=${1#*=}; blueprint_id_set=1; has_fields=1; shift ;;
+      --no-blueprint) blueprint_id=""; blueprint_id_set=1; has_fields=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]\n'
+        printf 'Usage: appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON] [--blueprint-id UUID|--no-blueprint]\n'
         return 0
         ;;
       -*) die "unknown apps update option: $1" ;;
@@ -208,6 +221,7 @@ _apps_update() {
   [ -n "$slug" ] || die "app slug is required"
   [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
   validate_slug "app slug" "$slug"
+  if [ "$blueprint_id_set" -eq 1 ] && [ -n "$blueprint_id" ]; then validate_slug "blueprint ID" "$blueprint_id"; fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
   local jq_args=(-n)
@@ -229,6 +243,16 @@ _apps_update() {
     jq_args+=(--argjson m "$metadata")
     [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
     jq_expr="$jq_expr metadata: \$m"
+    first=0
+  fi
+  if [ "$blueprint_id_set" -eq 1 ]; then
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    if [ -n "$blueprint_id" ]; then
+      jq_args+=(--arg blueprint "$blueprint_id")
+      jq_expr="$jq_expr blueprint_id: \$blueprint"
+    else
+      jq_expr="$jq_expr blueprint_id: null"
+    fi
     first=0
   fi
   jq_expr="$jq_expr}"

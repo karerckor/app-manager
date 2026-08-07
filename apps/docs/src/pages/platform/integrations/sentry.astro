@@ -22,13 +22,16 @@ import Screenshot from '../../../components/Screenshot.astro';
   <p>
     Open <strong>Workspace settings → Integrations → Sentry</strong> and select
     <strong>New routed DSN</strong>. Give it a recognizable name, choose how events identify their
-    application, and add at least one target. A target is an application by itself or one specific
-    package identifier / web domain belonging to that application.
+    application, then choose its application scope. <strong>All applications</strong> includes every
+    current and future team application, <strong>By blueprint</strong> follows applications assigned
+    to selected blueprints, and <strong>Choose targets</strong> selects applications or individual
+    package identifiers / web domains. Application-wide targets include all of their identifiers and
+    platforms.
   </p>
   <p>
-    The platform gives every target its own compatible DSN. Use that target DSN in the Sentry SDK
-    when an application has one fixed destination. Use the shared DSN when a single SDK endpoint must
-    resolve between multiple targets.
+    Explicitly selected targets receive their own compatible DSN. Use that target DSN in the Sentry
+    SDK when an application has one fixed destination. Team-wide and blueprint scopes use the shared
+    DSN and routing values, so new matching applications become available without editing the DSN.
   </p>
 
   <h3>Routing methods</h3>
@@ -93,9 +96,26 @@ Sentry.setContext('app', &#123;
 
   <Screenshot
     src="telemetry-issue-detail"
-    alt="Dedicated Issue investigation page with an occurrence rail and full Sentry event payload"
-    caption="Each case keeps its event timeline beside the complete payload, so the inbox stays focused on triage."
+    alt="Resolved Issue investigation page with resolution comment, App Manager tags, occurrence rail and full Sentry event payload"
+    caption="The case keeps its resolution actor and comment, editable App Manager tags, occurrence timeline, and complete SDK payload together."
   />
+
+  <h3>Resolve an Issue</h3>
+  <p>
+    Use <strong>Resolve issue</strong> when the underlying problem is fixed. The case stays searchable,
+    records who resolved it, when, and an optional comment; the same action and comment appear in the
+    workspace audit log. Owners and admins can follow the audit entry directly back to the Issue. You
+    can reopen a case manually with another optional comment; if the same fingerprint arrives again,
+    the platform reopens it automatically as a system action.
+  </p>
+
+  <h3>Classify an Issue without changing SDK data</h3>
+  <p>
+    Add App Manager tags directly to a grouped Issue using the same text, optional color, and optional
+    animation tuples used by applications. They help the team classify cases such as regressions or
+    ownership queues. These tags are stored separately from the Sentry SDK tags visible in an
+    occurrence's <strong>Tags</strong> tab, so the original event payload and forwarded envelope remain unchanged.
+  </p>
 
   <h2>Forward to an upstream DSN</h2>
   <p>

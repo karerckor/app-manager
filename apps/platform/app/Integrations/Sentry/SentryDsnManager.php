@@ -6,6 +6,7 @@ use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\SentryRoutingMethod;
+use App\Enums\SentryTargetMode;
 use App\Models\Integration;
 use App\Models\SentryDsn;
 use App\Models\Team;
@@ -19,11 +20,11 @@ class SentryDsnManager
     {
         return DB::transaction(function () use ($team, $actor, $data) {
             $integration = Integration::create(['team_id' => $team->id, 'kind' => IntegrationKind::Observability, 'provider' => IntegrationProvider::Sentry, 'name' => $data['name'], 'status' => $data['enabled'] ? IntegrationStatus::Active : IntegrationStatus::Disabled, 'disabled_at' => $data['enabled'] ? null : now(), 'created_by_user_id' => $actor->id, 'updated_by_user_id' => $actor->id]);
-            $dsn = SentryDsn::create(['team_id' => $team->id, 'integration_id' => $integration->id, 'public_key' => bin2hex(random_bytes(16)), 'project_id' => $this->newProjectId(), 'routing_method' => $data['routing_method'], 'event_source' => $data['routing_method'] === SentryRoutingMethod::Event->value ? $data['event_source'] : null, 'app_key' => $data['app_key'], 'identifier_key' => $data['identifier_key'] ?: null, 'upstream_dsn' => $data['forward_enabled'] ? $data['upstream_dsn'] : null]);
-            $this->syncRoutes($dsn, $data['routes']);
+            $dsn = SentryDsn::create(['team_id' => $team->id, 'integration_id' => $integration->id, 'public_key' => bin2hex(random_bytes(16)), 'project_id' => $this->newProjectId(), 'routing_method' => $data['routing_method'], 'event_source' => $data['routing_method'] === SentryRoutingMethod::Event->value ? $data['event_source'] : null, 'app_key' => $data['app_key'], 'identifier_key' => $data['identifier_key'] ?: null, 'target_mode' => $data['target_mode'], 'upstream_dsn' => $data['forward_enabled'] ? $data['upstream_dsn'] : null]);
+            $this->syncTargets($dsn, $data);
             $integration->update(['external_id' => $dsn->id]);
 
-            return $dsn->load(['integration', 'routes.mobileApp', 'routes.appIdentifier']);
+            return $dsn->load(['integration', 'blueprints', 'routes.mobileApp', 'routes.appIdentifier']);
         });
     }
 
@@ -31,18 +32,18 @@ class SentryDsnManager
     public function update(SentryDsn $dsn, User $actor, array $data): SentryDsn
     {
         DB::transaction(function () use ($dsn, $actor, $data) {
-            $updates = ['routing_method' => $data['routing_method'], 'event_source' => $data['routing_method'] === SentryRoutingMethod::Event->value ? $data['event_source'] : null, 'app_key' => $data['app_key'], 'identifier_key' => $data['identifier_key'] ?: null];
+            $updates = ['routing_method' => $data['routing_method'], 'event_source' => $data['routing_method'] === SentryRoutingMethod::Event->value ? $data['event_source'] : null, 'app_key' => $data['app_key'], 'identifier_key' => $data['identifier_key'] ?: null, 'target_mode' => $data['target_mode']];
             if (! $data['forward_enabled']) {
                 $updates['upstream_dsn'] = null;
             } elseif (filled($data['upstream_dsn'])) {
                 $updates['upstream_dsn'] = $data['upstream_dsn'];
             }
             $dsn->update($updates);
-            $this->syncRoutes($dsn, $data['routes']);
+            $this->syncTargets($dsn, $data);
             $dsn->integration->update(['name' => $data['name'], 'status' => $data['enabled'] ? IntegrationStatus::Active : IntegrationStatus::Disabled, 'disabled_at' => $data['enabled'] ? null : now(), 'updated_by_user_id' => $actor->id]);
         });
 
-        return $dsn->fresh()->load(['integration', 'routes.mobileApp', 'routes.appIdentifier']);
+        return $dsn->fresh()->load(['integration', 'blueprints', 'routes.mobileApp', 'routes.appIdentifier']);
     }
 
     public function delete(SentryDsn $dsn, User $actor): void
@@ -64,6 +65,20 @@ class SentryDsnManager
             $kept[] = $configured->id;
         }
         $dsn->routes()->whereNotIn('id', $kept)->delete();
+    }
+
+    /** @param array<string, mixed> $data */
+    private function syncTargets(SentryDsn $dsn, array $data): void
+    {
+        $mode = SentryTargetMode::from($data['target_mode']);
+
+        $dsn->blueprints()->sync(
+            $mode === SentryTargetMode::Blueprints ? $data['blueprint_ids'] : [],
+        );
+        $this->syncRoutes(
+            $dsn,
+            $mode === SentryTargetMode::Selected ? $data['routes'] : [],
+        );
     }
 
     private function newProjectId(): string

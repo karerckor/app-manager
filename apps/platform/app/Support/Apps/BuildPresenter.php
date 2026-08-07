@@ -29,6 +29,9 @@ class BuildPresenter
             'log_archive_url' => $build->log_archive_path
                 ? route('accounts.apps.builds.logs.archive', [$team, $app, $build])
                 : null,
+            'log_download_url' => ($build->log_output !== null && $build->log_output !== '') || $build->log_archive_path
+                ? route('accounts.apps.builds.logs.download', [$team, $app, $build])
+                : null,
             'logs_pending' => $build->reporting_mode->value === 'automatic'
                 && $run?->external_run_id !== null
                 && $build->logs_updated_at === null
@@ -39,6 +42,7 @@ class BuildPresenter
             'started_at' => $build->started_at,
             'finished_at' => $build->finished_at,
             'show_url' => route('accounts.apps.builds.show', [$team, $app, $build]),
+            'state_url' => route('accounts.apps.builds.state', [$team, $app, $build]),
             'can_cancel' => $canRunPipelines && $build->status->canRequestCancellation(),
             'cancel_url' => route('accounts.apps.builds.cancel', [$team, $app, $build]),
             'can_force_status' => $canRunPipelines

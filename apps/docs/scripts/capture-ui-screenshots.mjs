@@ -71,6 +71,14 @@ try {
 const SCREENS = [
   { slug: 'applications', path: '/apps', wait: 'Applications' },
   { slug: 'new-application-modal', path: '/apps', wait: 'Applications', click: 'New application' },
+  { slug: 'blueprints', path: '/blueprints', wait: 'Production application standard' },
+  { slug: 'new-blueprint-modal', path: '/blueprints', wait: 'Production application standard', click: 'New blueprint' },
+  {
+    slug: 'new-blueprint-hook-modal',
+    path: '/blueprints',
+    wait: 'Production application standard',
+    clickSequence: ['Add hook', { role: 'button', name: 'Add tag' }],
+  },
   { slug: 'application-overview', path: '/apps/customer-app', wait: 'Customer App' },
   { slug: 'identifiers', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer' },
   { slug: 'add-identifier-modal', path: '/apps/customer-app/identifiers', wait: 'com.acme.customer', click: 'Add' },
@@ -187,8 +195,12 @@ try {
       // Some screens require clicking a button to open a modal or navigate
       // deeper before the screenshot is taken.
       if (screen.clickSequence) {
-        for (const text of screen.clickSequence) {
-          await page.getByText(text, { exact: false }).first().click();
+        for (const target of screen.clickSequence) {
+          if (typeof target === 'string') {
+            await page.getByText(target, { exact: false }).first().click();
+          } else {
+            await page.getByRole(target.role, { name: target.name }).click();
+          }
           await page.waitForTimeout(300);
         }
       } else if (screen.click) {

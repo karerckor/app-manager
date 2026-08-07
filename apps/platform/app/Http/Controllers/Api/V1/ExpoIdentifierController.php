@@ -11,6 +11,7 @@ use App\Integrations\Expo\ExpoGraphqlException;
 use App\Models\ExpoProject;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -107,6 +108,7 @@ class ExpoIdentifierController extends Controller
         MobileApp $mobileApp,
         ExpoClient $expo,
         ExpoCredentialExporter $exporter,
+        BlueprintComplianceEvaluator $blueprints,
     ): JsonResponse {
         $project = $this->linkedProject($team, $mobileApp);
 
@@ -149,6 +151,7 @@ class ExpoIdentifierController extends Controller
         ]);
         $pushed = 0;
         $errors = [];
+        $blueprints->evaluate($mobileApp);
 
         foreach ($mobileApp->appIdentifiers()->orderBy('platform')->get() as $identifier) {
             if ($identifier->platform === Platform::Web) {

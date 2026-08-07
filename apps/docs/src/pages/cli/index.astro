@@ -13,7 +13,7 @@ import CommandOutput from '../../components/CommandOutput.astro';
   </p>
   <p>
     Every command in this guide is shown with output recorded from a running instance, so
-    what you read is what the CLI prints. The CLI is pre-1.0 (<code>0.2.0</code>): pin a
+    what you read is what the CLI prints. The CLI is pre-1.0 (<code>0.3.0</code>): pin a
     commit in reproducible pipelines and expect the surface to keep moving with API v1.
   </p>
 
@@ -41,6 +41,11 @@ import CommandOutput from '../../components/CommandOutput.astro';
         <td><code>apps</code></td>
         <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>delete</code></td>
         <td><a href="/cli/applications">Applications</a></td>
+      </tr>
+      <tr>
+        <td><code>blueprints</code></td>
+        <td><code>list</code>, <code>get</code>, <code>create</code>, <code>update</code>, <code>evaluate</code>, <code>delete</code>, plus nested hook CRUD</td>
+        <td><a href="/cli/blueprints">Blueprints</a></td>
       </tr>
       <tr>
         <td><code>assets</code></td>

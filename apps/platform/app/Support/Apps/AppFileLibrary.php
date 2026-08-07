@@ -7,6 +7,7 @@ use App\Integrations\Webhooks\WebhookEventRecorder;
 use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\MobileApp;
 use App\Support\Audit\AppFileAuditRecorder;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\ValidationException;
@@ -19,6 +20,7 @@ class AppFileLibrary
     public function __construct(
         private readonly WebhookEventRecorder $webhookEvents,
         private readonly AppFileAuditRecorder $audits,
+        private readonly BlueprintComplianceEvaluator $blueprints,
     ) {}
 
     public function query(MobileApp $app): MorphMany
@@ -66,6 +68,7 @@ class AppFileLibrary
         }
 
         $this->audits->created($app, $media);
+        $this->blueprints->evaluate($app);
         $this->recordWebhook($app, WebhookEventType::AppFileCreated, $media);
 
         return $media;
@@ -101,6 +104,7 @@ class AppFileLibrary
 
         if ($app instanceof MobileApp) {
             $this->audits->deleted($app, $media);
+            $this->blueprints->evaluate($app);
             $this->recordWebhook($app, WebhookEventType::AppFileDeleted, $media);
         }
     }

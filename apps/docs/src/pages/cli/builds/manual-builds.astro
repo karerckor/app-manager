@@ -85,15 +85,19 @@ appmctl stream --build-id "$BUILD_ID" --step Build -- pnpm build`} />
 
   <h2>Reporting status by hand</h2>
   <p>
-    Without <code>--manage-status</code>, report transitions yourself. Valid statuses are
-    <code>running</code>, <code>completed</code>, <code>failed</code>, and
-    <code>cancelled</code>:
+    Without <code>--manage-status</code>, report transitions yourself. The short lifecycle
+    aliases use <code>APP_MANAGER_BUILD_ID</code> by default:
   </p>
-  <CodeBlock lang="bash" code={`appmctl builds patch "$BUILD_ID" --status running
+  <CodeBlock lang="bash" code={`export APP_MANAGER_BUILD_ID="$BUILD_ID"
+appmctl build start
 # ... run the build ...
-appmctl builds patch "$BUILD_ID" --status completed`} />
+appmctl build completed`} />
   <p>
-    A transition into a terminal state is final. Patching a build that is already
+    <code>build start</code>, <code>build completed</code>, and <code>build failed</code>
+    are aliases for <code>builds patch --status running|completed|failed</code>. Pass an
+    explicit build ID when it should override the environment. Use
+    <code>builds patch --status cancelled</code> for the less common cancelled transition.
+    A transition into a terminal state is final; patching a build that is already
     <code>completed</code> answers <code>409</code>.
   </p>
 
@@ -107,27 +111,28 @@ appmctl builds patch "$BUILD_ID" --status completed`} />
   <h2>A complete job</h2>
   <CodeBlock lang="bash" code={`set -euo pipefail
 
-BUILD_ID=$(
+APP_MANAGER_BUILD_ID=$(
   appmctl --json builds create --profile production \\
     --request-uuid "$CI_JOB_ID" \\
     --context '{"runner":"gitlab","commit":"'"$CI_COMMIT_SHA"'"}' |
     jq -er '.data.id'
 )
-export BUILD_ID
+export APP_MANAGER_BUILD_ID
 
 # Any failure from here must still land as a failed build, not a build stuck
 # in "running" forever.
-trap 'appmctl builds patch "$BUILD_ID" --status failed || true' ERR
+trap 'appmctl build failed || true' ERR
 
-appmctl stream --build-id "$BUILD_ID" --manage-status --track --step Install -- pnpm install
-appmctl stream --build-id "$BUILD_ID" --track --step Build -- pnpm build
+appmctl build start
+appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --track --step Install -- pnpm install
+appmctl stream --build-id "$APP_MANAGER_BUILD_ID" --track --step Build -- pnpm build
 
-appmctl artifacts upload --build-id "$BUILD_ID" \\
+appmctl artifacts upload --build-id "$APP_MANAGER_BUILD_ID" \\
   --name app-release.aab --file build/app-release.aab
 appmctl files upload --file build/mapping.txt \\
-  --metadata '{"build_id":"'"$BUILD_ID"'"}'
+  --metadata '{"build_id":"'"$APP_MANAGER_BUILD_ID"'"}'
 
-appmctl builds patch "$BUILD_ID" --status completed --tag 1.4.0:#f59e0b`} />
+appmctl build completed --tag 1.4.0:#f59e0b`} />
   <p>
     The <code>trap</code> is the part people leave out. Without it, a runner that dies between
     the first and last step leaves a build that claims to be running forever.

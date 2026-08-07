@@ -16,12 +16,14 @@ class MobileAppResource extends JsonResource
             'tags' => $this->tags ?? [],
             'description' => $this->description,
             'metadata' => $this->metadata,
+            'blueprint_id' => $this->blueprint_id,
             'assets' => [
                 'icon' => $this->asset('icon', 'app_icon'),
                 'splashscreen' => $this->asset('splashscreen', 'splash_icon'),
             ],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'deleted_at' => $this->when($this->resource->trashed(), $this->deleted_at),
         ];
     }
 

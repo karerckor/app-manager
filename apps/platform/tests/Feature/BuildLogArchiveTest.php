@@ -144,7 +144,7 @@ class BuildLogArchiveTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_archived_logs_cannot_be_appended_and_are_deleted_with_the_build(): void
+    public function test_archived_logs_cannot_be_appended_and_are_preserved_until_the_build_is_purged(): void
     {
         [$build] = $this->buildWithLog('old log', now()->subDays(31));
         app(BuildLogArchive::class)->archive($build);
@@ -160,7 +160,30 @@ class BuildLogArchiveTest extends TestCase
 
         $build->delete();
 
+        Storage::disk('media-local')->assertExists($path);
+
+        $build->forceDelete();
+
         Storage::disk('media-local')->assertMissing($path);
+    }
+
+    public function test_archive_is_pruned_after_cold_retention(): void
+    {
+        [$build] = $this->buildWithLog('cold log', now()->subDays(31));
+        app(BuildLogArchive::class)->archive($build);
+        $build->refresh();
+        $path = $build->log_archive_path;
+        $build->forceFill(['logs_archived_at' => now()->subDays(366)])->saveQuietly();
+        config(['build-logs.archive_retention_days' => 365]);
+
+        $this->artisan('build-logs:prune-archives')
+            ->expectsOutput('Purged 1 build log archive(s) older than 365 day(s).')
+            ->assertSuccessful();
+
+        Storage::disk('media-local')->assertMissing($path);
+        $build->refresh();
+        $this->assertNull($build->log_archive_path);
+        $this->assertNull($build->log_archive_size);
     }
 
     /** @return array{BuildRecord, MobileApp} */

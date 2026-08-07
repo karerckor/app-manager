@@ -23,6 +23,8 @@
     import TagEditor from '../../../Components/TagEditor.svelte';
     import ForceStatusModal from '../Modals/ForceStatusModal.svelte';
     import { formatDateTime, formatParameters, formatSize, buildStatusClass } from '../lib.js';
+    import BuildLogSection from './BuildLogSection.svelte';
+    import { filterLogSections, parseBuildLog, stripAnsi } from './build-logs.js';
 
     export let auth;
     export let flash = {};
@@ -39,6 +41,9 @@
     let forcingBuild = null;
     let logQuery = '';
     let copiedLogs = false;
+    let buildPollAbortController = null;
+    let buildPollTimer = null;
+    let buildPollingDestroyed = false;
     let showArtifactForm = false;
 
     const terminalStatuses = ['completed', 'failed', 'cancelled'];
@@ -84,9 +89,66 @@
     const copyLogs = async () => {
         if (!build.logs || typeof navigator === 'undefined') return;
 
-        await navigator.clipboard.writeText(build.logs);
+        await navigator.clipboard.writeText(stripAnsi(build.logs));
         copiedLogs = true;
         setTimeout(() => copiedLogs = false, 1800);
+    };
+
+    const buildNeedsPolling = () => !terminalStatuses.includes(build.status) || build.logs_pending;
+
+    const buildStateChanged = (nextBuild) => nextBuild.status !== build.status
+        || nextBuild.provider_status !== build.provider_status
+        || nextBuild.logs !== build.logs
+        || nextBuild.logs_pending !== build.logs_pending
+        || nextBuild.finished_at !== build.finished_at
+        || nextBuild.log_archive_url !== build.log_archive_url
+        || nextBuild.artifacts.length !== build.artifacts.length;
+
+    const scheduleBuildPoll = (delay = 5000) => {
+        if (buildPollingDestroyed || typeof window === 'undefined') return;
+
+        clearTimeout(buildPollTimer);
+        buildPollTimer = null;
+
+        if (!buildNeedsPolling()) return;
+
+        buildPollTimer = window.setTimeout(() => {
+            buildPollTimer = null;
+
+            const controller = new AbortController();
+            buildPollAbortController = controller;
+
+            fetch(build.state_url, {
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                signal: controller.signal,
+                })
+                .then((response) => response.ok ? response.json() : null)
+                .then((payload) => {
+                    if (payload?.build && !buildPollingDestroyed && buildStateChanged(payload.build)) {
+                        build = payload.build;
+                    }
+                })
+                .catch((error) => {
+                    if (error.name !== 'AbortError') console.error('Could not refresh build state.', error);
+                })
+                .finally(() => {
+                    if (buildPollAbortController !== controller) return;
+
+                    buildPollAbortController = null;
+                    scheduleBuildPoll();
+                });
+        }, delay);
+    };
+
+    const sectionHeight = (section) => {
+        if (logSections.length === 1) return '32rem';
+
+        return `${Math.min(24, Math.max(8, section.lineCount * 1.2 + 2))}rem`;
     };
 
     $: allTags = (() => {
@@ -98,25 +160,25 @@
         return acc;
     })();
 
-    $: logLines = build.logs ? build.logs.split('\n') : [];
+    $: logLines = build.logs ? stripAnsi(build.logs).split('\n') : [];
+    $: logSections = parseBuildLog(build.logs || '');
     $: normalizedLogQuery = logQuery.trim().toLowerCase();
     $: matchingLogLines = normalizedLogQuery
         ? logLines.filter((line) => line.toLowerCase().includes(normalizedLogQuery))
         : logLines;
-    $: visibleLogs = matchingLogLines.join('\n');
+    $: visibleLogSections = filterLogSections(logSections, logQuery);
     $: buildDuration = formatDuration(build.started_at, build.finished_at);
     $: shortBuildId = build.id?.slice(0, 8) || '—';
 
     onMount(() => {
-        const timer = setInterval(() => {
-            const waiting = !terminalStatuses.includes(build.status) || build.logs_pending;
+        buildPollingDestroyed = false;
+        scheduleBuildPoll();
 
-            if (waiting) {
-                router.reload({ only: ['build'], preserveScroll: true, preserveState: true });
-            }
-        }, 5000);
-
-        return () => clearInterval(timer);
+        return () => {
+            buildPollingDestroyed = true;
+            clearTimeout(buildPollTimer);
+            buildPollAbortController?.abort();
+        };
     });
 </script>
 
@@ -189,13 +251,16 @@
     </section>
 
     <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <section class="min-w-0 overflow-hidden rounded-md border border-slate-800 bg-slate-950 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+        <section
+            class="min-w-0 overflow-hidden rounded-md border border-slate-800 bg-slate-950 shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+            aria-labelledby="build-logs-heading"
+        >
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3">
                 <div class="flex items-center gap-2.5">
                     <span class="flex gap-1.5" aria-hidden="true"><i class="h-2.5 w-2.5 rounded-full bg-rose-400/80"></i><i class="h-2.5 w-2.5 rounded-full bg-amber-400/80"></i><i class="h-2.5 w-2.5 rounded-full bg-emerald-400/80"></i></span>
                     <span class="h-4 w-px bg-white/10"></span>
                     <div>
-                        <h2 class="text-[11px] font-bold tracking-wide text-slate-200">Build logs</h2>
+                        <h2 id="build-logs-heading" class="text-[11px] font-bold tracking-wide text-slate-200">Build logs</h2>
                         <p class="text-[9px] text-slate-500">{build.logs_pending ? 'Waiting for the latest output…' : build.log_archive_url ? `Archived ${formatDateTime(build.logs_archived_at)}` : 'Latest output'}</p>
                     </div>
                 </div>
@@ -214,6 +279,12 @@
                             {#if copiedLogs}<Check class="h-3.5 w-3.5 text-emerald-400" strokeWidth={2.2} />{:else}<Copy class="h-3.5 w-3.5" strokeWidth={2} />{/if}
                         </button>
                     {/if}
+                    {#if build.log_download_url}
+                        <a class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" href={build.log_download_url}>
+                            <Download class="h-3.5 w-3.5" strokeWidth={2} />
+                            <span class="hidden sm:inline">Download .log</span>
+                        </a>
+                    {/if}
                 </div>
             </div>
 
@@ -227,7 +298,17 @@
                         </div>
                     </div>
                 {:else}
-                    <pre class="min-h-[32rem] max-h-[42rem] overflow-auto whitespace-pre-wrap break-words px-5 py-4 font-mono text-[11px] leading-[1.75] text-slate-300 selection:bg-indigo-500/40">{visibleLogs}</pre>
+                    <div class="divide-y divide-white/10">
+                        {#each visibleLogSections as section (section.id)}
+                            <BuildLogSection
+                                {section}
+                                defaultExpanded={logSections.length === 1 || section.status !== 'success'}
+                                forceExpanded={Boolean(normalizedLogQuery)}
+                                follow={section.status === 'running' && section.id === logSections.at(-1)?.id}
+                                height={sectionHeight(section)}
+                            />
+                        {/each}
+                    </div>
                 {/if}
                 {#if normalizedLogQuery}
                     <div class="border-t border-white/10 bg-slate-900 px-4 py-2 text-[9px] font-medium text-slate-500">{matchingLogLines.length} of {logLines.length} lines match “{logQuery.trim()}”</div>
@@ -237,11 +318,11 @@
                     <div class="max-w-xs">
                         <span class="mx-auto grid h-11 w-11 place-items-center rounded-md bg-white/5 text-slate-500 ring-1 ring-white/10">{#if build.log_archive_url}<FileArchive class="h-5 w-5" strokeWidth={1.7} />{:else}<Terminal class="h-5 w-5" strokeWidth={1.7} />{/if}</span>
                         <p class="mt-4 text-sm font-semibold text-slate-200">{build.logs_pending ? 'Logs are syncing' : build.log_archive_url ? 'Logs moved to archive' : 'No log output'}</p>
-                        <p class="mt-1.5 text-[11px] leading-5 text-slate-500">{build.logs_pending ? 'This view refreshes automatically when new output arrives.' : build.log_archive_url ? 'This log is older than the retention window. Download the original text file when you need it.' : 'This build did not report any log output.'}</p>
-                        {#if build.log_archive_url}
-                            <a class="mt-4 inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" href={build.log_archive_url}>
+                        <p class="mt-1.5 text-[11px] leading-5 text-slate-500">{build.logs_pending ? 'This view refreshes automatically when new output arrives.' : build.log_archive_url ? 'This log is older than the retention window. Download a clean text copy when you need it.' : 'This build did not report any log output.'}</p>
+                        {#if build.log_download_url}
+                            <a class="mt-4 inline-flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400" href={build.log_download_url}>
                                 <Download class="h-3.5 w-3.5" strokeWidth={2} />
-                                Download log archive
+                                Download .log
                             </a>
                         {/if}
                     </div>

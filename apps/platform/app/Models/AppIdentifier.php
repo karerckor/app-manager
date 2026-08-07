@@ -10,13 +10,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
 
 #[Fillable(['mobile_app_id', 'platform', 'identifier', 'name', 'version', 'version_code', 'build_number', 'is_default'])]
 class AppIdentifier extends Model implements Auditable
 {
-    use AuditableTrait, HasFactory, HasUuids;
+    use AuditableTrait, HasFactory, HasUuids, SoftDeletes;
 
     public function mobileApp(): BelongsTo
     {
@@ -88,8 +89,15 @@ class AppIdentifier extends Model implements Auditable
         });
 
         static::deleting(function (AppIdentifier $appIdentifier) {
+            if (! $appIdentifier->isForceDeleting()) {
+                return;
+            }
+
+            $appIdentifier->buildRecords()->withTrashed()->cursor()
+                ->each(fn (BuildRecord $build) => $build->forceDelete());
             $appIdentifier->credentials()->detach();
-            $appIdentifier->profiles->each->delete();
+            $appIdentifier->profiles()->withTrashed()->cursor()
+                ->each(fn (Profile $profile) => $profile->forceDelete());
         });
     }
 }

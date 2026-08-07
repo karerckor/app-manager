@@ -42,6 +42,7 @@ class AppTelemetryPageController extends Controller
             'title' => $issue->title, 'events_count' => $issue->events_count, 'first_seen_at' => $issue->first_seen_at,
             'last_seen_at' => $issue->last_seen_at, 'identifier' => $issue->appIdentifier?->identifier,
             'identifier_name' => $issue->appIdentifier?->name, 'identifier_platform' => $issue->appIdentifier?->platform?->value,
+            'tags' => $issue->tagList(),
             'url' => route('accounts.apps.telemetry.issues.show', [$team, $mobileApp, $issue]),
         ])->values();
 

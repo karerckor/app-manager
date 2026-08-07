@@ -30,6 +30,11 @@ docker compose up -d`} />
     database — a dump without the key cannot be decrypted.
   </p>
   <p>
+    See <a href="/security">Security</a> before rotating <code>APP_KEY</code>. Credential data uses
+    envelope encryption, while integration secrets and sessions may still need an older key through
+    <code>APP_PREVIOUS_KEYS</code> during the transition.
+  </p>
+  <p>
     Before starting a real instance, choose its bootstrap, credential storage, and credential API
     profile in <a href="/deployment-modes">Deployment modes and Installer</a>.
   </p>
@@ -43,7 +48,7 @@ docker compose up -d`} />
       <tr><td><code>init</code></td><td>One-shot: runs migrations, then <code>encryption:migrate</code> to ensure the instance has an active credential encryption key, then the first-run bootstrap, then exits. Everything else waits for it.</td></tr>
       <tr><td><code>app</code></td><td>nginx + PHP-FPM serving the console and the REST API.</td></tr>
       <tr><td><code>queue</code></td><td>Worker for the <code>notifications</code>, <code>integrations</code>, <code>webhooks</code> and <code>default</code> queues.</td></tr>
-      <tr><td><code>scheduler</code></td><td>Build reconciliation, log archiving, credential expiry checks.</td></tr>
+      <tr><td><code>scheduler</code></td><td>Build reconciliation, retention and cold-archive transitions, permanent trash purges, credential expiry checks.</td></tr>
       <tr><td><code>postgres</code>, <code>redis</code></td><td>Database and cache. Point the stack at managed instances by changing <code>DB_HOST</code> / <code>REDIS_HOST</code> and removing these services.</td></tr>
       <tr><td><code>caddy</code></td><td>Optional. <code>docker compose --profile tls up -d</code> terminates TLS for <code>APP_DOMAIN</code>.</td></tr>
     </tbody>
@@ -121,6 +126,7 @@ TRUSTED_PROXIES=*`} />
     </thead>
     <tbody>
       <tr><td><code>APP_KEY</code></td><td>—</td><td>Required. Encrypts credentials, sessions and stored integration secrets.</td></tr>
+      <tr><td><code>APP_PREVIOUS_KEYS</code></td><td>empty</td><td>Comma-separated older <code>APP_KEY</code> values used to decrypt data that has not yet been rewritten after a key rotation.</td></tr>
       <tr><td><code>APP_URL</code></td><td><code>http://localhost:8000</code></td><td>Public URL. Must match the scheme users actually use.</td></tr>
       <tr><td><code>APP_PORT</code></td><td><code>8000</code></td><td>Host port for the console.</td></tr>
       <tr><td><code>DB_PASSWORD</code></td><td>—</td><td>Required. Password for the bundled PostgreSQL user; Compose refuses to start without it.</td></tr>
@@ -130,9 +136,32 @@ TRUSTED_PROXIES=*`} />
       <tr><td><code>ALLOW_PUBLIC_REGISTRATION</code></td><td><code>false</code></td><td>Opens the public sign-up form. Leave closed on anything internet-facing.</td></tr>
       <tr><td><code>TRUSTED_PROXIES</code></td><td>empty</td><td><code>*</code> or a comma-separated list. Set only when a reverse proxy terminates TLS.</td></tr>
       <tr><td><code>MEDIA_STORAGE_DRIVER</code></td><td><code>local</code></td><td><code>local</code> keeps files in the <code>storage-app</code> volume; <code>s3</code> uses the <code>MEDIA_S3_*</code> variables.</td></tr>
+      <tr><td><code>TRASH_RETENTION_DAYS</code></td><td><code>90</code></td><td>Minimum recovery window before soft-deleted applications, identifiers, profiles, builds, artifacts, blueprints, teams and users are permanently purged. Parents remain longer when a child cold archive is still retained.</td></tr>
+      <tr><td><code>CREDENTIAL_TRASH_RETENTION_DAYS</code></td><td><code>90</code></td><td>Independent recovery window for credentials and their private files.</td></tr>
+      <tr><td><code>BUILD_LOG_RETENTION_DAYS</code></td><td><code>30</code></td><td>Hot database window for completed build logs.</td></tr>
+      <tr><td><code>BUILD_LOG_ARCHIVE_RETENTION_DAYS</code></td><td><code>365</code></td><td>Cold private-storage window for build logs.</td></tr>
+      <tr><td><code>SENTRY_HOT_RETENTION_DAYS</code></td><td><code>30</code></td><td>Hot database window for terminal Sentry envelope and event payloads.</td></tr>
+      <tr><td><code>SENTRY_ARCHIVE_RETENTION_DAYS</code></td><td><code>365</code></td><td>Cold private-storage window before archived telemetry and its database metadata are purged.</td></tr>
+      <tr><td><code>SENTRY_ARCHIVE_DISK</code></td><td>media disk</td><td>Optional Laravel filesystem disk dedicated to compressed Sentry archives.</td></tr>
       <tr><td><code>DB_HOST</code>, <code>REDIS_HOST</code></td><td><code>postgres</code>, <code>redis</code></td><td>Point at managed services to drop the bundled containers.</td></tr>
     </tbody>
   </table>
+
+  <h2>Data retention and recovery</h2>
+  <p>
+    Deleting an application, credential, identifier, profile, build, artifact, blueprint, team or
+    user moves it to recoverable trash. The daily scheduler permanently removes the database rows
+    and private files only after the configured trash window. Applications and credentials can be
+    restored through the console or API during that window.
+  </p>
+  <p>
+    Completed build logs and terminal Sentry payloads first remain hot in PostgreSQL, then move to
+    private storage; Sentry archives are compressed and checksummed. Sentry keeps searchable issue
+    and event metadata after the raw envelope is cold; authorized users can still download the complete archive. At the end of the
+    cold window, the scheduler deletes both the object and the corresponding retained records.
+    Monitor scheduler health and storage capacity, and include every configured archive disk in
+    backups for the full promised retention period.
+  </p>
 
   <h2>Upgrading</h2>
   <CodeBlock lang="bash" code={`docker compose pull && docker compose up -d`} />

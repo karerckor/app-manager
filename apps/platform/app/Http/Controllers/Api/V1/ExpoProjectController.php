@@ -17,6 +17,7 @@ use App\Models\ExpoProject;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -70,6 +71,7 @@ class ExpoProjectController extends Controller
         ExpoClient $expo,
         ExpoCredentialExporter $credentials,
         SyncExpoProjects $sync,
+        BlueprintComplianceEvaluator $blueprints,
     ): JsonResponse {
         $this->ensureEnabled();
         abort_if($mobileApp->expoProject()->exists(), 409, 'This application is already linked to Expo.');
@@ -132,6 +134,7 @@ class ExpoProjectController extends Controller
                 ]);
             }
         });
+        $blueprints->evaluate($mobileApp);
 
         $export = ['identifiers' => 0, 'credentials' => 0, 'errors' => []];
         if ($createdOnExpo) {
@@ -270,6 +273,7 @@ class ExpoProjectController extends Controller
     public function destroy(
         Team $team,
         MobileApp $mobileApp,
+        BlueprintComplianceEvaluator $blueprints,
     ): Response {
         $project = $mobileApp->expoProject()->firstOrFail();
         abort_unless($project->team_id === $team->id, 404);
@@ -286,6 +290,7 @@ class ExpoProjectController extends Controller
                 'auto_sync_pending_at' => null,
             ]);
         });
+        $blueprints->evaluate($mobileApp);
 
         return response()->noContent();
     }

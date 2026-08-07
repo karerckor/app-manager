@@ -36,9 +36,9 @@ install_output=$(
 )
 
 [ -x "$INSTALL_DIR/appmctl" ] || fail 'installer did not create an executable'
-[ "$("$INSTALL_DIR/appmctl" --version)" = 'appmctl 0.2.0' ] || fail 'installed CLI does not run'
+[ "$("$INSTALL_DIR/appmctl" --version)" = 'appmctl 0.3.0' ] || fail 'installed CLI does not run'
 case "$install_output" in
-  *"Installed appmctl 0.2.0"*) ;;
+  *"Installed appmctl 0.3.0"*) ;;
   *) fail 'installer did not report the installed version' ;;
 esac
 

@@ -1,5 +1,6 @@
-slug:         customer-app
-name:         Customer App
-description:  Consumer-facing mobile client for iOS, Android and web.
-created_at:   2026-08-03T12:11:30.000000Z
-updated_at:   2026-08-03T13:48:36.000000Z
+slug:          customer-app
+name:          Customer App
+description:   Consumer-facing mobile client.
+blueprint_id:  019fd621-94fe-7264-84e5-e3a6c2a985e2
+created_at:    2026-08-05T11:39:55.000000Z
+updated_at:    2026-08-06T08:12:32.000000Z

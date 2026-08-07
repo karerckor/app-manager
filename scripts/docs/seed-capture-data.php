@@ -18,9 +18,13 @@
  *   php artisan tinker --execute="require '/abs/path/scripts/docs/seed-capture-data.php';"
  */
 
+use App\Enums\BlueprintHookAction;
+use App\Enums\BlueprintHookCondition;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
+use App\Enums\CredentialStorageMode;
 use App\Enums\CredentialType;
+use App\Enums\CredentialVerificationStatus;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
@@ -30,11 +34,16 @@ use App\Enums\SentryEnvelopeStatus;
 use App\Enums\SentryEventSource;
 use App\Enums\SentryRoutingMethod;
 use App\Enums\TeamRole;
+use App\Enums\VaultProvider;
 use App\Enums\WebhookDeliveryStatus;
+use App\Integrations\Sentry\SentryIssueStatusManager;
 use App\Models\Artifact;
+use App\Models\Audit;
+use App\Models\Blueprint;
 use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
 use App\Models\Credential;
+use App\Models\CredentialVaultReference;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
@@ -146,17 +155,17 @@ $externalCredential = Credential::firstOrCreate(
         'name' => 'CI Distribution Certificate',
     ],
     [
-        'storage_mode' => \App\Enums\CredentialStorageMode::External,
+        'storage_mode' => CredentialStorageMode::External,
         'payload' => ['team_id' => 'ABCDEF1234'],
     ],
 );
 $iosProfile->credentials()->syncWithoutDetaching([$externalCredential->id]);
 
-\App\Models\CredentialVaultReference::firstOrCreate(
+CredentialVaultReference::firstOrCreate(
     ['credential_id' => $externalCredential->id],
     [
         'team_id' => $team->id,
-        'provider' => \App\Enums\VaultProvider::AwsSecretsManager,
+        'provider' => VaultProvider::AwsSecretsManager,
         'resource' => 'arn:aws:secretsmanager:eu-central-1:123456789012:secret/mobile/ios-dist-cert',
         'metadata' => ['region' => 'eu-central-1', 'version_id' => 'docs-capture'],
     ],
@@ -196,20 +205,20 @@ $googleServiceAccount = Credential::firstOrCreate(
         'name' => 'Play Console Service Account',
     ],
     [
-        'storage_mode' => \App\Enums\CredentialStorageMode::External,
+        'storage_mode' => CredentialStorageMode::External,
         'payload' => ['client_email' => 'play-deploy@docs-capture.iam.gserviceaccount.com'],
     ],
 );
 $androidProfile->credentials()->syncWithoutDetaching([$googleServiceAccount->id]);
 
-\App\Models\CredentialVaultReference::firstOrCreate(
+CredentialVaultReference::firstOrCreate(
     ['credential_id' => $googleServiceAccount->id],
     [
         'team_id' => $team->id,
-        'provider' => \App\Enums\VaultProvider::HashicorpVault,
+        'provider' => VaultProvider::HashicorpVault,
         'resource' => 'secret/data/mobile/play-service-account',
         'metadata' => ['namespace' => 'docs-capture', 'engine' => 'kv-v2'],
-        'verification_status' => \App\Enums\CredentialVerificationStatus::Verified,
+        'verification_status' => CredentialVerificationStatus::Verified,
         'verified_at' => now()->subHours(6),
     ],
 );
@@ -684,6 +693,24 @@ SentryEvent::updateOrCreate(
         ],
     ],
 );
+$docsIssue = $app->sentryIssues()->where('title', 'Payment authorization failed')->sole();
+$docsActor = ActorContext::forUser($user, 'web', null, '203.0.113.24', 'Mozilla/5.0 (Macintosh) Docs/1.0');
+$docsIssueTags = [['production-regression', '#f43f5e', 'heartbeat'], ['checkout', '#6366f1']];
+app(ActorContextManager::class)->runAs($docsActor, function () use ($docsIssue, $docsIssueTags): void {
+    $docsIssue->syncTags($docsIssueTags)->save();
+});
+
+$resolutionComment = 'Fixed in customer-web@1.4.1; monitoring the production checkout flow.';
+$issueStatuses = app(SentryIssueStatusManager::class);
+if ($docsIssue->refresh()->status === 'resolved' && $docsIssue->status_comment !== $resolutionComment) {
+    $issueStatuses->setStatus($docsIssue, 'unresolved', $docsActor, 'Regression reproduced after the payment provider rollout.');
+}
+$issueStatuses->setStatus(
+    $docsIssue,
+    'resolved',
+    $docsActor,
+    $resolutionComment,
+);
 $out('sentry: '.SentryDsn::where('team_id', $team->id)->count().' DSN, '.SentryEvent::where('team_id', $team->id)->count().' events');
 
 // ---------------------------------------------------------------------------
@@ -741,9 +768,68 @@ foreach ($extraApps as $spec) {
 }
 $out('apps: '.MobileApp::where('team_id', $team->id)->count());
 
-// --- a second app with build history --------------------------------------
+// --- blueprint contract and conditional hooks -----------------------------
+
+$blueprint = Blueprint::updateOrCreate(
+    ['team_id' => $team->id, 'name' => 'Production application standard'],
+    [
+        'description' => 'Metadata, files, and platforms required before a production release.',
+        'json_schema' => [
+            'type' => 'object',
+            'required' => ['owner', 'release_channel'],
+            'properties' => [
+                'owner' => ['type' => 'string', 'minLength' => 1],
+                'release_channel' => ['enum' => ['preview', 'production']],
+            ],
+        ],
+        'required_files' => ['associated-domains.json', 'privacy-manifest.json'],
+        'platforms' => [Platform::Ios->value, Platform::Android->value],
+    ],
+);
+
+$blueprint->hooks()->updateOrCreate(
+    ['name' => 'Flag incomplete apps'],
+    [
+        'condition' => BlueprintHookCondition::BlueprintMismatch,
+        'condition_config' => null,
+        'actions' => [
+            ['type' => BlueprintHookAction::RemoveTag->value, 'tags' => [['ready']]],
+            ['type' => BlueprintHookAction::AddTag->value, 'tags' => [['blueprint-incomplete', '#f43f5e', 'heartbeat']]],
+        ],
+        'enabled' => true,
+    ],
+);
+
+$blueprint->hooks()->updateOrCreate(
+    ['name' => 'Mark matching apps ready'],
+    [
+        'condition' => BlueprintHookCondition::BlueprintMatches,
+        'condition_config' => null,
+        'actions' => [
+            ['type' => BlueprintHookAction::RemoveTag->value, 'tags' => [['blueprint-incomplete']]],
+            ['type' => BlueprintHookAction::AddTag->value, 'tags' => [['ready', '#10b981', 'pulse']]],
+        ],
+        'enabled' => true,
+    ],
+);
+
+$app->update([
+    'blueprint_id' => $blueprint->id,
+    'metadata' => ['owner' => 'mobile-platform', 'release_channel' => 'production'],
+    'tags' => [['blueprint-incomplete', '#f43f5e', 'heartbeat']],
+]);
 
 $driver = MobileApp::where('team_id', $team->id)->where('slug', 'delivery-driver')->firstOrFail();
+$driver->update([
+    'blueprint_id' => $blueprint->id,
+    'metadata' => ['owner' => 'logistics', 'release_channel' => 'production'],
+    'tags' => [['blueprint-incomplete', '#f43f5e', 'heartbeat']],
+]);
+
+$out("blueprint: {$blueprint->id} ({$blueprint->hooks()->count()} hooks)");
+
+// --- a second app with build history --------------------------------------
+
 $driverAndroid = $driver->appIdentifiers()->where('platform', Platform::Android)->firstOrFail();
 
 foreach ([
@@ -921,6 +1007,6 @@ $actorContext->runAs(
         $android->update(['version' => '1.4.0']);
     },
 );
-$out('audit entries: '.\App\Models\Audit::count());
+$out('audit entries: '.Audit::count());
 
 $out('done');

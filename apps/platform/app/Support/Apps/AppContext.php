@@ -11,6 +11,7 @@ use App\Models\CiCdPipeline;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use App\Support\Credentials\BuildProfileSchema;
 use Illuminate\Http\Request;
 
@@ -54,6 +55,16 @@ class AppContext
             'description' => $app->description,
             'metadata' => $app->metadata,
             'tags' => $app->tags ?? [],
+            'blueprint_id' => $app->blueprint_id,
+            'blueprint' => $app->blueprint ? [
+                'id' => $app->blueprint->id,
+                'name' => $app->blueprint->name,
+                'status' => app(BlueprintComplianceEvaluator::class)->status($app),
+                'url' => route('accounts.blueprints.index', $team),
+            ] : null,
+            'blueprint_options' => $team->blueprints()->orderBy('name')->get(['id', 'name'])
+                ->map(fn ($blueprint) => ['value' => $blueprint->id, 'label' => $blueprint->name])
+                ->values(),
             'created_at' => $app->created_at,
             'updated_at' => $app->updated_at,
             'assets' => $assets,
@@ -204,6 +215,10 @@ class AppContext
                 $tagLists->push($build->tags ?? []);
                 $build->artifacts->each(fn ($artifact) => $tagLists->push($artifact->tags ?? []));
             });
+
+        $app->sentryIssues()
+            ->get(['tags'])
+            ->each(fn ($issue) => $tagLists->push($issue->tags ?? []));
 
         return $tagLists->flatten(1)
             ->filter(fn ($tag) => filled(is_array($tag) ? ($tag[0] ?? null) : $tag))

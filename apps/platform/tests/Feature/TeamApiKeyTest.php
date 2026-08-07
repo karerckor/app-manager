@@ -45,7 +45,7 @@ class TeamApiKeyTest extends TestCase
                 ->has('apiKeys', 1)
                 ->where('apiKeys.0.name', 'GitHub Actions')
                 ->where('apiKeys.0.created_by.id', $owner->id)
-                ->has('scopeGroups', 13)
+                ->has('scopeGroups', 14)
                 ->has('keyPresets', 2)
                 ->where('keyPresets.0.key', 'build-runner')
                 ->where('keyPresets.0.scopes', [

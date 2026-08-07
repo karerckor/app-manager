@@ -10,6 +10,7 @@ use App\Models\Credential;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\NotificationDestination;
+use App\Models\SentryIssue;
 use App\Models\Team;
 use App\Models\WebhookEndpoint;
 use App\Support\Audit\AuditEntryPresenter;
@@ -63,7 +64,10 @@ class AuditLogController extends Controller
                                     ->whereIn('auditable_id', $app->appIdentifiers()->selectRaw('CAST(app_identifiers.id AS VARCHAR)')))
                                 ->orWhere(fn ($query) => $query
                                     ->where('auditable_type', BuildRecord::class)
-                                    ->whereIn('auditable_id', $app->buildRecords()->selectRaw('CAST(build_records.id AS VARCHAR)')));
+                                    ->whereIn('auditable_id', $app->buildRecords()->selectRaw('CAST(build_records.id AS VARCHAR)')))
+                                ->orWhere(fn ($query) => $query
+                                    ->where('auditable_type', SentryIssue::class)
+                                    ->whereIn('auditable_id', $app->sentryIssues()->selectRaw('CAST(sentry_issues.id AS VARCHAR)')));
                         });
                     }
                 });
@@ -82,6 +86,10 @@ class AuditLogController extends Controller
                         BuildRecord::class => [
                             'mobileApp:id,team_id,name,slug',
                             'appIdentifier:id,mobile_app_id,name,identifier,platform',
+                        ],
+                        SentryIssue::class => [
+                            'mobileApp:id,team_id,name,slug',
+                            'appIdentifier:id,mobile_app_id,identifier',
                         ],
                         Credential::class => [
                             'appIdentifiers:id,mobile_app_id,name,identifier,platform',
@@ -103,6 +111,7 @@ class AuditLogController extends Controller
                 },
             ])
             ->latest()
+            ->orderByDesc('id')
             ->paginate(25)
             ->withQueryString()
             ->through(fn (Audit $audit) => AuditEntryPresenter::present(

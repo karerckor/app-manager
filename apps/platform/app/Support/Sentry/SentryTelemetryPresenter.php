@@ -7,7 +7,7 @@ use App\Models\SentryEvent;
 class SentryTelemetryPresenter
 {
     /** @return array<string, mixed> */
-    public function event(SentryEvent $event, int $traceEventCount = 0): array
+    public function event(SentryEvent $event, int $traceEventCount = 0, ?string $archiveUrl = null): array
     {
         $payload = $event->payload ?? [];
 
@@ -29,6 +29,12 @@ class SentryTelemetryPresenter
             'identifier_platform' => $event->appIdentifier?->platform?->value,
             'dsn_name' => $event->sentryDsn?->integration?->name,
             'forward_status' => $event->envelope?->status?->value,
+            'archive' => $event->envelope?->archived_at ? [
+                'archived_at' => $event->envelope->archived_at,
+                'size' => $event->envelope->archive_size,
+                'checksum' => $event->envelope->archive_checksum,
+                'url' => $archiveUrl,
+            ] : null,
             'exceptions' => $this->exceptions($payload),
             'trace' => [
                 'operation' => data_get($payload, 'contexts.trace.op'),

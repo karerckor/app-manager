@@ -1,12 +1,16 @@
 <script>
-    import { Link } from '@inertiajs/svelte';
-    import { Activity, AlertTriangle, ArrowLeft, Code2, ExternalLink, Fingerprint, Gauge } from '@lucide/svelte';
+    import { Link, router } from '@inertiajs/svelte';
+    import { Activity, AlertTriangle, ArrowLeft, CircleCheck, Code2, ExternalLink, FileArchive, Fingerprint, Gauge, RotateCcw } from '@lucide/svelte';
     import AppLayout from '../AppLayout.svelte';
+    import TagEditor from '../../../Components/TagEditor.svelte';
     import { formatDateTime } from '../lib.js';
     import StructuredData from './StructuredData.svelte';
 
     let { auth, flash = {}, app, pipelines = [], identifiers = [], buildProfiles = [], tag_suggestions = [], navigationTeams = [], navigationTeam = null, active = 'telemetry', telemetry } = $props();
     let activeTab = $state('exceptions');
+    let statusBusy = $state(false);
+    let statusDialogOpen = $state(false);
+    let statusComment = $state('');
     const event = $derived(telemetry.selected_event);
     const hasValues = (value) => value && Object.keys(value).length > 0;
     const asData = (value) => value !== null && typeof value === 'object' ? value : { value };
@@ -20,6 +24,20 @@
     const formatDuration = (value) => value == null ? '—' : value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(value < 10000 ? 2 : 1)} s`;
     const hasSource = (frame) => frame.context_line !== null || frame.pre_context.length > 0 || frame.post_context.length > 0;
     const sourceLines = (frame) => { const line = Number.isInteger(frame.line) ? frame.line : null; return [...frame.pre_context.map((code, index) => ({ number: line === null ? null : line - frame.pre_context.length + index, code, current: false })), ...(frame.context_line === null ? [] : [{ number: line, code: frame.context_line, current: true }]), ...frame.post_context.map((code, index) => ({ number: line === null ? null : line + index + 1, code, current: false }))]; };
+    const openStatusDialog = () => {
+        statusComment = '';
+        statusDialogOpen = true;
+    };
+    const updateStatus = () => {
+        if (!telemetry.status_url || statusBusy) return;
+        const status = telemetry.status === 'resolved' ? 'unresolved' : 'resolved';
+        statusBusy = true;
+        router.patch(telemetry.status_url, { status, comment: statusComment.trim() || null }, {
+            preserveScroll: true,
+            onSuccess: () => { statusDialogOpen = false; statusComment = ''; },
+            onFinish: () => statusBusy = false,
+        });
+    };
 </script>
 
 <svelte:head><title>{telemetry.title} · Errors & traces · App Manager</title></svelte:head>
@@ -27,8 +45,9 @@
 <AppLayout {auth} {flash} {app} {pipelines} {identifiers} {buildProfiles} tagSuggestions={tag_suggestions} {navigationTeams} {navigationTeam} {active}>
     <div class="mb-5"><Link href={telemetry.overview_url} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-muted hover:text-brand"><ArrowLeft class="h-3.5 w-3.5" />Errors & traces</Link></div>
     <section class="card mb-5 overflow-hidden p-0">
-        <div class="border-b border-border-subtle px-5 py-4 sm:px-6"><div class="flex flex-wrap items-start justify-between gap-4"><div class="min-w-0"><div class="mb-2 flex items-center gap-2"><span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase {telemetry.kind === 'trace' ? 'bg-brand-soft text-brand' : 'bg-danger/10 text-danger'}">{telemetry.kind}</span><span class="font-mono text-[9px] text-faint">{telemetry.count} event{telemetry.count === 1 ? '' : 's'}</span></div><h2 class="text-lg font-extrabold tracking-tight text-text">{telemetry.title}</h2><p class="mt-1 text-[10px] text-muted">First {formatDateTime(telemetry.first_seen_at)} · last {formatDateTime(telemetry.last_seen_at)}</p></div>{#if telemetry.trace_id}<code class="max-w-full truncate rounded-md bg-surface-sunken px-2.5 py-1.5 font-mono text-[9px] text-muted">{telemetry.trace_id}</code>{/if}</div></div>
-        {#if telemetry.kind === 'issue' && telemetry.fingerprint}<div class="flex items-center gap-2 bg-surface-sunken/50 px-5 py-2.5 font-mono text-[9px] text-faint"><Fingerprint class="h-3 w-3" />{telemetry.fingerprint}</div>{/if}
+        <div class="border-b border-border-subtle px-5 py-4 sm:px-6"><div class="flex flex-wrap items-start justify-between gap-4"><div class="min-w-0"><div class="mb-2 flex items-center gap-2"><span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase {telemetry.kind === 'trace' ? 'bg-brand-soft text-brand' : telemetry.status === 'resolved' ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}">{telemetry.kind === 'issue' && telemetry.status === 'resolved' ? 'Resolved' : telemetry.kind}</span><span class="font-mono text-[9px] text-faint">{telemetry.count} event{telemetry.count === 1 ? '' : 's'}</span></div><h2 class="text-lg font-extrabold tracking-tight text-text">{telemetry.title}</h2><p class="mt-1 text-[10px] text-muted">First {formatDateTime(telemetry.first_seen_at)} · last {formatDateTime(telemetry.last_seen_at)}</p></div><div class="flex items-center gap-2">{#if telemetry.trace_id}<code class="max-w-full truncate rounded-md bg-surface-sunken px-2.5 py-1.5 font-mono text-[9px] text-muted">{telemetry.trace_id}</code>{/if}{#if telemetry.kind === 'issue' && telemetry.status_url}<button type="button" class="{telemetry.status === 'resolved' ? 'secondary' : ''} gap-1.5 px-3 py-2 text-[10px]" disabled={statusBusy} onclick={openStatusDialog}>{#if telemetry.status === 'resolved'}<RotateCcw class="h-3.5 w-3.5" />Reopen issue{:else}<CircleCheck class="h-3.5 w-3.5" />Resolve issue{/if}</button>{/if}</div></div></div>
+        {#if telemetry.kind === 'issue' && telemetry.status_activity}<div class="border-b px-5 py-3 sm:px-6 {telemetry.status_activity.action === 'resolved' ? 'border-ok/20 bg-ok/10' : 'border-brand/15 bg-brand-soft/50'}"><div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] {telemetry.status_activity.action === 'resolved' ? 'text-ok' : 'text-brand'}">{#if telemetry.status_activity.action === 'resolved'}<CircleCheck class="h-3.5 w-3.5 shrink-0" />{:else}<RotateCcw class="h-3.5 w-3.5 shrink-0" />{/if}<strong>{telemetry.status_activity.action === 'resolved' ? 'Resolved' : 'Reopened'}</strong><span class="text-text">by {telemetry.status_activity.actor.name}{telemetry.status_activity.actor.detail ? ` · ${telemetry.status_activity.actor.detail}` : ''}</span><span class="text-muted">{formatDateTime(telemetry.status_activity.changed_at)}</span></div>{#if telemetry.status_activity.comment}<blockquote class="mt-2 border-l-2 border-current/30 pl-3 text-[11px] leading-5 whitespace-pre-wrap text-text">{telemetry.status_activity.comment}</blockquote>{/if}</div>{/if}
+        {#if telemetry.kind === 'issue'}<div class="flex flex-wrap items-center justify-between gap-3 bg-surface-sunken/50 px-5 py-2.5"><div class="flex min-w-0 items-center gap-2 font-mono text-[9px] text-faint"><Fingerprint class="h-3 w-3 shrink-0" /><span class="truncate">{telemetry.fingerprint}</span></div><div class="flex items-center gap-2"><span class="text-[9px] font-semibold tracking-wide text-faint uppercase">App Manager tags</span><TagEditor tags={telemetry.tags ?? []} url={telemetry.tags_url} disabled={!telemetry.tags_url} suggestions={tag_suggestions} quiet emptyLabel="No tags" /></div></div>{/if}
     </section>
 
     <div class="grid items-start gap-5 xl:grid-cols-[minmax(245px,0.34fr)_minmax(0,0.66fr)]">
@@ -36,6 +55,7 @@
 
         <main class="card overflow-hidden p-0" aria-label="Selected event data">
             <div class="border-b border-border-subtle px-5 py-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="mb-2 flex items-center gap-2"><span class="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase {event.item_type === 'transaction' ? 'bg-brand-soft text-brand' : 'bg-danger/10 text-danger'}">{event.item_type === 'transaction' ? 'Trace event' : event.level || 'Error'}</span>{#if event.forward_status}<span class="rounded-full bg-ok/10 px-2 py-0.5 text-[9px] font-bold text-ok">{event.forward_status}</span>{/if}</div><h3 class="text-sm font-bold text-text">{event.title}</h3><p class="mt-1 text-[10px] text-muted">{formatDateTime(event.occurred_at)} · {event.platform || event.identifier_platform || 'unknown platform'}</p></div>{#if telemetry.trace_url}<Link href={telemetry.trace_url} class="secondary inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[10px]"><ExternalLink class="h-3 w-3" />Open trace</Link>{/if}</div></div>
+            {#if event.archive}<div class="flex flex-wrap items-center justify-between gap-3 border-b border-brand-soft-line bg-brand-soft/60 px-5 py-3"><div class="flex items-start gap-2 text-brand"><FileArchive class="mt-0.5 h-4 w-4 shrink-0" /><div><p class="text-[10px] font-bold">Payload moved to cold archive</p><p class="mt-0.5 text-[9px]">Archived {formatDateTime(event.archive.archived_at)} · metadata remains searchable.</p></div></div>{#if event.archive.url}<a href={event.archive.url} class="secondary px-2.5 py-1.5 text-[10px]">Download JSON.gz</a>{/if}</div>{/if}
             <dl class="grid grid-cols-2 border-b border-border-subtle text-[10px] sm:grid-cols-4"><div class="border-r border-b border-border-subtle px-4 py-3"><dt class="text-faint">Environment</dt><dd class="mt-1 truncate font-semibold text-text">{event.environment || 'default'}</dd></div><div class="border-r border-b border-border-subtle px-4 py-3"><dt class="text-faint">Release</dt><dd class="mt-1 truncate font-mono text-text">{event.release || '—'}</dd></div><div class="border-r border-border-subtle px-4 py-3"><dt class="text-faint">Target</dt><dd class="mt-1 truncate text-text">{event.identifier || '—'}</dd></div><div class="px-4 py-3"><dt class="text-faint">Routed DSN</dt><dd class="mt-1 truncate text-text">{event.dsn_name || '—'}</dd></div></dl>
             {#if event.item_type === 'transaction'}<section class="border-b border-border-subtle px-5 py-4"><h4 class="flex items-center gap-2 text-[10px] font-bold text-text"><Gauge class="h-3.5 w-3.5 text-brand" />Transaction</h4><div class="mt-3 grid grid-cols-3 gap-2"><div class="rounded-md bg-surface-sunken px-3 py-2"><span class="text-[9px] text-faint">Duration</span><strong class="mt-0.5 block font-mono text-[11px]">{formatDuration(event.trace.duration_ms)}</strong></div><div class="rounded-md bg-surface-sunken px-3 py-2"><span class="text-[9px] text-faint">Operation</span><strong class="mt-0.5 block truncate text-[11px]">{event.trace.operation || '—'}</strong></div><div class="rounded-md bg-surface-sunken px-3 py-2"><span class="text-[9px] text-faint">Spans</span><strong class="mt-0.5 block font-mono text-[11px]">{event.trace.spans_count}</strong></div></div></section>{/if}
             <div class="overflow-x-auto border-b border-border-subtle bg-surface-sunken/45 px-2" role="tablist"><div class="flex min-w-max">{#each tabs as tab}<button type="button" role="tab" aria-selected={activeTab === tab.id} class="relative rounded-none bg-transparent px-3 py-2.5 text-[9px] font-semibold {activeTab === tab.id ? 'text-brand' : 'text-muted hover:text-text'}" onclick={() => activeTab = tab.id}>{tab.label}{#if tab.count}<span class="ml-1 font-mono text-[8px] text-faint">{tab.count}</span>{/if}{#if activeTab === tab.id}<span class="absolute inset-x-2 bottom-0 h-0.5 bg-brand"></span>{/if}</button>{/each}</div></div>
@@ -43,3 +63,15 @@
         </main>
     </div>
 </AppLayout>
+
+{#if statusDialogOpen}
+    <div class="modal-backdrop" role="presentation" onclick={(event) => event.currentTarget === event.target && !statusBusy && (statusDialogOpen = false)}>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="issue-status-title">
+            <div class="border-b border-border-subtle px-5 py-4"><h2 id="issue-status-title" class="text-sm font-bold text-text">{telemetry.status === 'resolved' ? 'Reopen issue' : 'Resolve issue'}</h2><p class="mt-1 text-xs leading-5 text-muted">{telemetry.status === 'resolved' ? 'Return this issue to active triage.' : 'Mark this issue as fixed. A new occurrence will reopen it automatically.'}</p></div>
+            <form onsubmit={(event) => { event.preventDefault(); updateStatus(); }}>
+                <div class="px-5 py-4"><label for="issue-status-comment" class="label">Comment <span class="font-normal text-faint">(optional)</span></label><textarea id="issue-status-comment" bind:value={statusComment} maxlength="2000" placeholder="What changed, why it was reopened, or a link to the fix…"></textarea><p class="mt-1.5 text-right font-mono text-[9px] text-faint">{statusComment.length} / 2000</p></div>
+                <div class="flex justify-end gap-2 border-t border-border-subtle bg-surface-sunken/45 px-5 py-3"><button type="button" class="secondary px-3 py-2 text-xs" disabled={statusBusy} onclick={() => statusDialogOpen = false}>Cancel</button><button type="submit" class="gap-1.5 px-3 py-2 text-xs" disabled={statusBusy}>{#if telemetry.status === 'resolved'}<RotateCcw class="h-3.5 w-3.5" />{statusBusy ? 'Reopening…' : 'Reopen issue'}{:else}<CircleCheck class="h-3.5 w-3.5" />{statusBusy ? 'Resolving…' : 'Resolve issue'}{/if}</button></div>
+            </form>
+        </div>
+    </div>
+{/if}

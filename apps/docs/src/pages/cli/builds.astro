@@ -27,6 +27,21 @@ appmctl builds patch        [--app APP] BUILD_ID [--status STATUS] [--tag NAME[:
 appmctl builds wait         [--app APP] BUILD_ID [--timeout SECONDS]
 appmctl builds when-running [--app APP] BUILD_ID -- COMMAND [ARG ...]`} />
 
+  <h3>Lifecycle aliases</h3>
+  <p>
+    Manual-build status updates have short singular aliases. Omit <code>BUILD_ID</code>
+    when the runner already exports <code>APP_MANAGER_BUILD_ID</code>:
+  </p>
+  <CodeBlock lang="bash" code={`appmctl build start     [BUILD_ID] [--app APP] # status: running
+appmctl build completed [BUILD_ID] [--app APP] # status: completed
+appmctl build failed    [BUILD_ID] [--app APP] # status: failed`} />
+  <p>
+    These map directly to <code>builds patch BUILD_ID --status ...</code>, so the same
+    manual-reporting restrictions apply. An explicit ID overrides
+    <code>APP_MANAGER_BUILD_ID</code>; <code>--tag</code> may also be included when the
+    status and tags should be updated together.
+  </p>
+
   <h3>List</h3>
   <CommandOutput command="appmctl builds list" capture="builds-list" />
   <p>

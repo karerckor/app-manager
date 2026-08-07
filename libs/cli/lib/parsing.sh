@@ -11,11 +11,14 @@ App Manager CLI
 
 Usage:
   appmctl [global options] <resource> <action> [options]
+  appmctl [global options] build <start|completed|failed> [build-id]
   appmctl [global options] request METHOD PATH [request options]
   appmctl [global options] stream [stream options] -- COMMAND [ARG ...]
 
 Resources:
   apps            Manage mobile applications
+  blueprints      Manage application blueprints and conditional hooks
+  build           Short aliases for manual build status updates
   builds          Manage builds
   logs            Read and write build logs
   artifacts       Manage build artifacts
@@ -37,6 +40,7 @@ Required environment:
 Optional environment:
   APP_MANAGER_INSTANCE_URL  Server URL; defaults to http://localhost:8000
   APP_MANAGER_APP           Default app slug for app-scoped commands
+  APP_MANAGER_BUILD_ID      Default build ID for "build" lifecycle aliases
   APP_MANAGER_POLLING_INTERVAL  Polling interval in seconds (default: 10)
 
 Global options:
@@ -93,7 +97,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
+      request|stream|apps|blueprints|build|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -113,6 +117,8 @@ dispatch_command() {
     request) source "$cmd_dir/request.sh"; command_request "${REMAINING_ARGS[@]}" ;;
     stream) source "$cmd_dir/stream.sh"; command_stream "${REMAINING_ARGS[@]}" ;;
     apps) source "$cmd_dir/apps.sh"; command_apps "${REMAINING_ARGS[@]}" ;;
+    blueprints) source "$cmd_dir/blueprints.sh"; command_blueprints "${REMAINING_ARGS[@]}" ;;
+    build) source "$cmd_dir/builds.sh"; command_build "${REMAINING_ARGS[@]}" ;;
     builds) source "$cmd_dir/builds.sh"; command_builds "${REMAINING_ARGS[@]}" ;;
     logs) source "$cmd_dir/logs.sh"; command_logs "${REMAINING_ARGS[@]}" ;;
     artifacts) source "$cmd_dir/artifacts.sh"; command_artifacts "${REMAINING_ARGS[@]}" ;;

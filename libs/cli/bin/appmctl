@@ -5,7 +5,7 @@
 
 set -o pipefail
 
-APPMCTL_VERSION="0.2.0"
+APPMCTL_VERSION="0.3.0"
 APPMCTL_NAME="appmctl"
 
 
@@ -763,11 +763,14 @@ App Manager CLI
 
 Usage:
   appmctl [global options] <resource> <action> [options]
+  appmctl [global options] build <start|completed|failed> [build-id]
   appmctl [global options] request METHOD PATH [request options]
   appmctl [global options] stream [stream options] -- COMMAND [ARG ...]
 
 Resources:
   apps            Manage mobile applications
+  blueprints      Manage application blueprints and conditional hooks
+  build           Short aliases for manual build status updates
   builds          Manage builds
   logs            Read and write build logs
   artifacts       Manage build artifacts
@@ -789,6 +792,7 @@ Required environment:
 Optional environment:
   APP_MANAGER_INSTANCE_URL  Server URL; defaults to http://localhost:8000
   APP_MANAGER_APP           Default app slug for app-scoped commands
+  APP_MANAGER_BUILD_ID      Default build ID for "build" lifecycle aliases
   APP_MANAGER_POLLING_INTERVAL  Polling interval in seconds (default: 10)
 
 Global options:
@@ -845,7 +849,7 @@ parse_global_options() {
         usage
         exit 0
         ;;
-      request|stream|apps|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
+      request|stream|apps|blueprints|build|builds|logs|artifacts|files|assets|identifiers|credentials|integrations|eas|pipelines|webhooks|sentry|telemetry)
         COMMAND_NAME="$1"
         shift
         REMAINING_ARGS=("$@")
@@ -863,6 +867,8 @@ dispatch_command() {
     request) command_request "${REMAINING_ARGS[@]}" ;;
     stream) command_stream "${REMAINING_ARGS[@]}" ;;
     apps) command_apps "${REMAINING_ARGS[@]}" ;;
+    blueprints) command_blueprints "${REMAINING_ARGS[@]}" ;;
+    build) command_build "${REMAINING_ARGS[@]}" ;;
     builds) command_builds "${REMAINING_ARGS[@]}" ;;
     logs) command_logs "${REMAINING_ARGS[@]}" ;;
     artifacts) command_artifacts "${REMAINING_ARGS[@]}" ;;
@@ -1410,7 +1416,7 @@ command_stream() {
 }
 
 
-# "builds" subcommands: list, get, create, cancel, patch.
+# "builds" subcommands plus short "build" lifecycle aliases.
 
 # Turn repeated --tag specs ("name" or "name:#rrggbb") into the [[text, color]]
 # tuples the API expects. Colorless tags carry a null color.
@@ -1466,6 +1472,43 @@ Options:
   --timeout SECONDS   Maximum wait time (wait, when-running)
 
 Run "appmctl builds <action> --help" for action-specific help.
+EOF
+}
+
+build_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] build <action> [build-id] [options]
+
+Lifecycle aliases:
+  start               Set the build status to running
+  completed           Set the build status to completed
+  failed              Set the build status to failed
+
+BUILD_ID defaults to APP_MANAGER_BUILD_ID when omitted. These commands are
+short aliases for "appmctl builds patch BUILD_ID --status STATUS" and apply to
+manually reported builds only.
+
+Examples:
+  appmctl build start
+  appmctl build completed "$APP_MANAGER_BUILD_ID"
+  appmctl build failed --app customer-app bld-abc123
+EOF
+}
+
+build_action_usage() {
+  local action="$1"
+  local status="$2"
+
+  cat <<EOF
+Usage:
+  appmctl build $action [build-id] [--app APP] [--tag NAME[:#HEX]]
+
+Set a manually reported build's status to $status. BUILD_ID defaults to
+APP_MANAGER_BUILD_ID when omitted.
+
+Equivalent to:
+  appmctl builds patch BUILD_ID --status $status
 EOF
 }
 
@@ -1612,6 +1655,55 @@ command_builds() {
     -h|--help|"") builds_usage; [ -z "$action" ] && return 1; return 0 ;;
     *) die "unknown builds action: $action (use list, get, create, cancel, patch, wait, when-running)" ;;
   esac
+}
+
+command_build() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    start) _build_status_alias start running "$@" ;;
+    completed) _build_status_alias completed completed "$@" ;;
+    failed) _build_status_alias failed failed "$@" ;;
+    -h|--help|"") build_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown build action: $action (use start, completed, failed)" ;;
+  esac
+}
+
+_build_status_alias() {
+  local action="$1"
+  local status="$2"
+  shift 2
+
+  local has_build_id=0
+  local skip_value=0
+  local arg
+
+  # Detect whether the caller supplied the positional build ID while accounting
+  # for the value-taking options supported by builds patch.
+  for arg in "$@"; do
+    if [ "$skip_value" -eq 1 ]; then
+      skip_value=0
+      continue
+    fi
+
+    case "$arg" in
+      --app|--tag|-o|--output) skip_value=1 ;;
+      --app=*|--tag=*|--dry-run|--json|--force) ;;
+      --status|--status=*) die "appmctl build $action fixes the status to $status; do not pass --status" ;;
+      -h|--help) build_action_usage "$action" "$status"; return 0 ;;
+      -*) ;;
+      *) has_build_id=1 ;;
+    esac
+  done
+
+  if [ "$has_build_id" -eq 0 ]; then
+    [ -n "${APP_MANAGER_BUILD_ID:-}" ] \
+      || die "build ID is required (pass it as an argument or set APP_MANAGER_BUILD_ID)"
+    set -- "$APP_MANAGER_BUILD_ID" "$@"
+  fi
+
+  _builds_patch "$@" --status "$status"
 }
 
 _builds_list() {
@@ -3663,7 +3755,7 @@ _identifiers_resource_format() {
 }
 
 
-# "apps" subcommands: list, get, create, update, delete.
+# "apps" subcommands: list, get, create, update, delete, including blueprint attachment.
 
 apps_usage() {
   cat <<'EOF'
@@ -3764,7 +3856,7 @@ _apps_get() {
   fi
 
   api_get "$path" || return 1
-  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","created_at":"created_at","updated_at":"updated_at"}}'
+  local fmt='{"type":"resource","fields":{"slug":"slug","name":"name","description":"description","blueprint_id":"blueprint_id","created_at":"created_at","updated_at":"updated_at"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }
 
@@ -3773,6 +3865,7 @@ _apps_create() {
   local slug=""
   local description=""
   local metadata=""
+  local blueprint_id=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -3785,12 +3878,14 @@ _apps_create() {
       --description=*) description=${1#*=}; shift ;;
       --metadata) require_value "$1" "$2"; metadata="$2"; shift 2 ;;
       --metadata=*) metadata=${1#*=}; shift ;;
+      --blueprint-id) require_value "$1" "$2"; blueprint_id="$2"; shift 2 ;;
+      --blueprint-id=*) blueprint_id=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]\n'
+        printf 'Usage: appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON] [--blueprint-id UUID]\n'
         return 0
         ;;
       *) die "unknown apps create option: $1" ;;
@@ -3798,6 +3893,7 @@ _apps_create() {
   done
 
   [ -n "$name" ] || die "--name is required"
+  if [ -n "$blueprint_id" ]; then validate_slug "blueprint ID" "$blueprint_id"; fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
   local jq_args=(-n --arg n "$name")
@@ -3813,6 +3909,10 @@ _apps_create() {
   if [ -n "$metadata" ]; then
     jq_args+=(--argjson m "$metadata")
     jq_expr="$jq_expr, metadata: \$m"
+  fi
+  if [ -n "$blueprint_id" ]; then
+    jq_args+=(--arg blueprint "$blueprint_id")
+    jq_expr="$jq_expr, blueprint_id: \$blueprint"
   fi
   jq_expr="$jq_expr}"
   "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file"
@@ -3840,6 +3940,8 @@ _apps_update() {
   local name=""
   local description=""
   local metadata=""
+  local blueprint_id=""
+  local blueprint_id_set=0
   local body_file
   local has_fields=0
 
@@ -3851,12 +3953,15 @@ _apps_update() {
       --description=*) description=${1#*=}; has_fields=1; shift ;;
       --metadata) require_value "$1" "$2"; metadata="$2"; has_fields=1; shift 2 ;;
       --metadata=*) metadata=${1#*=}; has_fields=1; shift ;;
+      --blueprint-id) require_value "$1" "$2"; blueprint_id="$2"; blueprint_id_set=1; has_fields=1; shift 2 ;;
+      --blueprint-id=*) blueprint_id=${1#*=}; blueprint_id_set=1; has_fields=1; shift ;;
+      --no-blueprint) blueprint_id=""; blueprint_id_set=1; has_fields=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
       --force) FORCE_OUTPUT=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]\n'
+        printf 'Usage: appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON] [--blueprint-id UUID|--no-blueprint]\n'
         return 0
         ;;
       -*) die "unknown apps update option: $1" ;;
@@ -3871,6 +3976,7 @@ _apps_update() {
   [ -n "$slug" ] || die "app slug is required"
   [ "$has_fields" -eq 1 ] || die "at least one field to update is required"
   validate_slug "app slug" "$slug"
+  if [ "$blueprint_id_set" -eq 1 ] && [ -n "$blueprint_id" ]; then validate_slug "blueprint ID" "$blueprint_id"; fi
 
   body_file=$(mktemp "${TMPDIR:-/tmp}/appmctl-body.XXXXXX") || die "could not create temp file"
   local jq_args=(-n)
@@ -3892,6 +3998,16 @@ _apps_update() {
     jq_args+=(--argjson m "$metadata")
     [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
     jq_expr="$jq_expr metadata: \$m"
+    first=0
+  fi
+  if [ "$blueprint_id_set" -eq 1 ]; then
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    if [ -n "$blueprint_id" ]; then
+      jq_args+=(--arg blueprint "$blueprint_id")
+      jq_expr="$jq_expr blueprint_id: \$blueprint"
+    else
+      jq_expr="$jq_expr blueprint_id: null"
+    fi
     first=0
   fi
   jq_expr="$jq_expr}"
@@ -3953,6 +4069,481 @@ _apps_delete() {
 
   api_delete "$path" || return 1
   printf 'App %s deleted\n' "$slug"
+}
+
+
+# "blueprints" subcommands: blueprint CRUD/evaluation and nested hook CRUD.
+
+blueprints_usage() {
+  cat <<'EOF'
+Usage:
+  appmctl [global options] blueprints <action> [options]
+  appmctl [global options] blueprints hooks <action> [options]
+
+Blueprint actions:
+  list                List team blueprints
+  get                 Show a blueprint and its hooks
+  create              Create a draft or complete blueprint
+  update              Update blueprint fields
+  delete              Delete a blueprint
+  evaluate            Run hooks against attached applications
+
+Hook actions:
+  list                List hooks for a blueprint
+  get                 Show one hook
+  create              Create and evaluate a hook
+  update              Update and evaluate a hook
+  delete              Delete a hook without changing existing tags
+
+Run "appmctl blueprints <action> --help" or
+"appmctl blueprints hooks <action> --help" for action-specific help.
+EOF
+}
+
+command_blueprints() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+
+  case "$action" in
+    list) _blueprints_list "$@" ;;
+    get) _blueprints_get "$@" ;;
+    create) _blueprints_save create "$@" ;;
+    update) _blueprints_save update "$@" ;;
+    delete) _blueprints_delete "$@" ;;
+    evaluate) _blueprints_evaluate "$@" ;;
+    hooks) _blueprints_hooks "$@" ;;
+    -h|--help|"") blueprints_usage; [ -z "$action" ] && return 1; return 0 ;;
+    *) die "unknown blueprints action: $action (use list, get, create, update, delete, evaluate, hooks)" ;;
+  esac
+}
+
+_blueprints_dry_run() {
+  local method="$1"
+  local path="$2"
+  local body_file="${3:-}"
+  local url
+
+  require_config
+  url=$(build_url "$path") || return 1
+  printf 'dry-run: no request sent\n'
+  printf 'method: %s\n' "$method"
+  printf 'url: %s\n' "$url"
+  if [ -n "$body_file" ]; then
+    printf 'body: %s\n' "$(cat "$body_file")"
+  fi
+}
+
+_blueprints_list() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints list\n'; return 0 ;;
+      *) die "unknown blueprints list option: $1" ;;
+    esac
+  done
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _blueprints_dry_run GET blueprints
+    return
+  fi
+
+  api_get blueprints || return 1
+  local fmt='{"type":"table","fields":["id","name","platforms | join(\", \")","required_files | length","applications_count","hooks_count"],"headers":["id","name","platforms","files","apps","hooks"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_get() {
+  local blueprint_id=""
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints get <blueprint-id>\n'; return 0 ;;
+      -*) die "unknown blueprints get option: $1" ;;
+      *) [ -z "$blueprint_id" ] || die "unexpected argument: $1"; blueprint_id="$1"; shift ;;
+    esac
+  done
+
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  local path="blueprints/$blueprint_id"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _blueprints_dry_run GET "$path"
+    return
+  fi
+
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","description":"description","platforms":"platforms | join(\", \")","required_files":"required_files | join(\", \")","applications":"applications_count","hooks":"hooks_count","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_save() {
+  local mode="$1"
+  shift
+  local blueprint_id=""
+  local name=""
+  local description=""
+  local schema=""
+  local schema_file=""
+  local required_files=""
+  local platforms=""
+  local name_set=0
+  local description_set=0
+  local schema_set=0
+  local required_files_set=0
+  local platforms_set=0
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) require_value "$1" "$2"; name="$2"; name_set=1; shift 2 ;;
+      --name=*) name=${1#*=}; name_set=1; shift ;;
+      --description) require_value "$1" "$2"; description="$2"; description_set=1; shift 2 ;;
+      --description=*) description=${1#*=}; description_set=1; shift ;;
+      --clear-description) description=""; description_set=1; shift ;;
+      --json-schema) require_value "$1" "$2"; schema="$2"; schema_set=1; shift 2 ;;
+      --json-schema=*) schema=${1#*=}; schema_set=1; shift ;;
+      --json-schema-file) require_value "$1" "$2"; schema_file="$2"; schema_set=1; shift 2 ;;
+      --json-schema-file=*) schema_file=${1#*=}; schema_set=1; shift ;;
+      --required-files) require_value "$1" "$2"; required_files="$2"; required_files_set=1; shift 2 ;;
+      --required-files=*) required_files=${1#*=}; required_files_set=1; shift ;;
+      --platforms) require_value "$1" "$2"; platforms="$2"; platforms_set=1; shift 2 ;;
+      --platforms=*) platforms=${1#*=}; platforms_set=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        if [ "$mode" = "create" ]; then
+          printf 'Usage: appmctl blueprints create --name NAME [--description DESC] [--json-schema JSON|--json-schema-file FILE] [--required-files JSON] [--platforms JSON]\n'
+        else
+          printf 'Usage: appmctl blueprints update <blueprint-id> [--name NAME] [--description DESC|--clear-description] [--json-schema JSON|--json-schema-file FILE] [--required-files JSON] [--platforms JSON]\n'
+        fi
+        return 0
+        ;;
+      -*) die "unknown blueprints $mode option: $1" ;;
+      *)
+        [ "$mode" = "update" ] || die "unexpected argument: $1"
+        [ -z "$blueprint_id" ] || die "unexpected argument: $1"
+        blueprint_id="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [ "$mode" = "create" ]; then
+    [ "$name_set" -eq 1 ] && [ -n "$name" ] || die "--name is required"
+  else
+    [ -n "$blueprint_id" ] || die "blueprint ID is required"
+    validate_slug "blueprint ID" "$blueprint_id"
+    [ $((name_set + description_set + schema_set + required_files_set + platforms_set)) -gt 0 ] \
+      || die "at least one field to update is required"
+  fi
+
+  [ -z "$schema" ] || [ -z "$schema_file" ] || die "use only one of --json-schema or --json-schema-file"
+  if [ -n "$schema_file" ]; then
+    [ -f "$schema_file" ] || die "JSON schema file does not exist: $schema_file"
+    schema=$(cat "$schema_file") || die "could not read JSON schema file: $schema_file"
+  fi
+
+  require_jq
+  if [ "$schema_set" -eq 1 ]; then
+    printf '%s' "$schema" | "$JQ_BIN" -e 'type == "object" or . == null' >/dev/null 2>&1 \
+      || die "--json-schema must be a JSON object or null"
+  fi
+  if [ "$required_files_set" -eq 1 ]; then
+    printf '%s' "$required_files" | "$JQ_BIN" -e 'type == "array" or . == null' >/dev/null 2>&1 \
+      || die "--required-files must be a JSON array or null"
+  fi
+  if [ "$platforms_set" -eq 1 ]; then
+    printf '%s' "$platforms" | "$JQ_BIN" -e 'type == "array" or . == null' >/dev/null 2>&1 \
+      || die "--platforms must be a JSON array or null"
+  fi
+
+  ensure_tmpdir
+  body_file=$(new_temp_file blueprint-body) || die "could not create a request body"
+  local jq_args=(-n)
+  local jq_expr='{}'
+  if [ "$name_set" -eq 1 ]; then jq_args+=(--arg value "$name"); jq_expr="$jq_expr | .name = \$value"; fi
+  if [ "$description_set" -eq 1 ]; then
+    if [ -n "$description" ]; then jq_args+=(--arg description "$description"); jq_expr="$jq_expr | .description = \$description"
+    else jq_expr="$jq_expr | .description = null"; fi
+  fi
+  if [ "$schema_set" -eq 1 ]; then jq_args+=(--argjson schema "$schema"); jq_expr="$jq_expr | .json_schema = \$schema"; fi
+  if [ "$required_files_set" -eq 1 ]; then jq_args+=(--argjson files "$required_files"); jq_expr="$jq_expr | .required_files = \$files"; fi
+  if [ "$platforms_set" -eq 1 ]; then jq_args+=(--argjson platforms "$platforms"); jq_expr="$jq_expr | .platforms = \$platforms"; fi
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build blueprint request"
+
+  local path="blueprints"
+  local method="POST"
+  if [ "$mode" = "update" ]; then path="$path/$blueprint_id"; method="PATCH"; fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    _blueprints_dry_run "$method" "$path" "$body_file"
+    return
+  fi
+
+  if [ "$mode" = "create" ]; then api_post "$path" "$body_file" || return 1
+  else api_patch "$path" "$body_file" || return 1; fi
+  local fmt='{"type":"resource","fields":{"id":"id","name":"name","description":"description","platforms":"platforms | join(\", \")","required_files":"required_files | join(\", \")","applications":"applications_count","hooks":"hooks_count"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_delete() {
+  local blueprint_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints delete <blueprint-id>\n'; return 0 ;;
+      -*) die "unknown blueprints delete option: $1" ;;
+      *) [ -z "$blueprint_id" ] || die "unexpected argument: $1"; blueprint_id="$1"; shift ;;
+    esac
+  done
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  local path="blueprints/$blueprint_id"
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run DELETE "$path"; return; fi
+  api_delete "$path" || return 1
+  printf 'Blueprint %s deleted\n' "$blueprint_id"
+}
+
+_blueprints_evaluate() {
+  local blueprint_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints evaluate <blueprint-id>\n'; return 0 ;;
+      -*) die "unknown blueprints evaluate option: $1" ;;
+      *) [ -z "$blueprint_id" ] || die "unexpected argument: $1"; blueprint_id="$1"; shift ;;
+    esac
+  done
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  local path="blueprints/$blueprint_id/evaluate"
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run POST "$path"; return; fi
+  api_post "$path" "" || return 1
+  local fmt='{"type":"resource","fields":{"evaluated_applications":"evaluated_applications"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_hooks() {
+  local action="${1:-}"
+  shift 2>/dev/null || true
+  case "$action" in
+    list) _blueprints_hooks_list "$@" ;;
+    get) _blueprints_hooks_get "$@" ;;
+    create) _blueprints_hook_save create "$@" ;;
+    update) _blueprints_hook_save update "$@" ;;
+    delete) _blueprints_hooks_delete "$@" ;;
+    -h|--help|"")
+      cat <<'EOF'
+Usage:
+  appmctl blueprints hooks list <blueprint-id>
+  appmctl blueprints hooks get <blueprint-id> <hook-id>
+  appmctl blueprints hooks create <blueprint-id> --name NAME --condition CONDITION --actions JSON
+  appmctl blueprints hooks update <blueprint-id> <hook-id> [fields]
+  appmctl blueprints hooks delete <blueprint-id> <hook-id>
+EOF
+      [ -z "$action" ] && return 1
+      return 0
+      ;;
+    *) die "unknown blueprints hooks action: $action (use list, get, create, update, delete)" ;;
+  esac
+}
+
+_blueprints_hooks_list() {
+  local blueprint_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints hooks list <blueprint-id>\n'; return 0 ;;
+      -*) die "unknown blueprints hooks list option: $1" ;;
+      *) [ -z "$blueprint_id" ] || die "unexpected argument: $1"; blueprint_id="$1"; shift ;;
+    esac
+  done
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  local path="blueprints/$blueprint_id/hooks"
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run GET "$path"; return; fi
+  api_get "$path" || return 1
+  local fmt='{"type":"table","fields":["id","name","condition","actions | length","enabled"],"headers":["id","name","condition","actions","enabled"]}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_hooks_get() {
+  local blueprint_id=""
+  local hook_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints hooks get <blueprint-id> <hook-id>\n'; return 0 ;;
+      -*) die "unknown blueprints hooks get option: $1" ;;
+      *)
+        if [ -z "$blueprint_id" ]; then blueprint_id="$1"
+        elif [ -z "$hook_id" ]; then hook_id="$1"
+        else die "unexpected argument: $1"; fi
+        shift
+        ;;
+    esac
+  done
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  [ -n "$hook_id" ] || die "hook ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  validate_slug "hook ID" "$hook_id"
+  local path="blueprints/$blueprint_id/hooks/$hook_id"
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run GET "$path"; return; fi
+  api_get "$path" || return 1
+  local fmt='{"type":"resource","fields":{"id":"id","blueprint_id":"blueprint_id","name":"name","condition":"condition","actions":"actions | length","enabled":"enabled","created_at":"created_at","updated_at":"updated_at"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_hook_save() {
+  local mode="$1"
+  shift
+  local blueprint_id=""
+  local hook_id=""
+  local name=""
+  local condition=""
+  local condition_config=""
+  local actions=""
+  local actions_file=""
+  local enabled=""
+  local name_set=0
+  local condition_set=0
+  local condition_config_set=0
+  local actions_set=0
+  local enabled_set=0
+  local body_file
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) require_value "$1" "$2"; name="$2"; name_set=1; shift 2 ;;
+      --name=*) name=${1#*=}; name_set=1; shift ;;
+      --condition) require_value "$1" "$2"; condition="$2"; condition_set=1; shift 2 ;;
+      --condition=*) condition=${1#*=}; condition_set=1; shift ;;
+      --condition-config) require_value "$1" "$2"; condition_config="$2"; condition_config_set=1; shift 2 ;;
+      --condition-config=*) condition_config=${1#*=}; condition_config_set=1; shift ;;
+      --actions) require_value "$1" "$2"; actions="$2"; actions_set=1; shift 2 ;;
+      --actions=*) actions=${1#*=}; actions_set=1; shift ;;
+      --actions-file) require_value "$1" "$2"; actions_file="$2"; actions_set=1; shift 2 ;;
+      --actions-file=*) actions_file=${1#*=}; actions_set=1; shift ;;
+      --enabled) require_value "$1" "$2"; enabled="$2"; enabled_set=1; shift 2 ;;
+      --enabled=*) enabled=${1#*=}; enabled_set=1; shift ;;
+      --dry-run) DRY_RUN=1; shift ;;
+      --json) PRETTY_JSON=1; shift ;;
+      -o|--output) require_value "$1" "$2"; OUTPUT_FILE="$2"; shift 2 ;;
+      --force) FORCE_OUTPUT=1; shift ;;
+      -h|--help)
+        if [ "$mode" = "create" ]; then
+          printf 'Usage: appmctl blueprints hooks create <blueprint-id> --name NAME --condition CONDITION --actions JSON|--actions-file FILE [--condition-config JSON] [--enabled true|false]\n'
+        else
+          printf 'Usage: appmctl blueprints hooks update <blueprint-id> <hook-id> [--name NAME] [--condition CONDITION] [--condition-config JSON] [--actions JSON|--actions-file FILE] [--enabled true|false]\n'
+        fi
+        return 0
+        ;;
+      -*) die "unknown blueprints hooks $mode option: $1" ;;
+      *)
+        if [ -z "$blueprint_id" ]; then blueprint_id="$1"
+        elif [ "$mode" = "update" ] && [ -z "$hook_id" ]; then hook_id="$1"
+        else die "unexpected argument: $1"; fi
+        shift
+        ;;
+    esac
+  done
+
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  if [ "$mode" = "create" ]; then
+    [ "$name_set" -eq 1 ] && [ -n "$name" ] || die "--name is required"
+    [ "$condition_set" -eq 1 ] && [ -n "$condition" ] || die "--condition is required"
+    [ "$actions_set" -eq 1 ] || die "--actions or --actions-file is required"
+  else
+    [ -n "$hook_id" ] || die "hook ID is required"
+    validate_slug "hook ID" "$hook_id"
+    [ $((name_set + condition_set + condition_config_set + actions_set + enabled_set)) -gt 0 ] \
+      || die "at least one field to update is required"
+  fi
+
+  [ -z "$actions" ] || [ -z "$actions_file" ] || die "use only one of --actions or --actions-file"
+  if [ -n "$actions_file" ]; then
+    [ -f "$actions_file" ] || die "actions file does not exist: $actions_file"
+    actions=$(cat "$actions_file") || die "could not read actions file: $actions_file"
+  fi
+
+  require_jq
+  if [ "$condition_config_set" -eq 1 ]; then
+    printf '%s' "$condition_config" | "$JQ_BIN" -e 'type == "object" or . == null' >/dev/null 2>&1 \
+      || die "--condition-config must be a JSON object or null"
+  fi
+  if [ "$actions_set" -eq 1 ]; then
+    printf '%s' "$actions" | "$JQ_BIN" -e 'type == "array" and length > 0' >/dev/null 2>&1 \
+      || die "--actions must be a non-empty JSON array"
+  fi
+  if [ "$enabled_set" -eq 1 ]; then
+    case "$enabled" in true|false) ;; *) die "--enabled must be true or false" ;; esac
+  fi
+
+  ensure_tmpdir
+  body_file=$(new_temp_file blueprint-hook-body) || die "could not create a request body"
+  local jq_args=(-n)
+  local jq_expr='{}'
+  if [ "$name_set" -eq 1 ]; then jq_args+=(--arg name "$name"); jq_expr="$jq_expr | .name = \$name"; fi
+  if [ "$condition_set" -eq 1 ]; then jq_args+=(--arg condition "$condition"); jq_expr="$jq_expr | .condition = \$condition"; fi
+  if [ "$condition_config_set" -eq 1 ]; then jq_args+=(--argjson config "$condition_config"); jq_expr="$jq_expr | .condition_config = \$config"; fi
+  if [ "$actions_set" -eq 1 ]; then jq_args+=(--argjson actions "$actions"); jq_expr="$jq_expr | .actions = \$actions"; fi
+  if [ "$enabled_set" -eq 1 ]; then jq_args+=(--argjson enabled "$enabled"); jq_expr="$jq_expr | .enabled = \$enabled"; fi
+  "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build hook request"
+
+  local path="blueprints/$blueprint_id/hooks"
+  local method="POST"
+  if [ "$mode" = "update" ]; then path="$path/$hook_id"; method="PATCH"; fi
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run "$method" "$path" "$body_file"; return; fi
+  if [ "$mode" = "create" ]; then api_post "$path" "$body_file" || return 1
+  else api_patch "$path" "$body_file" || return 1; fi
+  local fmt='{"type":"resource","fields":{"id":"id","blueprint_id":"blueprint_id","name":"name","condition":"condition","actions":"actions | length","enabled":"enabled"}}'
+  emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
+}
+
+_blueprints_hooks_delete() {
+  local blueprint_id=""
+  local hook_id=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) DRY_RUN=1; shift ;;
+      -h|--help) printf 'Usage: appmctl blueprints hooks delete <blueprint-id> <hook-id>\n'; return 0 ;;
+      -*) die "unknown blueprints hooks delete option: $1" ;;
+      *)
+        if [ -z "$blueprint_id" ]; then blueprint_id="$1"
+        elif [ -z "$hook_id" ]; then hook_id="$1"
+        else die "unexpected argument: $1"; fi
+        shift
+        ;;
+    esac
+  done
+  [ -n "$blueprint_id" ] || die "blueprint ID is required"
+  [ -n "$hook_id" ] || die "hook ID is required"
+  validate_slug "blueprint ID" "$blueprint_id"
+  validate_slug "hook ID" "$hook_id"
+  local path="blueprints/$blueprint_id/hooks/$hook_id"
+  if [ "$DRY_RUN" -eq 1 ]; then _blueprints_dry_run DELETE "$path"; return; fi
+  api_delete "$path" || return 1
+  printf 'Blueprint hook %s deleted\n' "$hook_id"
 }
 
 
@@ -6410,6 +7001,9 @@ Usage: appmctl [global options] telemetry <action> [options]
 Actions:
   issues                    List grouped error issues for an app
   issue <issue-id>          Inspect an issue and selected occurrence
+  resolve <issue-id>        Mark an issue as resolved
+  reopen <issue-id>         Mark an issue as unresolved
+  tags <issue-id>           Replace App Manager issue tags
   traces                    List traces for an app
   trace <trace-id>          Inspect a trace and selected event
 
@@ -6420,7 +7014,7 @@ EOF
 
 command_telemetry() {
   local action="${1:-}"; shift 2>/dev/null || true
-  case "$action" in issues) _telemetry_list issues "$@" ;; traces) _telemetry_list traces "$@" ;; issue) _telemetry_show issues "${1:-}" "${@:2}" ;; trace) _telemetry_show traces "${1:-}" "${@:2}" ;; -h|--help|"") telemetry_usage; [ -z "$action" ] && return 1; return 0 ;; *) die "unknown telemetry action: $action (use issues, issue, traces, trace)" ;; esac
+  case "$action" in issues) _telemetry_list issues "$@" ;; traces) _telemetry_list traces "$@" ;; issue) _telemetry_show issues "${1:-}" "${@:2}" ;; trace) _telemetry_show traces "${1:-}" "${@:2}" ;; resolve) _telemetry_status resolved "${1:-}" "${@:2}" ;; reopen) _telemetry_status unresolved "${1:-}" "${@:2}" ;; tags) _telemetry_tags "${1:-}" "${@:2}" ;; -h|--help|"") telemetry_usage; [ -z "$action" ] && return 1; return 0 ;; *) die "unknown telemetry action: $action (use issues, issue, resolve, reopen, tags, traces, trace)" ;; esac
 }
 
 _telemetry_list() {
@@ -6445,6 +7039,50 @@ _telemetry_show() {
   local path="apps/$APP/telemetry/$kind/$id"; [ -n "$event" ] && path="$path?event=$(_telemetry_encode "$event")"
   if [ "$DRY_RUN" -eq 1 ]; then _telemetry_dry "$path"; return; fi
   api_get "$path" || return 1; emit_response
+}
+
+_telemetry_status() {
+  local status="$1" id="$2"; shift 2; [ -n "$id" ] || die "issue ID is required"
+  local app="${APP:-}" comment=""
+  while [ "$#" -gt 0 ]; do case "$1" in --app) require_value "$1" "$2"; app="$2"; shift 2 ;; --app=*) app=${1#*=}; shift ;; --comment) require_value "$1" "$2"; comment="$2"; shift 2 ;; --comment=*) comment=${1#*=}; shift ;; --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl telemetry %s <issue-id> [--comment TEXT]\n' "$( [ "$status" = resolved ] && printf resolve || printf reopen )"; return 0 ;; *) die "unknown telemetry status option: $1" ;; esac; done
+  APP="$app"; require_app; require_jq; ensure_tmpdir
+  local path="apps/$APP/telemetry/issues/$id" body_file
+  body_file=$(new_temp_file issue-status) || die "could not create status request"
+  "$JQ_BIN" -n --arg status "$status" --arg comment "$comment" '{status:$status,comment:(if $comment == "" then null else $comment end)}' >"$body_file"
+  if [ "$DRY_RUN" -eq 1 ]; then local url; require_config; url=$(build_url "$path") || return 1; printf 'dry-run: no request sent\nmethod: PATCH\nurl: %s\nbody: %s\n' "$url" "$(cat "$body_file")"; return; fi
+  api_patch "$path" "$body_file" || return 1
+  if [ "$PRETTY_JSON" -eq 1 ]; then emit_response; else printf 'Issue %s %s\n' "$id" "$( [ "$status" = resolved ] && printf resolved || printf reopened )"; fi
+}
+
+_telemetry_tags() {
+  local id="$1"; shift; [ -n "$id" ] || die "issue ID is required"
+  local app="${APP:-}" clear=0; local tag_specs=()
+  while [ "$#" -gt 0 ]; do case "$1" in --app) require_value "$1" "$2"; app="$2"; shift 2 ;; --app=*) app=${1#*=}; shift ;; --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;; --tag=*) tag_specs+=("${1#*=}"); shift ;; --clear) clear=1; shift ;; --dry-run) DRY_RUN=1; shift ;; --json) PRETTY_JSON=1; shift ;; -h|--help) printf 'Usage: appmctl telemetry tags <issue-id> [--tag TEXT[:#HEX[:ANIMATION]] ... | --clear]\n'; return 0 ;; *) die "unknown telemetry tags option: $1" ;; esac; done
+  APP="$app"; require_app; require_jq; ensure_tmpdir
+  [ "$clear" -eq 0 ] || [ "${#tag_specs[@]}" -eq 0 ] || die "--clear cannot be combined with --tag"
+  [ "$clear" -eq 1 ] || [ "${#tag_specs[@]}" -gt 0 ] || die "--tag or --clear is required"
+  local tags_json='[]' body_file path="apps/$APP/telemetry/issues/$id/tags"
+  if [ "$clear" -eq 0 ]; then tags_json=$(_telemetry_tags_json "${tag_specs[@]}") || return 1; fi
+  body_file=$(new_temp_file issue-tags) || die "could not create tags request"
+  "$JQ_BIN" -n --argjson tags "$tags_json" '{tags:$tags}' >"$body_file"
+  if [ "$DRY_RUN" -eq 1 ]; then local url; require_config; url=$(build_url "$path") || return 1; printf 'dry-run: no request sent\nmethod: PATCH\nurl: %s\nbody: %s\n' "$url" "$(cat "$body_file")"; return; fi
+  api_patch "$path" "$body_file" || return 1
+  if [ "$PRETTY_JSON" -eq 1 ]; then emit_response; else printf 'Issue %s tags updated\n' "$id"; fi
+}
+
+_telemetry_tags_json() {
+  local out='[]' spec text color animation extra
+  for spec in "$@"; do
+    IFS=':' read -r text color animation extra <<EOF
+$spec
+EOF
+    [ -n "$text" ] || die "--tag requires a label"
+    [ -z "$extra" ] || die "tag '$text' has too many ':' segments"
+    if [ -n "$color" ]; then case "$color" in \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]|\#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;; *) die "tag '$text' has an invalid color '$color'" ;; esac; fi
+    if [ -n "$animation" ]; then case "$animation" in pulse|ping|flash|tada|heartbeat) ;; *) die "tag '$text' has an invalid animation '$animation'" ;; esac; fi
+    out=$("$JQ_BIN" -nc --argjson acc "$out" --arg text "$text" --arg color "$color" --arg animation "$animation" '$acc + [[ $text, (if $color == "" then null else $color end), (if $animation == "" then null else $animation end) ]]')
+  done
+  printf '%s' "$out"
 }
 
 _telemetry_encode() { "$JQ_BIN" -nr --arg value "$1" '$value|@uri'; }

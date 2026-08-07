@@ -55,9 +55,42 @@ rel_path="${rel_path#*/}"
 
 # Match from most specific to least specific.
 case "$rel_path" in
+  # --- blueprints and conditional hooks ---
+  blueprints/*/hooks/*)
+    case "$method" in
+      GET) printf '{"data":{"id":"hook-001","blueprint_id":"blueprint-001","name":"Flag incomplete apps","condition":"blueprint_mismatch","condition_config":null,"actions":[{"type":"remove_tag","tags":[["ready"]]},{"type":"add_tag","tags":[["blueprint-incomplete","#f43f5e","heartbeat"]]}],"enabled":true,"created_at":"2026-08-06T10:00:00Z","updated_at":"2026-08-06T10:00:00Z"}}' >"$output" ;;
+      PATCH) printf '{"data":{"id":"hook-001","blueprint_id":"blueprint-001","name":"Updated hook","condition":"blueprint_mismatch","condition_config":null,"actions":[{"type":"add_tag","tags":[["blueprint-incomplete"]]}],"enabled":false}}' >"$output" ;;
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+    esac
+    ;;
+  blueprints/*/hooks)
+    case "$method" in
+      GET) printf '{"data":[{"id":"hook-001","blueprint_id":"blueprint-001","name":"Flag incomplete apps","condition":"blueprint_mismatch","actions":[{"type":"add_tag","tags":[["blueprint-incomplete"]]}],"enabled":true}]}' >"$output" ;;
+      POST) printf '{"data":{"id":"hook-002","blueprint_id":"blueprint-001","name":"Mark ready","condition":"blueprint_matches","condition_config":null,"actions":[{"type":"remove_tag","tags":[["blueprint-incomplete"]]},{"type":"add_tag","tags":[["ready","#10b981","pulse"]]}],"enabled":true}}' >"$output" ;;
+    esac
+    ;;
+  blueprints/*/evaluate)
+    printf '{"data":{"evaluated_applications":3}}' >"$output"
+    ;;
+  blueprints/*)
+    case "$method" in
+      GET) printf '{"data":{"id":"blueprint-001","name":"Production app","description":"Shared contract","json_schema":{"type":"object"},"required_files":["associated-domains.json"],"platforms":["ios","android"],"applications_count":3,"hooks_count":2,"hooks":[],"created_at":"2026-08-06T09:00:00Z","updated_at":"2026-08-06T10:00:00Z"}}' >"$output" ;;
+      PATCH) printf '{"data":{"id":"blueprint-001","name":"Updated blueprint","description":"Shared contract","json_schema":{"type":"object"},"required_files":[],"platforms":["ios"],"applications_count":3,"hooks_count":2}}' >"$output" ;;
+      DELETE) printf '{"data":{"ok":true}}' >"$output" ;;
+    esac
+    ;;
+  blueprints)
+    case "$method" in
+      GET) printf '{"data":[{"id":"blueprint-001","name":"Production app","required_files":["associated-domains.json"],"platforms":["ios","android"],"applications_count":3,"hooks_count":2}]}' >"$output" ;;
+      POST) printf '{"data":{"id":"blueprint-002","name":"Web app","description":null,"json_schema":{"type":"object"},"required_files":[],"platforms":["web"],"applications_count":0,"hooks_count":0}}' >"$output" ;;
+    esac
+    ;;
   # --- Sentry telemetry ---
   apps/*/telemetry/issues/*)
-    printf '{"data":{"id":"issue-001","title":"Payment failed","events_count":2,"timeline":[{"id":"evt-001"}],"selected_event":{"id":"evt-001","user":{"id":"buyer-42"}}}}' >"$output"
+    case "$method" in
+      PATCH) printf '{"data":{"id":"issue-001","title":"Payment failed","events_count":2,"status":"resolved","tags":[["urgent","#f43f5e","pulse"]],"resolved_at":"2026-08-06T12:00:00Z"}}' >"$output" ;;
+      *) printf '{"data":{"id":"issue-001","title":"Payment failed","events_count":2,"timeline":[{"id":"evt-001"}],"selected_event":{"id":"evt-001","user":{"id":"buyer-42"}}}}' >"$output" ;;
+    esac
     ;;
   apps/*/telemetry/issues)
     printf '{"data":[{"id":"issue-001","title":"Payment failed","events_count":2,"status":"unresolved","last_seen_at":"2026-08-05T12:00:00Z"}]}' >"$output"

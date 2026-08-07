@@ -135,7 +135,7 @@ class DemoApiKeyTest extends TestCase
 
         $this->deleteJson($this->api('/apps/api-managed-app'))
             ->assertNoContent();
-        $this->assertDatabaseMissing('mobile_apps', ['id' => $appId]);
+        $this->assertSoftDeleted('mobile_apps', ['id' => $appId]);
     }
 
     public function test_seeded_api_key_can_manage_assets_and_credentials(): void

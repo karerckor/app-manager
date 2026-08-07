@@ -12,12 +12,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'slug', 'owner_id', 'check_credential_uniqueness_by_default', 'allowed_credential_storage_modes'])]
 class Team extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, SoftDeletes;
 
     public function owner(): BelongsTo
     {
@@ -37,6 +38,11 @@ class Team extends Model
     public function mobileApps(): HasMany
     {
         return $this->hasMany(MobileApp::class);
+    }
+
+    public function blueprints(): HasMany
+    {
+        return $this->hasMany(Blueprint::class);
     }
 
     public function credentials(): HasMany
@@ -92,6 +98,11 @@ class Team extends Model
     public function sentryEvents(): HasMany
     {
         return $this->hasMany(SentryEvent::class);
+    }
+
+    public function sentryEnvelopes(): HasMany
+    {
+        return $this->hasMany(SentryEnvelope::class);
     }
 
     public function sentryIssues(): HasMany
@@ -171,7 +182,7 @@ class Team extends Model
             $slug = $baseSlug;
             $suffix = 2;
 
-            while (static::where('slug', $slug)->exists()) {
+            while (static::withTrashed()->where('slug', $slug)->exists()) {
                 $slug = $baseSlug.'-'.$suffix++;
             }
 
@@ -179,8 +190,18 @@ class Team extends Model
         });
 
         static::deleting(function (Team $team) {
-            $team->mobileApps->each->delete();
-            $team->credentials->each->delete();
+            $team->apiKeys()->delete();
+
+            if (! $team->isForceDeleting()) {
+                return;
+            }
+
+            $team->mobileApps()->withTrashed()->cursor()
+                ->each(fn (MobileApp $app) => $app->forceDelete());
+            $team->credentials()->withTrashed()->cursor()
+                ->each(fn (Credential $credential) => $credential->forceDelete());
+            $team->blueprints()->withTrashed()->cursor()
+                ->each(fn (Blueprint $blueprint) => $blueprint->forceDelete());
         });
     }
 

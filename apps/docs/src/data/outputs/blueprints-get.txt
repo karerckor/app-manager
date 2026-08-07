@@ -1,0 +1,9 @@
+id:              019fd621-94fe-7264-84e5-e3a6c2a985e2
+name:            Production application standard
+description:     Metadata, files, and platforms required before a production release.
+platforms:       ios, android
+required_files:  associated-domains.json, privacy-manifest.json
+applications:    2
+hooks:           2
+created_at:      2026-08-06T08:12:32.000000Z
+updated_at:      2026-08-06T08:12:32.000000Z

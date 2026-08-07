@@ -63,6 +63,19 @@ class CredentialController extends Controller
         return CredentialResource::collection($credentials);
     }
 
+    public function trash(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
+    {
+        return CredentialResource::collection(
+            $team->credentials()->onlyTrashed()
+                ->where(fn ($query) => $query
+                    ->whereHas('appIdentifiers', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id))
+                    ->orWhereHas('profiles.appIdentifier', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id)))
+                ->with($this->relationsFor($mobileApp))
+                ->latest('deleted_at')
+                ->paginate($this->perPage($request)),
+        );
+    }
+
     public function store(Request $request, Team $team, MobileApp $mobileApp): JsonResponse
     {
         $type = CredentialType::tryFrom((string) $request->input('type'));
@@ -247,6 +260,20 @@ class CredentialController extends Controller
         $this->expoAutoSync->dispatchForAppIds($appIds);
 
         return response()->noContent();
+    }
+
+    public function restore(Team $team, MobileApp $mobileApp, string $credential): CredentialResource
+    {
+        $credentialModel = $team->credentials()->onlyTrashed()
+            ->whereKey($credential)
+            ->where(fn ($query) => $query
+                ->whereHas('appIdentifiers', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id))
+                ->orWhereHas('profiles.appIdentifier', fn ($relation) => $relation->where('mobile_app_id', $mobileApp->id)))
+            ->firstOrFail();
+        $credentialModel->restore();
+        $this->expoAutoSync->dispatchForAppIds($this->expoAutoSync->appIdsForCredential($credentialModel));
+
+        return new CredentialResource($credentialModel->refresh()->load($this->relationsFor($mobileApp)));
     }
 
     public function download(

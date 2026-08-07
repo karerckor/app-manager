@@ -30,7 +30,7 @@ class DeliverWebhook implements ShouldQueue
 
         $delivery = DB::transaction(function () {
             $delivery = WebhookDelivery::query()
-                ->with(['endpoint.integration', 'event'])
+                ->with(['team', 'endpoint.integration', 'event'])
                 ->lockForUpdate()
                 ->findOrFail($this->deliveryId);
 
@@ -46,7 +46,7 @@ class DeliverWebhook implements ShouldQueue
                 return null;
             }
 
-            if ($delivery->endpoint->trashed()
+            if (! $delivery->team || $delivery->endpoint->trashed()
                 || $delivery->endpoint->integration->status !== IntegrationStatus::Active) {
                 $delivery->update([
                     'status' => WebhookDeliveryStatus::Exhausted,
@@ -64,7 +64,7 @@ class DeliverWebhook implements ShouldQueue
                 'last_error' => null,
             ]);
 
-            return $delivery->refresh()->load(['endpoint.integration', 'event']);
+            return $delivery->refresh()->load(['team', 'endpoint.integration', 'event']);
         });
 
         if (! $delivery) {

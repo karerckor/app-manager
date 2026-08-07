@@ -42,7 +42,12 @@
     export let sentryEnabled = false;
     export let storeSentryUrl = '';
     export let sentryDsns = [];
-    export let sentryEvents = [];
+    export let sentryEvents = { data: [], links: [], total: 0 };
+    export let sentryEventFilters = {};
+    export let sentryApps = { data: [], links: [], total: 0 };
+    export let sentryAppFilters = {};
+    export let sentryAppsCount = 0;
+    export let sentryBlueprints = [];
 
     let showWebhook = false;
     let editingEndpoint = null;
@@ -740,7 +745,12 @@
                 storeUrl={storeSentryUrl}
                 dsns={sentryDsns}
                 events={sentryEvents}
-                {apps}
+                eventFilters={sentryEventFilters}
+                apps={sentryApps}
+                appFilters={sentryAppFilters}
+                appsCount={sentryAppsCount}
+                blueprints={sentryBlueprints}
+                indexUrl={integrationUrls.sentry}
             />
         {:else if activeTab === 'notifications'}
             <NotificationsPanel

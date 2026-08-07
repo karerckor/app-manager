@@ -49,6 +49,7 @@ export APP_MANAGER_API_KEY='super-secret-token'
 export APP_MANAGER_TEAM='mobile-team'
 export APP_MANAGER_APP='customer-app'
 export APP_MANAGER_INSTANCE_URL='https://manager.example/api/v1/'
+export APP_MANAGER_BUILD_ID='bld-env'
 export APP_MANAGER_CURL_BIN="$MOCK_CURL"
 export APPM_TEST_CURL_LOG="$MOCK_LOG"
 export APPM_TEST_CURL_ARG_LOG="$MOCK_ARG_LOG"
@@ -95,6 +96,42 @@ assert_contains "$output" 'completed' 'builds patch prints new status'
 request_body=$(grep -o '"status":"completed"' "$MOCK_LOG" || true)
 [ -n "$request_body" ] || fail 'builds patch sends status in body'
 pass 'builds patch'
+
+# --- build lifecycle aliases ---
+: >"$MOCK_LOG"
+output=$("$CLI" build start --app customer-app 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$output" 'updated to running' 'build start prints the running status'
+assert_contains "$log_line" 'builds/bld-env' 'build start defaults to APP_MANAGER_BUILD_ID'
+assert_contains "$log_line" '"status":"running"' 'build start sends running status'
+pass 'build start alias'
+
+: >"$MOCK_LOG"
+output=$("$CLI" build completed --app customer-app bld-explicit 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$output" 'updated to completed' 'build completed prints the completed status'
+assert_contains "$log_line" 'builds/bld-explicit' 'explicit build ID overrides APP_MANAGER_BUILD_ID'
+assert_contains "$log_line" '"status":"completed"' 'build completed sends completed status'
+pass 'build completed alias'
+
+: >"$MOCK_LOG"
+output=$("$CLI" build failed --app customer-app 2>&1)
+assert_contains "$output" 'updated to failed' 'build failed prints the failed status'
+assert_contains "$(cat "$MOCK_LOG")" '"status":"failed"' 'build failed sends failed status'
+pass 'build failed alias'
+
+build_help=$("$CLI" build --help 2>&1)
+assert_contains "$build_help" 'APP_MANAGER_BUILD_ID' 'build help documents the default build ID'
+assert_contains "$build_help" 'completed' 'build help lists lifecycle actions'
+pass 'build lifecycle help'
+
+set +e
+missing_id_output=$(APP_MANAGER_BUILD_ID='' "$CLI" build start 2>&1)
+missing_id_code=$?
+set -e
+[ "$missing_id_code" -ne 0 ] || fail 'build start should require a build ID or APP_MANAGER_BUILD_ID'
+assert_contains "$missing_id_output" 'APP_MANAGER_BUILD_ID' 'missing alias build ID explains the environment fallback'
+pass 'build lifecycle alias requires an ID'
 
 # --- builds create with tags ---
 : >"$MOCK_LOG"
@@ -148,4 +185,4 @@ assert_contains "$output" 'android, 1.4.0' 'builds get prints tag names'
 assert_contains "$output" 'completed' 'builds get prints the status'
 pass 'builds get default output'
 
-printf '1..12\n'
+printf '1..17\n'

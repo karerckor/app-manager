@@ -71,6 +71,28 @@ the credential-access audit log.
 `docker compose ps`; use `docker compose logs queue scheduler` when either
 process is restarting or unhealthy.
 
+## Data retention and recovery
+
+Applications, credentials, identifiers, profiles, builds, artifacts, blueprints,
+teams, and users go to a recoverable trash first. The scheduler permanently
+purges them no earlier than `TRASH_RETENTION_DAYS` (90 by default); credentials
+can use a separate `CREDENTIAL_TRASH_RETENTION_DAYS` window. A parent stays in
+trash longer when deleting it would cut short a child build-log or Sentry
+archive's retention window.
+
+Completed build logs stay in PostgreSQL for `BUILD_LOG_RETENTION_DAYS` (30 days),
+then move to private storage for
+`BUILD_LOG_ARCHIVE_RETENTION_DAYS` (365 days). Terminal Sentry payloads follow
+the equivalent `SENTRY_HOT_RETENTION_DAYS` and compressed-archive
+`SENTRY_ARCHIVE_RETENTION_DAYS` windows. Set `SENTRY_ARCHIVE_DISK` to a separate
+Laravel filesystem disk when telemetry archives should not share the normal
+private media disk. Searchable Sentry metadata remains in PostgreSQL while its
+raw payload is cold.
+
+These transitions and final purges are scheduler jobs. Treat an unhealthy
+`scheduler` service as a retention-policy failure, and include the private
+archive disk in backups for as long as its retention window promises recovery.
+
 ## Upgrading
 
 ```bash

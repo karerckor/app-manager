@@ -6,6 +6,7 @@ use App\Enums\CredentialType;
 use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Models\AppIdentifier;
+use App\Models\Blueprint;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
@@ -84,7 +85,16 @@ class PlatformApiTest extends TestCase
 
         $this->deleteJson("/api/v1/{$team->slug}/apps/customer-app-2")
             ->assertNoContent();
-        $this->assertDatabaseMissing('mobile_apps', ['id' => $appId]);
+        $this->assertSoftDeleted('mobile_apps', ['id' => $appId]);
+
+        $this->getJson("/api/v1/{$team->slug}/apps/trash")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $appId)
+            ->assertJsonPath('data.0.deleted_at', fn ($value) => is_string($value));
+        $this->postJson("/api/v1/{$team->slug}/apps/trash/{$appId}/restore")
+            ->assertOk()
+            ->assertJsonPath('data.id', $appId);
+        $this->assertDatabaseHas('mobile_apps', ['id' => $appId, 'deleted_at' => null]);
     }
 
     public function test_mobile_app_metadata_must_be_a_json_object_and_can_be_cleared(): void
@@ -107,6 +117,32 @@ class PlatformApiTest extends TestCase
             ->assertJsonPath('data.metadata', null);
 
         $this->assertNull($app->fresh()->metadata);
+    }
+
+    public function test_mobile_app_can_be_created_with_a_blueprint_from_the_same_team(): void
+    {
+        [$user, $team] = $this->teamMember();
+        $blueprint = Blueprint::factory()->create(['team_id' => $team->id]);
+        $foreignBlueprint = Blueprint::factory()->create();
+        $this->authenticate($user, $team);
+
+        $this->postJson("/api/v1/{$team->slug}/apps", [
+            'name' => 'Blueprint app',
+            'blueprint_id' => $blueprint->id,
+        ])->assertCreated()
+            ->assertJsonPath('data.blueprint_id', $blueprint->id);
+
+        $this->assertDatabaseHas('mobile_apps', [
+            'team_id' => $team->id,
+            'slug' => 'blueprint-app',
+            'blueprint_id' => $blueprint->id,
+        ]);
+
+        $this->postJson("/api/v1/{$team->slug}/apps", [
+            'name' => 'Foreign blueprint app',
+            'blueprint_id' => $foreignBlueprint->id,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('blueprint_id');
     }
 
     public function test_identifiers_can_be_managed_but_not_cross_scoped_between_apps(): void
@@ -134,6 +170,10 @@ class PlatformApiTest extends TestCase
 
         $this->deleteJson("/api/v1/{$team->slug}/apps/{$app->slug}/identifiers/{$id}")
             ->assertNoContent();
+        $this->assertSoftDeleted('app_identifiers', ['id' => $id]);
+        $this->postJson("/api/v1/{$team->slug}/apps/{$app->slug}/identifiers/trash/{$id}/restore")
+            ->assertOk()
+            ->assertJsonPath('data.id', $id);
     }
 
     public function test_identifier_versions_are_exposed_and_version_code_is_android_only(): void
@@ -280,7 +320,20 @@ class PlatformApiTest extends TestCase
             ->assertNotFound();
 
         $this->deleteJson("{$url}/{$id}")->assertNoContent();
-        $this->assertDatabaseMissing('credentials', ['id' => $id]);
+        $this->assertSoftDeleted('credentials', ['id' => $id]);
+
+        $this->getJson("/api/v1/{$team->slug}/apps/{$foreignApp->slug}/credentials/trash")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->postJson("/api/v1/{$team->slug}/apps/{$foreignApp->slug}/credentials/trash/{$id}/restore")
+            ->assertNotFound();
+        $this->getJson("{$url}/trash")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $id)
+            ->assertJsonPath('data.0.deleted_at', fn ($value) => is_string($value));
+        $this->postJson("{$url}/trash/{$id}/restore")
+            ->assertOk()
+            ->assertJsonPath('data.id', $id);
     }
 
     public function test_credential_types_expose_the_validation_contract(): void

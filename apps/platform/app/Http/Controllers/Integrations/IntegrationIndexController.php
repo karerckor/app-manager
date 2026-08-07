@@ -16,9 +16,13 @@ use App\Integrations\Webhooks\WebhookSubscriptionFilters;
 use App\Models\CiCdPipeline;
 use App\Models\ExpoProject;
 use App\Models\Integration;
+use App\Models\MobileApp;
+use App\Models\SentryEvent;
 use App\Models\Team;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -27,6 +31,10 @@ class IntegrationIndexController extends Controller
     private const EXPO_PROJECTS_PER_PAGE = 20;
 
     private const CI_CD_PIPELINES_PER_PAGE = 25;
+
+    private const SENTRY_APPS_PER_PAGE = 25;
+
+    private const SENTRY_EVENTS_PER_PAGE = 25;
 
     public function ciCd(Request $request, Team $team): Response
     {
@@ -253,7 +261,7 @@ class IntegrationIndexController extends Controller
                 && (bool) config('integrations.sentry.enabled'),
             'storeSentryUrl' => route('accounts.integrations.sentry.store', $team),
             'sentryDsns' => $team->sentryDsns()
-                ->with(['integration', 'routes.mobileApp', 'routes.appIdentifier'])
+                ->with(['integration', 'blueprints', 'routes.mobileApp', 'routes.appIdentifier'])
                 ->withCount('events')
                 ->latest()
                 ->get()
@@ -266,6 +274,12 @@ class IntegrationIndexController extends Controller
                     'event_source' => $dsn->event_source?->value,
                     'app_key' => $dsn->app_key,
                     'identifier_key' => $dsn->identifier_key,
+                    'target_mode' => $dsn->target_mode->value,
+                    'blueprint_ids' => $dsn->blueprints->pluck('id')->values(),
+                    'blueprints' => $dsn->blueprints->map(fn ($blueprint) => [
+                        'id' => $blueprint->id,
+                        'name' => $blueprint->name,
+                    ])->values(),
                     'upstream_configured' => filled($dsn->upstream_dsn),
                     'events_count' => $dsn->events_count,
                     'consecutive_forward_failures' => $dsn->consecutive_forward_failures,
@@ -284,29 +298,28 @@ class IntegrationIndexController extends Controller
                     'update_url' => route('accounts.integrations.sentry.update', [$team, $dsn]),
                     'destroy_url' => route('accounts.integrations.sentry.destroy', [$team, $dsn]),
                 ])->values(),
-            'sentryEvents' => $team->sentryEvents()
-                ->with(['mobileApp', 'appIdentifier', 'sentryDsn.integration', 'envelope'])
-                ->latest('occurred_at')
-                ->limit(50)
-                ->get()
-                ->map(fn ($event) => [
-                    'id' => $event->id,
-                    'event_id' => $event->event_id,
-                    'dsn_name' => $event->sentryDsn->integration->name,
-                    'app_name' => $event->mobileApp->name,
-                    'app_slug' => $event->mobileApp->slug,
-                    'identifier' => $event->appIdentifier?->identifier,
-                    'platform' => $event->appIdentifier?->platform?->value,
-                    'item_type' => $event->item_type,
-                    'level' => $event->level,
-                    'title' => $event->title,
-                    'transaction' => $event->transaction,
-                    'trace_id' => $event->trace_id,
-                    'release' => $event->release,
-                    'environment' => $event->environment,
-                    'occurred_at' => $event->occurred_at,
-                    'forward_status' => $event->envelope->status->value,
-                ])->values(),
+            'sentryEvents' => $activeTab === 'sentry'
+                ? $this->presentSentryEvents($request, $team)
+                : ['data' => [], 'links' => [], 'total' => 0],
+            'sentryEventFilters' => $this->sentryEventFilters($request),
+            'sentryAppsCount' => $activeTab === 'sentry'
+                ? $team->mobileApps()->count()
+                : 0,
+            'sentryBlueprints' => $activeTab === 'sentry'
+                ? $team->blueprints()
+                    ->withCount('mobileApps')
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn ($blueprint) => [
+                        'id' => $blueprint->id,
+                        'name' => $blueprint->name,
+                        'apps_count' => $blueprint->mobile_apps_count,
+                    ])->values()
+                : [],
+            'sentryApps' => $activeTab === 'sentry' && $this->shouldPresentSentryApps($request)
+                ? $this->presentSentryApps($request, $team)
+                : ['data' => [], 'links' => [], 'total' => 0],
+            'sentryAppFilters' => ['search' => $this->sentryAppSearch($request)],
             'storeWebhookUrl' => route('accounts.integrations.webhooks.store', $team),
             'webhooksEnabled' => (bool) config('integrations.enabled')
                 && (bool) config('integrations.webhooks.enabled'),
@@ -315,7 +328,7 @@ class IntegrationIndexController extends Controller
             'profileTypes' => array_map(fn (ProfileType $type) => $type->value, ProfileType::cases()),
             'buildStatuses' => array_map(fn (BuildStatus $status) => $status->value, BuildStatus::cases()),
             'reportingModes' => array_map(fn (BuildReportingMode $mode) => $mode->value, BuildReportingMode::cases()),
-            'apps' => $this->presentApps($team),
+            'apps' => $activeTab === 'sentry' ? [] : $this->presentApps($team),
             'integrations' => $team->integrations()
                 ->where(fn ($query) => $query
                     ->where('kind', IntegrationKind::CiCd->value)
@@ -397,6 +410,118 @@ class IntegrationIndexController extends Controller
                     'platform' => $identifier->platform->value,
                 ]),
             ]);
+    }
+
+    private function presentSentryApps(Request $request, Team $team)
+    {
+        $search = $this->sentryAppSearch($request);
+        $editingDsnId = trim($request->string('sentry_dsn')->toString());
+        $selectedAppIds = ! Str::isUuid($editingDsnId)
+            ? collect()
+            : $team->sentryDsns()
+                ->whereKey($editingDsnId)
+                ->first()
+                ?->routes()
+                ->distinct()
+                ->pluck('mobile_app_id') ?? collect();
+        $perPage = min(
+            500,
+            max(self::SENTRY_APPS_PER_PAGE, $selectedAppIds->count() + self::SENTRY_APPS_PER_PAGE),
+        );
+
+        return $team->mobileApps()
+            ->with('appIdentifiers')
+            ->when($search !== '', fn (Builder $query) => $query->where(
+                fn (Builder $query) => $query
+                    ->whereLike('name', "%{$search}%")
+                    ->orWhereLike('slug', "%{$search}%"),
+            ))
+            ->when($selectedAppIds->isNotEmpty(), function (Builder $query) use ($selectedAppIds) {
+                $placeholders = implode(',', array_fill(0, $selectedAppIds->count(), '?'));
+
+                $query->orderByRaw(
+                    "CASE WHEN id IN ({$placeholders}) THEN 0 ELSE 1 END",
+                    $selectedAppIds->all(),
+                );
+            })
+            ->orderBy('name')
+            ->paginate($perPage, ['*'], 'sentry_apps_page')
+            ->withQueryString()
+            ->through(fn (MobileApp $app) => [
+                'id' => $app->id,
+                'name' => $app->name,
+                'slug' => $app->slug,
+                'identifiers' => $app->appIdentifiers->map(fn ($identifier) => [
+                    'id' => $identifier->id,
+                    'name' => $identifier->name ?: $identifier->identifier,
+                    'identifier' => $identifier->identifier,
+                    'platform' => $identifier->platform->value,
+                ])->values(),
+            ]);
+    }
+
+    private function presentSentryEvents(Request $request, Team $team)
+    {
+        $filters = $this->sentryEventFilters($request);
+
+        return $team->sentryEvents()
+            ->with(['mobileApp', 'appIdentifier', 'sentryDsn.integration', 'envelope'])
+            ->when($filters['type'] === 'errors', fn (Builder $query) => $query->where('item_type', 'event'))
+            ->when($filters['type'] === 'traces', fn (Builder $query) => $query->where('item_type', 'transaction'))
+            ->when($filters['search'] !== '', fn (Builder $query) => $query->where(function (Builder $query) use ($filters) {
+                $pattern = "%{$filters['search']}%";
+
+                $query->whereLike('title', $pattern)
+                    ->orWhereLike('transaction', $pattern)
+                    ->orWhereLike('event_id', $pattern)
+                    ->orWhereLike('trace_id', $pattern)
+                    ->orWhereHas('mobileApp', fn (Builder $apps) => $apps
+                        ->whereLike('name', $pattern)
+                        ->orWhereLike('slug', $pattern));
+            }))
+            ->latest('occurred_at')
+            ->paginate(self::SENTRY_EVENTS_PER_PAGE, ['*'], 'sentry_events_page')
+            ->withQueryString()
+            ->through(fn (SentryEvent $event) => [
+                'id' => $event->id,
+                'event_id' => $event->event_id,
+                'dsn_name' => $event->sentryDsn->integration->name,
+                'app_name' => $event->mobileApp->name,
+                'app_slug' => $event->mobileApp->slug,
+                'identifier' => $event->appIdentifier?->identifier,
+                'platform' => $event->appIdentifier?->platform?->value,
+                'item_type' => $event->item_type,
+                'level' => $event->level,
+                'title' => $event->title,
+                'transaction' => $event->transaction,
+                'trace_id' => $event->trace_id,
+                'release' => $event->release,
+                'environment' => $event->environment,
+                'occurred_at' => $event->occurred_at,
+                'forward_status' => $event->envelope->status->value,
+            ]);
+    }
+
+    private function sentryEventFilters(Request $request): array
+    {
+        $type = $request->string('sentry_event_type')->toString();
+
+        return [
+            'type' => in_array($type, ['errors', 'traces'], true) ? $type : 'all',
+            'search' => mb_substr(trim($request->string('sentry_event_search')->toString()), 0, 100),
+        ];
+    }
+
+    private function sentryAppSearch(Request $request): string
+    {
+        return mb_substr(trim($request->string('sentry_app_search')->toString()), 0, 100);
+    }
+
+    private function shouldPresentSentryApps(Request $request): bool
+    {
+        $partialProps = array_filter(explode(',', (string) $request->header('X-Inertia-Partial-Data')));
+
+        return $request->boolean('sentry_app_picker') || in_array('sentryApps', $partialProps, true);
     }
 
     private function presentCiCdIntegration(

@@ -29,7 +29,7 @@ class AppIdentifierDeleteTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('status', 'App identifier removed.');
 
-        $this->assertDatabaseMissing('app_identifiers', ['id' => $identifier->id]);
+        $this->assertSoftDeleted('app_identifiers', ['id' => $identifier->id]);
         $this->assertDatabaseHas('webhook_events', [
             'team_id' => $team->id,
             'event_type' => WebhookEventType::AppIdentifierDeleted->value,

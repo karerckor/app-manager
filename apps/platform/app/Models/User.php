@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -23,7 +25,7 @@ use LogicException;
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, HasUuids, Notifiable, TwoFactorAuthenticatable;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable, SoftDeletes, TwoFactorAuthenticatable;
 
     public function teams(): BelongsToMany
     {
@@ -33,6 +35,11 @@ class User extends Authenticatable
     public function currentTeam(): BelongsTo
     {
         return $this->belongsTo(Team::class, 'current_team_id');
+    }
+
+    public function ownedTeams(): HasMany
+    {
+        return $this->hasMany(Team::class, 'owner_id')->withTrashed();
     }
 
     /**
@@ -91,5 +98,21 @@ class User extends Authenticatable
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            $user->tokens()->delete();
+
+            if (! $user->isForceDeleting()) {
+                return;
+            }
+
+            Team::withTrashed()
+                ->where('owner_id', $user->id)
+                ->cursor()
+                ->each(fn (Team $team) => $team->forceDelete());
+        });
     }
 }

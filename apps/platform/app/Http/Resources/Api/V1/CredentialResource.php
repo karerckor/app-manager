@@ -49,6 +49,7 @@ class CredentialResource extends JsonResource
                 : $this->vaultBlock($this->resource->vaultReference()->first()),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'deleted_at' => $this->when($this->resource->trashed(), $this->deleted_at),
         ];
     }
 

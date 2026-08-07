@@ -43,9 +43,7 @@ capture() {
   local target="$OUT_DIR/$slug.txt"
   local status=0
 
-  if ! "$CLI" "$@" >"$target.tmp" 2>&1; then
-    status=$?
-  fi
+  "$CLI" "$@" >"$target.tmp" 2>&1 || status=$?
 
   # A capture is only useful if the CLI produced something. An empty file means
   # the command failed before printing anything, which would ship as a blank
@@ -72,6 +70,9 @@ printf 'capturing into %s\n' "${OUT_DIR#"$REPO_ROOT/"}"
 # --- applications ----------------------------------------------------------
 capture apps-list apps list
 capture apps-get apps get "$APP_MANAGER_APP"
+
+# --- blueprints ------------------------------------------------------------
+capture blueprints-list blueprints list
 
 # --- identifiers -----------------------------------------------------------
 capture identifiers-list identifiers list
@@ -133,6 +134,15 @@ if [ -n "$file_name" ]; then
   capture files-show files show --name "$file_name"
 else
   printf '  skip files show: no file name available\n' >&2
+fi
+
+blueprint_id=$("$CLI" --json blueprints list 2>/dev/null | "${JQ_BIN:-jq}" -r '.data[0].id // empty' || true)
+
+if [ -n "$blueprint_id" ]; then
+  capture blueprints-get blueprints get "$blueprint_id"
+  capture blueprint-hooks-list blueprints hooks list "$blueprint_id"
+else
+  printf '  skip blueprint-scoped captures: no blueprint id available\n' >&2
 fi
 
 # The API key must never end up in a captured file. This is a guard against a

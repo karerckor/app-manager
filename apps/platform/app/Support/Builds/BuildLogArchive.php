@@ -64,6 +64,26 @@ class BuildLogArchive
         );
     }
 
+    public function purge(BuildRecord $build): bool
+    {
+        return DB::transaction(function () use ($build): bool {
+            $locked = BuildRecord::withTrashed()->lockForUpdate()->findOrFail($build->id);
+
+            if (! $locked->log_archive_disk || ! $locked->log_archive_path) {
+                return false;
+            }
+
+            Storage::disk($locked->log_archive_disk)->delete($locked->log_archive_path);
+            $locked->update([
+                'log_archive_disk' => null,
+                'log_archive_path' => null,
+                'log_archive_size' => null,
+            ]);
+
+            return true;
+        });
+    }
+
     private function path(BuildRecord $build): string
     {
         return "build-log-archives/{$build->team_id}/{$build->mobile_app_id}/{$build->id}.log";

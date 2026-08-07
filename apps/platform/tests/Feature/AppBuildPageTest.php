@@ -154,7 +154,30 @@ class AppBuildPageTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Apps/Builds/Show')
                 ->where('build.id', $build->id)
+                ->where('build.state_url', route('accounts.apps.builds.state', [$team, $app, $build]))
                 ->where('build.parameters', ['channel' => 'internal']));
+    }
+
+    public function test_state_returns_the_latest_build_data_without_an_inertia_page_reload(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'status' => 'running',
+            'reporting_mode' => 'manual',
+            'log_output' => "--- step: Test ---\nRunning tests",
+        ]);
+
+        $this->actingAs($user)
+            ->getJson(route('accounts.apps.builds.state', [$team, $app, $build]))
+            ->assertOk()
+            ->assertHeader('cache-control', 'no-store, private')
+            ->assertJsonPath('build.id', $build->id)
+            ->assertJsonPath('build.status', 'running')
+            ->assertJsonPath('build.logs', "--- step: Test ---\nRunning tests")
+            ->assertJsonPath('build.state_url', route('accounts.apps.builds.state', [$team, $app, $build]));
     }
 
     public function test_show_forbidden_for_non_member(): void

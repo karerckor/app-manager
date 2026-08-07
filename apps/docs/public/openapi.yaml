@@ -5,7 +5,7 @@ info:
   description: |
     Multi-tenant mobile app management platform API.
 
-    Manage applications, builds, credentials, CI/CD pipelines, Expo integration, and outbound webhooks.
+    Manage applications, blueprints, builds, credentials, CI/CD pipelines, Expo integration, and outbound webhooks.
     All endpoints are scoped to a team via the `{team_slug}` path parameter.
 
     ## Authentication
@@ -43,6 +43,8 @@ security:
 tags:
   - name: Mobile Apps
     description: CRUD operations on mobile applications
+  - name: Blueprints
+    description: Application structure contracts and conditional tag hooks
   - name: Assets
     description: Icon and splashscreen management
   - name: Files
@@ -125,6 +127,52 @@ paths:
       security:
         - bearerAuth: [apps:write]
 
+  /apps/trash:
+    get:
+      operationId: listDeletedApps
+      summary: List deleted applications
+      description: Returns applications that can still be restored during the configured trash retention window.
+      tags: [Mobile Apps]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated application trash
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/MobileApp' }
+      security:
+        - bearerAuth: [apps:read]
+
+  /apps/trash/{app_id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/AppId'
+    post:
+      operationId: restoreApp
+      summary: Restore an application
+      description: Restores the application with its identifiers, builds, artifacts, credentials links, and retained telemetry intact.
+      tags: [Mobile Apps]
+      responses:
+        '200':
+          description: Application restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/MobileApp' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security:
+        - bearerAuth: [apps:write]
+
   /apps/{app_slug}:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
@@ -178,13 +226,306 @@ paths:
     delete:
       operationId: deleteApp
       summary: Delete application
-      description: Delete a mobile application and all its associated data.
+      description: Moves the application to recoverable trash. Its associated data and private files are preserved until permanent purge.
       tags: [Mobile Apps]
       responses:
         '204':
           description: Application deleted
       security:
         - bearerAuth: [apps:write]
+
+  /blueprints:
+    get:
+      operationId: listBlueprints
+      summary: List blueprints
+      description: Returns a paginated list of application blueprints for the team.
+      tags: [Blueprints]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of blueprints
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Blueprint'
+      security:
+        - bearerAuth: [blueprints:read]
+
+    post:
+      operationId: createBlueprint
+      summary: Create blueprint
+      description: Create a draft or complete application blueprint.
+      tags: [Blueprints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBlueprint'
+      responses:
+        '201':
+          description: Blueprint created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Blueprint'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [blueprints:write]
+
+  /blueprints/{blueprint}:
+    parameters:
+      - $ref: '#/components/parameters/BlueprintId'
+
+    get:
+      operationId: getBlueprint
+      summary: Get blueprint
+      description: Returns a blueprint together with its conditional hooks.
+      tags: [Blueprints]
+      responses:
+        '200':
+          description: Blueprint details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Blueprint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:read]
+
+    patch:
+      operationId: updateBlueprint
+      summary: Update blueprint
+      description: |
+        Updates only the supplied fields, then evaluates all applications attached to the blueprint.
+        JSON schema, required files, and platforms may be completed later or cleared with `null`.
+      tags: [Blueprints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBlueprint'
+      responses:
+        '200':
+          description: Blueprint updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Blueprint'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [blueprints:write]
+
+    delete:
+      operationId: deleteBlueprint
+      summary: Delete blueprint
+      description: Moves the blueprint to recoverable trash. Attached applications keep their blueprint association for restore.
+      tags: [Blueprints]
+      responses:
+        '204':
+          description: Blueprint deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:write]
+
+  /blueprints/trash/{blueprint}/restore:
+    parameters:
+      - $ref: '#/components/parameters/BlueprintId'
+    post:
+      operationId: restoreBlueprint
+      summary: Restore a blueprint
+      tags: [Blueprints]
+      responses:
+        '200':
+          description: Blueprint restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Blueprint' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security:
+        - bearerAuth: [blueprints:write]
+
+  /blueprints/{blueprint}/evaluate:
+    parameters:
+      - $ref: '#/components/parameters/BlueprintId'
+
+    post:
+      operationId: evaluateBlueprint
+      summary: Evaluate attached applications
+      description: Runs every enabled conditional hook against all applications attached to the blueprint.
+      tags: [Blueprints]
+      responses:
+        '200':
+          description: Evaluation completed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [evaluated_applications]
+                    properties:
+                      evaluated_applications:
+                        type: integer
+                        minimum: 0
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:write]
+
+  /blueprints/{blueprint}/hooks:
+    parameters:
+      - $ref: '#/components/parameters/BlueprintId'
+
+    get:
+      operationId: listBlueprintHooks
+      summary: List conditional hooks
+      description: Returns a paginated list of conditional hooks for a blueprint.
+      tags: [Blueprints]
+      parameters:
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/PageParam'
+      responses:
+        '200':
+          description: Paginated list of conditional hooks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BlueprintHook'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:read]
+
+    post:
+      operationId: createBlueprintHook
+      summary: Create conditional hook
+      description: Creates a hook and immediately evaluates it against all applications attached to the blueprint.
+      tags: [Blueprints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBlueprintHook'
+      responses:
+        '201':
+          description: Conditional hook created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BlueprintHook'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [blueprints:write]
+
+  /blueprints/{blueprint}/hooks/{hook}:
+    parameters:
+      - $ref: '#/components/parameters/BlueprintId'
+      - $ref: '#/components/parameters/BlueprintHookId'
+
+    get:
+      operationId: getBlueprintHook
+      summary: Get conditional hook
+      tags: [Blueprints]
+      responses:
+        '200':
+          description: Conditional hook details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BlueprintHook'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:read]
+
+    patch:
+      operationId: updateBlueprintHook
+      summary: Update conditional hook
+      description: Updates only the supplied fields, then evaluates all applications attached to the blueprint.
+      tags: [Blueprints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBlueprintHook'
+      responses:
+        '200':
+          description: Conditional hook updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BlueprintHook'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+      security:
+        - bearerAuth: [blueprints:write]
+
+    delete:
+      operationId: deleteBlueprintHook
+      summary: Delete conditional hook
+      description: Deletes the hook without changing tags already set on applications.
+      tags: [Blueprints]
+      responses:
+        '204':
+          description: Conditional hook deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - bearerAuth: [blueprints:write]
 
   /apps/{app_slug}/assets:
     parameters:
@@ -594,10 +935,32 @@ paths:
     delete:
       operationId: deleteIdentifier
       summary: Delete identifier
+      description: Moves the identifier to recoverable trash without deleting its profiles, credential links, or builds.
       tags: [Identifiers]
       responses:
         '204':
           description: Identifier deleted
+      security:
+        - bearerAuth: [identifiers:write]
+
+  /apps/{app_slug}/identifiers/trash/{identifier}/restore:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/IdentifierId'
+    post:
+      operationId: restoreIdentifier
+      summary: Restore an application identifier
+      tags: [Identifiers]
+      responses:
+        '200':
+          description: Identifier restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/AppIdentifier' }
+        '404': { $ref: '#/components/responses/NotFound' }
       security:
         - bearerAuth: [identifiers:write]
 
@@ -660,6 +1023,52 @@ paths:
       security:
         - bearerAuth: [credentials:write]
 
+  /apps/{app_slug}/credentials/trash:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+    get:
+      operationId: listDeletedCredentials
+      summary: List deleted credentials for an application
+      description: Returns recoverable credentials that are still attached to this application.
+      tags: [Credentials]
+      responses:
+        '200':
+          description: Paginated credential trash
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Credential' }
+      security:
+        - bearerAuth: [credentials:read]
+
+  /apps/{app_slug}/credentials/trash/{credential}/restore:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/CredentialId'
+    post:
+      operationId: restoreCredential
+      summary: Restore a credential
+      description: Restores the encrypted payload, vault reference, application/profile links, and private file.
+      tags: [Credentials]
+      responses:
+        '200':
+          description: Credential restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Credential' }
+        '404': { $ref: '#/components/responses/NotFound' }
+      security:
+        - bearerAuth: [credentials:write]
+
   /apps/{app_slug}/credentials/{credential}:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
@@ -714,6 +1123,7 @@ paths:
     delete:
       operationId: deleteCredential
       summary: Delete credential
+      description: Moves the credential to recoverable trash while preserving encrypted material, vault metadata, links, and private files.
       tags: [Credentials]
       responses:
         '204':
@@ -1102,10 +1512,33 @@ paths:
     delete:
       operationId: deleteArtifact
       summary: Delete artifact
+      description: Moves the artifact to recoverable trash while preserving its private file.
       tags: [Artifacts]
       responses:
         '204':
           description: Artifact deleted
+      security:
+        - bearerAuth: [artifacts:write]
+
+  /apps/{app_slug}/builds/{build}/artifacts/trash/{artifact}/restore:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/BuildId'
+      - $ref: '#/components/parameters/ArtifactId'
+    post:
+      operationId: restoreArtifact
+      summary: Restore a build artifact
+      tags: [Artifacts]
+      responses:
+        '200':
+          description: Artifact restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Artifact' }
+        '404': { $ref: '#/components/responses/NotFound' }
       security:
         - bearerAuth: [artifacts:write]
 
@@ -1675,9 +2108,8 @@ paths:
       operationId: downloadBuildLogArchive
       summary: Download the archived build log
       description: |
-        Download the archived log for a build whose live log has been truncated. Long logs
-        are archived once they pass the retained size, and the archive stays available after
-        the live log no longer holds the full output.
+        Download the archived log after its configurable hot database window. The private
+        cold object remains available until BUILD_LOG_ARCHIVE_RETENTION_DAYS expires.
       tags: [Logs]
       responses:
         '200':
@@ -2896,6 +3328,56 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
       security: [{ bearerAuth: [apps:read] }]
 
+    patch:
+      operationId: updateAppSentryIssueStatus
+      summary: Resolve or reopen an issue
+      description: Optionally records a comment with the actor and time. A new occurrence automatically reopens a resolved issue as a system action.
+      tags: [Telemetry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSentryIssueStatus' }
+      responses:
+        '200':
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryIssue' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+      security: [{ bearerAuth: [apps:write] }]
+
+  /apps/{app_slug}/telemetry/issues/{issue}/tags:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/SentryIssueId'
+    patch:
+      operationId: updateAppSentryIssueTags
+      summary: Replace App Manager tags attached to an issue
+      description: These editable issue tags are stored separately from the immutable Sentry SDK tags on each occurrence.
+      tags: [Telemetry]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSentryIssueTags' }
+      responses:
+        '200':
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SentryIssue' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+      security: [{ bearerAuth: [apps:write] }]
+
   /apps/{app_slug}/telemetry/traces:
     parameters:
       - $ref: '#/components/parameters/AppSlug'
@@ -2943,6 +3425,30 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
       security: [{ bearerAuth: [apps:read] }]
 
+  /apps/{app_slug}/telemetry/envelopes/{sentry_envelope}/archive:
+    parameters:
+      - $ref: '#/components/parameters/AppSlug'
+      - $ref: '#/components/parameters/SentryEnvelopeId'
+    get:
+      operationId: downloadSentryEnvelopeArchive
+      summary: Download a cold Sentry envelope archive
+      description: Downloads the checksummed gzip archive after the raw envelope and event payloads have left PostgreSQL.
+      tags: [Telemetry]
+      responses:
+        '200':
+          description: Compressed JSON envelope and event payloads
+          headers:
+            X-Content-SHA256:
+              schema: { type: string }
+              description: SHA-256 checksum of the response body
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        '404': { $ref: '#/components/responses/NotFound' }
+      security: [{ bearerAuth: [apps:read] }]
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2965,6 +3471,30 @@ components:
       schema:
         type: string
       description: Application slug
+    AppId:
+      name: app_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Application ID from the trash listing
+    BlueprintId:
+      name: blueprint
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Blueprint ID
+    BlueprintHookId:
+      name: hook
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Conditional hook ID
     AppFileName:
       name: file
       in: path
@@ -3008,6 +3538,14 @@ components:
       schema:
         type: string
       description: Artifact ID
+    SentryEnvelopeId:
+      name: sentry_envelope
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Sentry envelope ID
     IntegrationId:
       name: integration
       in: path
@@ -3104,9 +3642,239 @@ components:
       description: Page number
 
   schemas:
+    Blueprint:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - json_schema
+        - required_files
+        - platforms
+        - applications_count
+        - hooks_count
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        json_schema:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: JSON Schema used to validate application metadata. May be completed later.
+        required_files:
+          type: array
+          items:
+            type: string
+          default: []
+          description: Exact file names expected on an attached application.
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/Platform'
+          default: []
+        applications_count:
+          type: integer
+          minimum: 0
+        hooks_count:
+          type: integer
+          minimum: 0
+        hooks:
+          type: array
+          description: Included when retrieving a single blueprint.
+          items:
+            $ref: '#/components/schemas/BlueprintHook'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BlueprintInput:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+          nullable: true
+        json_schema:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: JSON Schema for application metadata. Optional for draft blueprints.
+        required_files:
+          type: array
+          nullable: true
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+            maxLength: 255
+            pattern: '^[^/\\]+$'
+          description: Exact file names without directory separators. `null` clears the list.
+        platforms:
+          type: array
+          nullable: true
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Platform'
+          description: Required application platforms. `null` clears the list.
+
+    CreateBlueprint:
+      allOf:
+        - $ref: '#/components/schemas/BlueprintInput'
+        - type: object
+          required: [name]
+
+    UpdateBlueprint:
+      $ref: '#/components/schemas/BlueprintInput'
+
+    BlueprintHook:
+      type: object
+      required:
+        - id
+        - blueprint_id
+        - name
+        - condition
+        - condition_config
+        - actions
+        - enabled
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        blueprint_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        condition:
+          $ref: '#/components/schemas/BlueprintHookCondition'
+        condition_config:
+          $ref: '#/components/schemas/BlueprintHookConditionConfig'
+        actions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: Ordered actions. They run sequentially when the condition matches.
+          items:
+            $ref: '#/components/schemas/BlueprintHookAction'
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BlueprintHookInput:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        condition:
+          $ref: '#/components/schemas/BlueprintHookCondition'
+        condition_config:
+          $ref: '#/components/schemas/BlueprintHookConditionConfig'
+        actions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: Ordered actions. Each action must contain at least one tag tuple.
+          items:
+            $ref: '#/components/schemas/BlueprintHookAction'
+        enabled:
+          type: boolean
+          default: true
+
+    CreateBlueprintHook:
+      allOf:
+        - $ref: '#/components/schemas/BlueprintHookInput'
+        - type: object
+          required: [name, condition, actions]
+
+    UpdateBlueprintHook:
+      $ref: '#/components/schemas/BlueprintHookInput'
+
+    BlueprintHookCondition:
+      type: string
+      enum:
+        - metadata_incomplete
+        - metadata_matches
+        - file_missing
+        - file_present
+        - platform_missing
+        - platform_present
+        - blueprint_mismatch
+        - blueprint_matches
+      description: |
+        `file_missing` and `file_present` require `condition_config.file_name` to exactly match a file declared by the blueprint.
+        `platform_missing` and `platform_present` require `condition_config.platform` to be declared by the blueprint.
+
+    BlueprintHookConditionConfig:
+      type: object
+      nullable: true
+      properties:
+        file_name:
+          type: string
+          maxLength: 255
+        platform:
+          $ref: '#/components/schemas/Platform'
+
+    BlueprintHookAction:
+      type: object
+      required: [type, tags]
+      properties:
+        type:
+          type: string
+          enum: [add_tag, remove_tag]
+        tags:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/TagTuple'
+
+    TagTuple:
+      type: array
+      minItems: 1
+      maxItems: 3
+      prefixItems:
+        - type: string
+          minLength: 1
+          maxLength: 50
+          description: Tag label.
+        - type: [string, 'null']
+          pattern: '^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$'
+          description: Optional hexadecimal color.
+        - oneOf:
+            - type: string
+              enum: [pulse, ping, flash, tada, heartbeat]
+            - type: 'null'
+          description: Optional animation. Input is case-insensitive and output is canonicalized.
+      items: false
+      examples:
+        - [needs-review]
+        - [blueprint-incomplete, '#f43f5e', heartbeat]
+
     SentryDsnInput:
       type: object
-      required: [name, routing_method, app_key, routes, forward_enabled]
+      required: [name, routing_method, app_key, forward_enabled]
       properties:
         name: { type: string, maxLength: 255 }
         routing_method: { type: string, enum: [query, header, event] }
@@ -3117,10 +3885,20 @@ components:
           description: Required when `routing_method` is `event`.
         app_key: { type: string, maxLength: 120, example: app_slug }
         identifier_key: { type: string, maxLength: 120, nullable: true, example: app_identifier }
+        target_mode:
+          type: string
+          enum: [all, blueprints, selected]
+          default: selected
+          description: Dynamic team-wide scope, dynamic blueprint scope, or explicitly selected routes.
+        blueprint_ids:
+          type: array
+          maxItems: 100
+          description: Required and non-empty when `target_mode` is `blueprints`.
+          items: { type: string, format: uuid }
         routes:
           type: array
-          minItems: 1
-          maxItems: 100
+          maxItems: 500
+          description: Required and non-empty when `target_mode` is `selected`; ignored by dynamic scopes.
           items:
             type: object
             required: [mobile_app_id]
@@ -3148,6 +3926,14 @@ components:
         event_source: { type: string, nullable: true }
         app_key: { type: string }
         identifier_key: { type: string, nullable: true }
+        target_mode: { type: string, enum: [all, blueprints, selected] }
+        blueprints:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
         forward_enabled: { type: boolean }
         routes:
           type: array
@@ -3169,7 +3955,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         fingerprint: { type: string }
-        status: { type: string, example: unresolved }
+        status: { type: string, enum: [unresolved, resolved], example: unresolved }
         level: { type: string, nullable: true }
         title: { type: string }
         events_count: { type: integer }
@@ -3177,6 +3963,70 @@ components:
         last_seen_at: { type: string, format: date-time }
         identifier: { type: string, nullable: true }
         identifier_platform: { type: string, nullable: true }
+        tags:
+          type: array
+          description: Editable App Manager tags attached to the grouped issue. Sentry SDK tags remain on each selected event.
+          items: { $ref: '#/components/schemas/TagTuple' }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        resolved_by:
+          type: object
+          nullable: true
+          properties:
+            type: { type: string, enum: [user, api_key] }
+            id: { oneOf: [{ type: string, format: uuid }, { type: integer }] }
+            name: { type: string }
+            user:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+        status_activity:
+          $ref: '#/components/schemas/SentryIssueStatusActivity'
+
+    SentryIssueStatusActivity:
+      type: object
+      nullable: true
+      properties:
+        action: { type: string, enum: [resolved, reopened] }
+        comment: { type: string, maxLength: 2000, nullable: true }
+        changed_at: { type: string, format: date-time }
+        actor:
+          type: object
+          properties:
+            type: { type: string, enum: [user, api_key, system] }
+            id:
+              nullable: true
+              oneOf:
+                - { type: string, format: uuid }
+                - { type: integer }
+            name: { type: string }
+            user:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                name: { type: string }
+
+    UpdateSentryIssueStatus:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [unresolved, resolved] }
+        comment:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: Optional note recorded with this resolve or reopen action.
+
+    UpdateSentryIssueTags:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          nullable: true
+          items: { $ref: '#/components/schemas/TagTuple' }
 
     SentryEventSummary:
       type: object
@@ -3245,15 +4095,20 @@ components:
       type: object
       properties:
         id:
-          type: integer
+          type: string
+          format: uuid
         slug:
           type: string
         name:
           type: string
+        blueprint_id:
+          type: string
+          format: uuid
+          nullable: true
         tags:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/TagTuple'
           default: []
         description:
           type: string
@@ -3275,6 +4130,11 @@ components:
         updated_at:
           type: string
           format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Present in trash-list responses
 
     AppAsset:
       type: object
@@ -3309,6 +4169,11 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        blueprint_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of a blueprint belonging to the same team.
 
     UpdateMobileApp:
       type: object
@@ -3328,6 +4193,11 @@ components:
           type: object
           nullable: true
           additionalProperties: true
+        blueprint_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of a blueprint belonging to the same team, or `null` to detach it.
 
     AssetMetadata:
       type: object
@@ -3459,6 +4329,11 @@ components:
         updated_at:
           type: string
           format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Present in trash-list responses
 
     CredentialProfile:
       type: object
@@ -4337,6 +5212,8 @@ components:
       enum:
         - apps:read
         - apps:write
+        - blueprints:read
+        - blueprints:write
         - identifiers:read
         - identifiers:write
         - assets:read
@@ -4344,6 +5221,8 @@ components:
         - files:read
         - files:write
         - credentials:read
+        - credentials:reveal
+        - credentials:verify
         - credentials:write
         - builds:read
         - builds:write

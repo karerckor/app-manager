@@ -35,7 +35,8 @@ class BuildArtifactWebTest extends TestCase
         $this->actingAs($user)
             ->delete($this->url($team, $app, $build).'/'.$artifact->id)
             ->assertRedirect();
-        $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
+        $this->assertSoftDeleted('artifacts', ['id' => $artifact->id]);
+        $this->assertDatabaseHas('media', ['model_id' => $artifact->id]);
     }
 
     public function test_viewer_cannot_upload_artifact(): void
@@ -49,7 +50,7 @@ class BuildArtifactWebTest extends TestCase
         ])->assertForbidden();
     }
 
-    public function test_deleting_build_purges_artifact_media_record(): void
+    public function test_deleting_build_preserves_artifact_media_for_restore(): void
     {
         Storage::fake(config('media-library.disk_name'));
         [, $team, , $build] = $this->context('owner');
@@ -58,8 +59,9 @@ class BuildArtifactWebTest extends TestCase
 
         $build->delete();
 
-        $this->assertDatabaseMissing('artifacts', ['id' => $artifact->id]);
-        $this->assertDatabaseMissing('media', ['model_id' => $artifact->id]);
+        $this->assertSoftDeleted('build_records', ['id' => $build->id]);
+        $this->assertDatabaseHas('artifacts', ['id' => $artifact->id, 'deleted_at' => null]);
+        $this->assertDatabaseHas('media', ['model_id' => $artifact->id]);
     }
 
     public function test_show_exposes_artifacts_for_a_build(): void

@@ -6,6 +6,7 @@ use App\Enums\CredentialType;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
 use App\Enums\Platform;
+use App\Enums\TeamPermission;
 use App\Models\AppIdentifier;
 use App\Models\Integration;
 use App\Models\MobileApp;
@@ -35,6 +36,7 @@ class DashboardController extends Controller
         $expoFilters = $this->stringList($request->input('expo', []));
         $autoSync = $request->boolean('auto_sync');
         $appsQuery = $team->mobileApps();
+        $canManageApplications = $team->allows($user, TeamPermission::ManageApplications);
 
         $apps = $appsQuery
             ->with('media')
@@ -135,7 +137,22 @@ class DashboardController extends Controller
             'teams' => $user->teams()->select('teams.id', 'teams.name', 'teams.slug', 'teams.owner_id')->get(),
             'currentTeam' => $team->only('id', 'name', 'slug'),
             'createAppUrl' => route('accounts.apps.store', ['team' => $team]),
+            'blueprintOptions' => $team->blueprints()
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($blueprint) => ['value' => $blueprint->id, 'label' => $blueprint->name])
+                ->values(),
             'apps' => $apps,
+            'archivedApps' => $canManageApplications
+                ? $team->mobileApps()->onlyTrashed()->latest('deleted_at')->limit(10)->get()
+                    ->map(fn (MobileApp $app) => [
+                        'id' => $app->id,
+                        'name' => $app->name,
+                        'slug' => $app->slug,
+                        'deleted_at' => $app->deleted_at,
+                        'restore_url' => route('accounts.apps.restore', [$team, $app->id]),
+                    ])->values()
+                : [],
             'filters' => [
                 'search' => $search,
                 'tags' => $tags,

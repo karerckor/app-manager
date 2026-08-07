@@ -20,6 +20,11 @@ class SentryDsnResource extends JsonResource
             'event_source' => $this->event_source?->value,
             'app_key' => $this->app_key,
             'identifier_key' => $this->identifier_key,
+            'target_mode' => $this->target_mode->value,
+            'blueprints' => $this->blueprints->map(fn ($blueprint) => [
+                'id' => $blueprint->id,
+                'name' => $blueprint->name,
+            ])->values(),
             'forward_enabled' => filled($this->upstream_dsn),
             'consecutive_forward_failures' => $this->consecutive_forward_failures,
             'last_event_at' => $this->last_event_at,

@@ -1,0 +1,153 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import Screenshot from '../../components/Screenshot.astro';
+---
+
+<DocsLayout title="Blueprints" activeNav="/platform/blueprints">
+  <h1>Blueprints</h1>
+  <p>
+    A blueprint is a reusable contract for an application. It describes the shape of the app's
+    metadata JSON, the exact file names the app should carry, and the platforms it should have.
+    Applications remain valid records without a blueprint, and a draft blueprint can be attached
+    before any of those requirements are filled in.
+  </p>
+  <Screenshot
+    src="blueprints"
+    alt="Blueprint detail showing its JSON schema, exact required files, platforms, two conditional hooks, and attached applications"
+    caption="One contract brings its requirements, ordered hook actions, and attached applications together."
+  />
+
+  <h2>What a blueprint checks</h2>
+  <table>
+    <thead>
+      <tr><th>Requirement</th><th>How it is matched</th><th>Can be empty?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>JSON Schema</td>
+        <td>Matches the application's metadata JSON against the supported schema keywords</td>
+        <td>Yes. An absent schema is treated as a match.</td>
+      </tr>
+      <tr>
+        <td>Files</td>
+        <td>Exact, case-sensitive file names such as <code>associated-domains.json</code></td>
+        <td>Yes. File content, MIME type, and image dimensions are not inspected.</td>
+      </tr>
+      <tr>
+        <td>Platforms</td>
+        <td>The app has an identifier for each selected platform: iOS, Android, or web</td>
+        <td>Yes.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    The metadata matcher supports the practical JSON Schema subset used by the console:
+    <code>type</code>, <code>required</code>, <code>properties</code>, <code>items</code>,
+    <code>enum</code>, <code>const</code>, <code>allOf</code>, <code>anyOf</code>, string length and
+    pattern checks, number bounds, and array length checks.
+  </p>
+  <CodeBlock lang="json" code={`{
+  "type": "object",
+  "required": ["owner", "release_channel"],
+  "properties": {
+    "owner": { "type": "string", "minLength": 1 },
+    "release_channel": { "enum": ["preview", "production"] }
+  }
+}`} />
+
+  <h2>Create a draft</h2>
+  <p>
+    Open <strong>Blueprints</strong> from the workspace sidebar and choose
+    <strong>New blueprint</strong>. Only the name is required. You can save the description,
+    schema, files, and platforms later, which is useful when the contract is being introduced to
+    applications that already exist.
+  </p>
+  <p>
+    Required files are names, not upload fields. Declaring <code>associated-domains.json</code>
+    says that attached apps should contain a file with that exact name; it does not attach the file
+    to the blueprint or copy it into applications.
+  </p>
+  <Screenshot
+    src="new-blueprint-modal"
+    alt="New blueprint form with name, description, optional JSON schema, exact file names, and platform choices"
+    caption="Only the name is required; every contract field can be completed later."
+  />
+
+  <h2>Attach applications</h2>
+  <p>
+    An application has at most one blueprint. Open the application, choose <strong>Edit</strong>,
+    and select a blueprint. The selection can be changed or cleared at any time. Attaching an
+    incomplete application is allowed: the application overview shows which JSON, files, or
+    platforms are missing, while the rest of the application remains usable.
+  </p>
+  <p>
+    Removing a blueprint does not remove application metadata, identifiers, files, or tags.
+    Deleting a blueprint similarly leaves its applications in place and sets their blueprint to
+    none.
+  </p>
+
+  <h2>Conditional hooks</h2>
+  <p>
+    Hooks turn compliance results into tag changes. Each hook contains one <strong>IF</strong>
+    condition and one or more ordered actions. A single matching condition can therefore remove an
+    old tag and add a new colored or animated tag in the same run.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Condition</th><th>Matches when</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>JSON does not match / matches</td><td>Application metadata fails or passes the blueprint's schema</td></tr>
+      <tr><td>File is missing / present</td><td>One exact file declared by this blueprint is absent or present</td></tr>
+      <tr><td>Platform is missing / present</td><td>One platform declared by this blueprint has no identifier or has one</td></tr>
+      <tr><td>Application does not match / matches</td><td>The combined JSON, file, and platform result fails or passes</td></tr>
+    </tbody>
+  </table>
+  <p>
+    Every action is either <strong>Add tags</strong> or <strong>Remove tags</strong>. Tags use the
+    same editor as application tags, including hexadecimal colors and the
+    <code>pulse</code>, <code>ping</code>, <code>flash</code>, <code>tada</code>, and
+    <code>heartbeat</code> animations. Actions run from top to bottom, so order matters when two
+    actions mention the same tag.
+  </p>
+  <Screenshot
+    src="new-blueprint-hook-modal"
+    alt="New conditional hook form with condition selector and the tag editor open to its color palette and animation choices"
+    caption="The hook form reuses the application tag editor, including color and animation. Add action builds an ordered multi-action scenario."
+  />
+
+  <h3>Example: move an app from incomplete to ready</h3>
+  <ol>
+    <li>Create a hook with <strong>IF Application matches the blueprint</strong>.</li>
+    <li>Add action 1: remove <code>blueprint-incomplete</code>.</li>
+    <li>Add action 2: add <code>ready</code> with the desired color and animation.</li>
+  </ol>
+  <p>
+    The inverse hook can use <strong>Application does not match the blueprint</strong> to remove
+    <code>ready</code> and add <code>blueprint-incomplete</code>.
+  </p>
+
+  <h2>When hooks run</h2>
+  <p>Attached applications are evaluated when:</p>
+  <ul>
+    <li>their metadata or blueprint attachment changes;</li>
+    <li>a file is uploaded, renamed, or deleted;</li>
+    <li>a platform identifier is created, updated, deleted, or synchronized;</li>
+    <li>the blueprint or one of its hooks is created or updated; or</li>
+    <li>you choose <strong>Evaluate</strong> on the blueprint.</li>
+  </ul>
+  <p>
+    Disabling a hook stops future executions. Deleting a hook deliberately leaves tags already
+    written to applications unchanged; use a matching remove action before deletion if they must be
+    cleaned up.
+  </p>
+
+  <h2>API and CLI</h2>
+  <p>
+    Blueprint automation uses the independent <code>blueprints:read</code> and
+    <code>blueprints:write</code> API key scopes. See
+    <a href="/cli/blueprints"><code>appmctl blueprints</code></a> for the domain-aware CLI commands,
+    or the <a href="/api-reference">API reference</a> for the complete request schemas.
+  </p>
+</DocsLayout>

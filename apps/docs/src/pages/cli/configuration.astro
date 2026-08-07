@@ -15,6 +15,7 @@ import CodeBlock from '../../components/CodeBlock.astro';
   <CodeBlock lang="bash" code={`export APP_MANAGER_API_KEY='1|plain-text-api-key'
 export APP_MANAGER_TEAM='acme-mobile'
 export APP_MANAGER_APP='customer-app'                          # optional default app
+export APP_MANAGER_BUILD_ID='019fc789-47b5-7034-9291-4cd3c57b75d5' # optional default build
 export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
   <table>
     <thead>
@@ -25,6 +26,7 @@ export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
       <tr><td><code>APP_MANAGER_TEAM</code></td><td><code>--team</code></td><td>Yes</td><td>Team slug, present in every API URL</td></tr>
       <tr><td><code>APP_MANAGER_INSTANCE_URL</code></td><td><code>--instance-url</code></td><td>No</td><td>Server URL; defaults to <code>http://localhost:8000</code></td></tr>
       <tr><td><code>APP_MANAGER_APP</code></td><td><code>--app</code></td><td>No</td><td>Default app for app-scoped commands</td></tr>
+      <tr><td><code>APP_MANAGER_BUILD_ID</code></td><td>Positional <code>BUILD_ID</code></td><td>No</td><td>Default build for <code>build start</code>, <code>build completed</code>, and <code>build failed</code></td></tr>
       <tr><td><code>APP_MANAGER_POLLING_INTERVAL</code></td><td>—</td><td>No</td><td>Poll interval in seconds for <code>builds wait</code>, <code>builds when-running</code>, and <code>stream --track</code>; defaults to <code>10</code></td></tr>
       <tr><td><code>APP_MANAGER_CURL_BIN</code></td><td>—</td><td>No</td><td>Alternate <code>curl</code> executable</td></tr>
     </tbody>
@@ -84,18 +86,19 @@ export APP_MANAGER_INSTANCE_URL='https://manager.example.com'  # optional`} />
     </thead>
     <tbody>
       <tr><td><code>apps</code></td><td><code>apps:read</code>, <code>apps:write</code></td></tr>
+      <tr><td><code>blueprints</code></td><td><code>blueprints:read</code>, <code>blueprints:write</code></td></tr>
       <tr><td><code>identifiers</code></td><td><code>identifiers:read</code>, <code>identifiers:write</code></td></tr>
       <tr><td><code>assets</code></td><td><code>assets:read</code>, <code>assets:write</code></td></tr>
       <tr><td><code>files</code></td><td><code>files:read</code>, <code>files:write</code></td></tr>
       <tr><td><code>credentials</code></td><td><code>credentials:read</code>, <code>credentials:write</code>, <code>credentials:reveal</code> for <code>download</code>, <code>credentials:verify</code> to verify an external vault reference</td></tr>
-      <tr><td><code>builds</code></td><td><code>builds:read</code>, <code>builds:write</code></td></tr>
+      <tr><td><code>build</code>, <code>builds</code></td><td><code>builds:read</code>, <code>builds:write</code></td></tr>
       <tr><td><code>logs</code>, <code>stream</code></td><td><code>logs:read</code>, <code>logs:write</code></td></tr>
       <tr><td><code>artifacts</code></td><td><code>artifacts:read</code>, <code>artifacts:write</code></td></tr>
       <tr><td><code>integrations</code>, <code>eas</code></td><td><code>integrations:read</code>, <code>integrations:write</code>, <code>integrations:proxy</code> for the Expo proxies</td></tr>
       <tr><td><code>pipelines</code></td><td><code>pipelines:read</code>, <code>pipelines:write</code>, <code>pipelines:run</code> to trigger</td></tr>
       <tr><td><code>webhooks</code></td><td><code>webhooks:read</code>, <code>webhooks:write</code>, <code>deliveries:read</code></td></tr>
       <tr><td><code>sentry</code></td><td><code>integrations:read</code>, <code>integrations:write</code></td></tr>
-      <tr><td><code>telemetry</code></td><td><code>apps:read</code></td></tr>
+      <tr><td><code>telemetry</code></td><td><code>apps:read</code>; <code>apps:write</code> for <code>resolve</code>/<code>reopen</code>/<code>tags</code></td></tr>
     </tbody>
   </table>
   <p>

@@ -1,0 +1,218 @@
+---
+import DocsLayout from '../layouts/DocsLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+---
+
+<DocsLayout title="Security" activeNav="/security">
+  <h1>Security</h1>
+  <p>
+    App Manager protects secrets with workspace isolation, role and API-scope checks, encryption at
+    rest, explicit reveal permissions, and an audit trail. The deployment operator is still
+    responsible for TLS, the host and database, backups, and the keys that make encrypted data
+    recoverable.
+  </p>
+
+  <h2>What is stored, and how</h2>
+  <table>
+    <thead>
+      <tr><th>Material</th><th>Storage</th><th>Can it be retrieved?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Local credential fields and files</td>
+        <td>Envelope-encrypted with a data encryption key (DEK); the DEK is encrypted by <code>APP_KEY</code></td>
+        <td>Only through an authorized reveal or download operation</td>
+      </tr>
+      <tr>
+        <td>Integration, notification, OAuth, Sentry, and webhook secrets</td>
+        <td>Encrypted with the application encryption keys</td>
+        <td>Used by the platform; normally not returned after setup</td>
+      </tr>
+      <tr>
+        <td>API keys and invitation tokens</td>
+        <td>One-way hash; the plaintext is shown only when issued</td>
+        <td>No. Replace and revoke if the plaintext is lost</td>
+      </tr>
+      <tr>
+        <td>External-vault credentials</td>
+        <td>Provider, resource reference, and optional metadata only</td>
+        <td>The build runner resolves the secret from your vault</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Names, types, expiry dates, provider names, resource references, and other operational metadata
+    are not secret payloads. They remain access-controlled, but do not put passwords or tokens into
+    a name, resource reference, tag, or metadata field.
+  </p>
+
+  <h2>Envelope encryption for credentials</h2>
+  <p>
+    App Manager generates a 256-bit DEK and stores it in the <code>encryption_keys</code> table after
+    wrapping it with <code>APP_KEY</code>, also called the key encryption key (KEK). The DEK encrypts
+    credential payloads and uploaded signing files. Ciphertext records carry the DEK id used to
+    create them, so data remains readable after that DEK is retired.
+  </p>
+  <pre><code>APP_KEY (KEK) ──encrypts──&gt; DEK in PostgreSQL
+                              │
+                              └──encrypts──&gt; credential fields and files</code></pre>
+  <p>
+    This separation makes an <code>APP_KEY</code> rotation small: the platform re-wraps the DEKs
+    instead of rewriting every credential and file. It also means a database or media backup is not
+    sufficient on its own — recovery needs the matching <code>APP_KEY</code> as well.
+  </p>
+
+  <h2>Access to secret material</h2>
+  <p>
+    Every resource belongs to one workspace. Console access is checked against the member's role;
+    API access must pass both the member's role and the API key's scopes. A key with a broad scope
+    cannot exceed the role of the member that owns it.
+  </p>
+  <ul>
+    <li>
+      Listing credentials needs read access, but reading their contents additionally needs
+      <code>credentials:reveal</code> and the <code>manage_credentials</code> permission.
+    </li>
+    <li>
+      Reveals are recorded as access events. Secret values are excluded from audit entries, so the
+      audit log does not become a second secret store.
+    </li>
+    <li>
+      Credential downloads use private, no-store responses. Temporary plaintext files used by the
+      platform are mode <code>0600</code> and removed after use.
+    </li>
+    <li>
+      Sensitive endpoints are rate-limited. This limits abuse; it does not replace least-privilege
+      roles and scopes.
+    </li>
+  </ul>
+  <p>
+    Instances that should never move credential material through the REST API can set
+    <code>CREDENTIALS_API_PROFILE=dashboard_only</code>. To keep all credential secrets outside App
+    Manager, set <code>CREDENTIAL_STORAGE_MODES=external</code>. See
+    <a href="/deployment-modes">Deployment modes</a> for the exact boundary of each mode.
+  </p>
+
+  <h2>Rotate the secret, the encryption key, or both?</h2>
+  <p>
+    These operations solve different problems. Rotating a DEK or <code>APP_KEY</code> changes how a
+    stored value is protected; it does not change the credential, API token, or webhook secret that
+    another system accepts. After suspected disclosure, rotate the exposed secret itself.
+  </p>
+  <table>
+    <thead>
+      <tr><th>What changed</th><th>Use this procedure</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A signing credential or secure file</td><td>Replace its payload or upload a new file, update consumers, then retire the old material at its issuer</td></tr>
+      <tr><td>An API key</td><td>Issue a replacement with minimum scopes, deploy it, confirm use, then revoke the old key</td></tr>
+      <tr><td>A webhook signing secret</td><td>Rotate it from the console or CLI and update the receiver immediately; the old secret stops signing new deliveries at once</td></tr>
+      <tr><td>A secret in an external vault</td><td>Rotate it in that vault; keep the App Manager reference unchanged when it points to a stable alias or <code>latest</code></td></tr>
+      <tr><td>The active credential DEK</td><td>Run <code>encryption:rotate-dek</code>; new writes use the new DEK and old ciphertext stays on its retired DEK</td></tr>
+      <tr><td><code>APP_KEY</code></td><td>Re-wrap every DEK, deploy the new key, and retain the old key temporarily in <code>APP_PREVIOUS_KEYS</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Rotating the credential DEK</h2>
+  <p>
+    DEK rotation does not rewrite existing data, so the operation is quick. Run it in a quiet window
+    without concurrent credential writes, check the key inventory, create a new active key, and
+    check it again:
+  </p>
+  <CodeBlock lang="bash" code={`docker compose exec -T app php artisan encryption:status
+docker compose exec -T app php artisan encryption:rotate-dek --force
+docker compose exec -T app php artisan encryption:status`} />
+  <p>
+    The previous active key becomes <code>retired</code>, not deleted. New and updated credential
+    payloads and newly uploaded files use the new active DEK; existing v2 ciphertext remains on the
+    DEK named in that record and stays readable.
+  </p>
+  <p>
+    <strong>Do not delete retired DEKs while any data refers to them.</strong>
+    <code>encryption:migrate</code> creates the initial key and converts legacy credential payloads
+    and files to envelope encryption; it does not bulk-rewrite already-v2 ciphertext from a retired
+    DEK to the current DEK.
+  </p>
+
+  <h2>Rotating APP_KEY</h2>
+  <p>
+    Treat <code>APP_KEY</code> rotation as a maintenance operation. It wraps every credential DEK,
+    and it also protects sessions and platform secrets that use application-level encryption
+    directly. A partial or uncoordinated rotation can make stored data unreadable.
+  </p>
+  <ol>
+    <li>Stop incoming writes and queue workers. Take and verify a database and private-media backup.</li>
+    <li>Keep the current and new key in your secret manager. Generate the new value with <code>php artisan key:generate --show</code> on a trusted host.</li>
+    <li>While the deployed configuration still has the old key, re-wrap all DEKs:</li>
+  </ol>
+  <CodeBlock lang="bash" code={`docker compose exec -T app php artisan encryption:rotate-kek \\
+  --old-key="$OLD_APP_KEY" \\
+  --new-key="$NEW_APP_KEY"`} />
+  <ol start="4">
+    <li>Set <code>APP_KEY</code> to the new value and add the old value to the comma-separated <code>APP_PREVIOUS_KEYS</code> list.</li>
+    <li>Recreate every application, queue, and scheduler container so all processes load the same key set.</li>
+    <li>Run <code>encryption:status</code>, reveal a test credential, exercise each configured integration, and verify that existing sessions behave as expected.</li>
+  </ol>
+  <p>
+    The rotation command re-wraps credential DEKs only. Directly encrypted integration fields are
+    still readable through <code>APP_PREVIOUS_KEYS</code> and are written with the new key the next
+    time they are replaced. Keep the previous key until those integrations have been reconnected or
+    their secrets rewritten and tested. There is no generic command that proves every directly
+    encrypted field has been rewritten.
+  </p>
+  <p>
+    The key values are command arguments during the re-wrap operation. Run it only from a trusted
+    administrative host, prevent command tracing and log capture, and clear any shell history that
+    recorded literal values. If the command fails partway through, keep services stopped and restore
+    the verified database backup before retrying.
+  </p>
+
+  <h2>Rotating application-facing secrets</h2>
+  <h3>API keys</h3>
+  <p>
+    API keys have no in-place rotation because App Manager stores only their hashes. Create a second
+    key with the same or narrower scopes, deploy it to the client, make one successful request, and
+    confirm its <strong>Last used</strong> timestamp before revoking the old key. Requests using the
+    revoked key fail immediately. See <a href="/platform/api-keys">API keys</a>.
+  </p>
+
+  <h3>Webhook signing secrets</h3>
+  <p>
+    A webhook rotation returns the new HMAC secret once and starts using it immediately. Receivers
+    that need a zero-loss transition should temporarily accept both the old and new values, install
+    the new value as soon as rotation returns, then remove the old value after in-flight deliveries
+    have cleared. Failed deliveries can be retried after the receiver is updated. See
+    <a href="/platform/integrations/webhooks">Webhooks</a>.
+  </p>
+
+  <h3>External vaults</h3>
+  <p>
+    Prefer a stable resource reference whose active version can change inside the vault. Rotate the
+    value there, make the build runner resolve it, and report the result with
+    <a href="/cli/credentials"><code>appmctl credentials verify</code></a>. A successful report says
+    what that runner just observed; it is not continuous monitoring and does not expire by itself.
+  </p>
+
+  <h2>Transport, logs, and backups</h2>
+  <ul>
+    <li>Terminate TLS before production traffic and set <code>SESSION_SECURE_COOKIE=true</code>.</li>
+    <li>Never pass credential payloads as CLI arguments. Use <code>--data-file</code> and redact CI logs.</li>
+    <li>Restrict PostgreSQL, Redis, private media, backups, and the administrative shell to trusted networks and identities.</li>
+    <li>Back up PostgreSQL, private media, the current <code>APP_KEY</code>, and every still-needed previous key as one recoverable set.</li>
+    <li>Test restores. A successful database dump does not prove that its credential files and encryption keys match.</li>
+  </ul>
+  <p>
+    Deployment hardening, TLS, trusted proxies, and backup commands are covered in
+    <a href="/self-hosting">Self-hosting</a>. Security-relevant changes and credential reveals are
+    covered in the <a href="/platform/audit-log">Audit log</a>.
+  </p>
+
+  <h2>If a secret may be compromised</h2>
+  <ol>
+    <li>Restrict or stop the affected client without deleting evidence.</li>
+    <li>Issue replacement secret material and move consumers to it.</li>
+    <li>Revoke the old API key or provider credential; rotate the webhook secret immediately.</li>
+    <li>Review the audit log, API-key last-use times, webhook deliveries, and provider-side access logs.</li>
+    <li>Rotate the DEK or <code>APP_KEY</code> only when the encryption layer may also be exposed; doing so alone does not invalidate a leaked application secret.</li>
+  </ol>
+</DocsLayout>

@@ -23,6 +23,8 @@ class ApiKeyScopeTest extends TestCase
         $this->assertSame([
             'apps:read',
             'apps:write',
+            'blueprints:read',
+            'blueprints:write',
             'identifiers:read',
             'identifiers:write',
             'assets:read',

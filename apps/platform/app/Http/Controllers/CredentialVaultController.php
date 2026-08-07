@@ -125,6 +125,16 @@ class CredentialVaultController extends Controller
 
         return Inertia::render('Credentials/Index', [
             'credentials' => $credentials,
+            'archivedCredentials' => $canManage
+                ? $team->credentials()->onlyTrashed()->latest('deleted_at')->limit(10)->get()
+                    ->map(fn (Credential $credential) => [
+                        'id' => $credential->id,
+                        'name' => $credential->name,
+                        'type' => $credential->type->value,
+                        'deleted_at' => $credential->deleted_at,
+                        'restore_url' => route('accounts.credentials.restore', [$team, $credential->id]),
+                    ])->values()
+                : [],
             'credentialTypes' => CredentialSchema::definitions(),
             'buildProfiles' => BuildProfileSchema::definitions(),
             'apps' => $apps,

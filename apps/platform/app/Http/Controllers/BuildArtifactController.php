@@ -70,6 +70,15 @@ class BuildArtifactController extends Controller
         return back()->with('status', 'Artifact deleted.');
     }
 
+    public function restore(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): RedirectResponse
+    {
+        $this->assertCanManage($request, $team, $mobileApp, $buildRecord);
+        $artifactModel = $buildRecord->artifacts()->onlyTrashed()->whereKey($artifact)->firstOrFail();
+        $artifactModel->restore();
+
+        return back()->with('status', 'Artifact restored.');
+    }
+
     public function download(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord, string $artifact): StreamedResponse
     {
         abort_unless($request->user()->teams()->whereKey($team->id)->exists(), 403);

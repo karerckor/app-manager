@@ -8,6 +8,7 @@ use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Apps\AppContext;
 use App\Support\Apps\BuildPresenter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -102,6 +103,16 @@ class AppBuildPageController extends Controller
             'active' => 'builds',
             'build' => BuildPresenter::present($team, $mobileApp, $buildRecord, $canRun, $canManage),
         ]);
+    }
+
+    public function state(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse
+    {
+        [$canRun, $canManage] = $this->permissions($request, $team);
+        $buildRecord->load(['ciCdRun.pipeline', 'artifacts.media']);
+
+        return response()->json([
+            'build' => BuildPresenter::present($team, $mobileApp, $buildRecord, $canRun, $canManage),
+        ])->withHeaders(['Cache-Control' => 'no-store']);
     }
 
     private function permissions(Request $request, Team $team): array

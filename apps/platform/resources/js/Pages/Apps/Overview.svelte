@@ -1,6 +1,6 @@
 <script>
     import { Link } from '@inertiajs/svelte';
-    import { IdCard, Boxes, Clock, Rocket, CircleCheck, CircleX, Ban, Package, Activity, ChevronDown } from '@lucide/svelte';
+    import { IdCard, Boxes, Clock, Rocket, CircleCheck, CircleX, Ban, Package, Activity, ChevronDown, DraftingCompass, FileJson, FolderCheck } from '@lucide/svelte';
     import AppLayout from './AppLayout.svelte';
     import { formatDate, formatDateTime, buildStatusClass } from './lib.js';
 
@@ -87,6 +87,24 @@
         </div>
 
         <aside class="space-y-5">
+            {#if app.blueprint}
+                <section class="card overflow-clip p-0">
+                    <div class="flex items-start justify-between gap-3 border-b border-border-subtle bg-brand-soft/45 px-4 py-3">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <span class="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-brand text-brand-fg"><DraftingCompass class="h-4 w-4" strokeWidth={1.8} /></span>
+                            <div class="min-w-0"><h2 class="truncate text-sm font-bold">{app.blueprint.name}</h2><p class="mt-0.5 text-2xs text-muted">Attached blueprint</p></div>
+                        </div>
+                        <span class="rounded-sm px-2 py-1 text-2xs font-bold {app.blueprint.status.matches ? 'bg-ok/10 text-ok' : 'bg-warn-text/10 text-warn-text'}">{app.blueprint.status.matches ? 'Matches' : 'Needs input'}</span>
+                    </div>
+                    <div class="grid grid-cols-4 divide-x divide-border-subtle text-center">
+                        <div class="px-2 py-3"><FileJson class="mx-auto h-4 w-4 {app.blueprint.status.metadata_matches ? 'text-ok' : 'text-warn-text'}" /><p class="mt-1 text-2xs text-muted">JSON</p></div>
+                        <div class="px-2 py-3"><FolderCheck class="mx-auto h-4 w-4 {app.blueprint.status.missing_files.length === 0 ? 'text-ok' : 'text-warn-text'}" /><p class="mt-1 font-mono text-2xs text-muted">{app.blueprint.status.missing_files.length} files</p></div>
+                        <div class="px-2 py-3"><IdCard class="mx-auto h-4 w-4 {app.blueprint.status.missing_platforms.length === 0 ? 'text-ok' : 'text-warn-text'}" /><p class="mt-1 font-mono text-2xs text-muted">{app.blueprint.status.missing_platforms.length} platforms</p></div>
+                        <div class="px-2 py-3"><span class="mx-auto grid h-4 w-4 place-items-center rounded-sm bg-brand-soft-line font-mono text-[8px] font-black text-brand">E</span><p class="mt-1 text-2xs {app.blueprint.status.expo_matches ? 'text-muted' : 'text-warn-text'}">{app.blueprint.status.expo_matches ? 'Expo' : 'Expo rule'}</p></div>
+                    </div>
+                    <Link href={app.blueprint.url} class="block border-t border-border-subtle px-4 py-2.5 text-center text-xs font-semibold text-brand hover:bg-surface-sunken">Open blueprint</Link>
+                </section>
+            {/if}
             {#if expo.enabled}
                 <section class="card border-brand-soft-line/80 bg-brand-soft/45">
                     <div class="flex items-start gap-3"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-soft-line text-[9px] font-black text-brand">EAS</span><div><h2 class="text-xs font-bold text-text">{expo.linked ? 'Expo project linked' : expo.inactive_project ? 'Expo link inactive' : 'Expo Application Services'}</h2><p class="mt-1 text-[11px] leading-5 text-muted">{expo.linked ? expo.project.full_name : expo.inactive_project ? `${expo.inactive_project.full_name} · account ${expo.inactive_project.connection_status}` : 'Optional builds, submissions, and hosted credentials.'}</p></div></div>

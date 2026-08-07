@@ -1,7 +1,7 @@
 <script>
     import { tick } from 'svelte';
     import { Link, router } from '@inertiajs/svelte';
-    import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, ShieldCheck, BellRing, Menu, X } from '@lucide/svelte';
+    import { LayoutGrid, KeyRound, Blocks, Users, LogOut, ScrollText, ShieldCheck, BellRing, Menu, X, DraftingCompass, Activity } from '@lucide/svelte';
     import ThemeToggle from './ui/ThemeToggle.svelte';
     import Select from './Select.svelte';
 
@@ -14,6 +14,8 @@
 
     const items = $derived([
         { key: 'apps', label: 'Applications', href: url('/apps'), icon: LayoutGrid, show: true },
+        { key: 'builds', label: 'Builds', href: url('/builds'), icon: Activity, show: true },
+        { key: 'blueprints', label: 'Blueprints', href: url('/blueprints'), icon: DraftingCompass, show: true },
         { key: 'credentials', label: 'Credentials Vault', href: url('/credentials'), icon: ShieldCheck, show: true },
         { key: 'api-keys', label: 'API keys', href: url('/api-keys'), icon: KeyRound, show: currentTeam?.owner_id === auth.user.id },
         { key: 'audit', label: 'Audit log', href: url('/audit'), icon: ScrollText, show: ['owner', 'admin'].includes(auth?.team?.role) },

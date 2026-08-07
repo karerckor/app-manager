@@ -4,12 +4,14 @@
 
 It provides domain-aware subcommands for all major API resources, plus generic access:
 
+- **`build`** — short aliases for marking a manual build running, completed, or failed
 - **`builds`** — create, list, get, cancel, and patch builds
 - **`logs`** — fetch and append build logs
 - **`artifacts`** — list, download, upload, and delete build artifacts
 - **`files`** — list, inspect, download, upload, update, and delete files attached to an app
 - **`assets`** — list, preview, download, upload, and delete app icons and splash screens
 - **`apps`** — list, get, create, update, and delete applications
+- **`blueprints`** — manage application contracts, compliance evaluation, and conditional hooks
 - **`identifiers`** — manage per-platform bundle IDs, package names, and web domains
 - **`credentials`** — manage app credentials and credential types
 - **`integrations`** — list integrations, repositories, workflows, and refs
@@ -207,6 +209,19 @@ appmctl builds cancel [--app APP] <build-id>
 appmctl builds patch [--app APP] <build-id> [--status STATUS] [--tag NAME[:#HEX]]
 ```
 
+For the three common manual-build status transitions, the singular `build`
+command provides shorter aliases. The build ID is optional when
+`APP_MANAGER_BUILD_ID` is set:
+
+```bash
+appmctl build start [<build-id>]
+appmctl build completed [<build-id>]
+appmctl build failed [<build-id>]
+```
+
+They map to `builds patch --status running|completed|failed`, respectively, and
+accept the same `--app` and `--tag` options as `builds patch`.
+
 `--tag` is repeatable and takes either a bare name or `NAME:#RRGGBB` for a colored
 badge. On `patch` it replaces the build's whole tag set, and at least one of
 `--status` or `--tag` must be given. Tags may be set on any build; `--status`
@@ -282,9 +297,38 @@ appmctl assets upload --type splashscreen --file ./splash.png
 ```bash
 appmctl apps list
 appmctl apps get <slug>
-appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON]
-appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON]
+appmctl apps create --name NAME [--slug SLUG] [--description DESC] [--metadata JSON] [--blueprint-id UUID]
+appmctl apps update <slug> [--name NAME] [--description DESC] [--metadata JSON] [--blueprint-id UUID|--no-blueprint]
 appmctl apps delete <slug>
+```
+
+### `appmctl blueprints`
+
+```bash
+appmctl blueprints list
+appmctl blueprints get <blueprint-id>
+appmctl blueprints create --name NAME [--description DESC] \
+  [--json-schema JSON|--json-schema-file FILE] [--required-files JSON] [--platforms JSON]
+appmctl blueprints update <blueprint-id> [same fields; --clear-description is also available]
+appmctl blueprints evaluate <blueprint-id>
+appmctl blueprints delete <blueprint-id>
+
+appmctl blueprints hooks list <blueprint-id>
+appmctl blueprints hooks get <blueprint-id> <hook-id>
+appmctl blueprints hooks create <blueprint-id> --name NAME --condition CONDITION \
+  (--actions JSON | --actions-file FILE) [--condition-config JSON] [--enabled true|false]
+appmctl blueprints hooks update <blueprint-id> <hook-id> [same fields]
+appmctl blueprints hooks delete <blueprint-id> <hook-id>
+```
+
+Hook actions are an ordered JSON array. Each action uses `add_tag` or `remove_tag`
+and a `tags` array of `[label, color?, animation?]` tuples. Blueprint reads require
+`blueprints:read`; writes and evaluation require `blueprints:write`. Attaching one
+to an app is an app update and therefore uses `apps:write`:
+
+```bash
+appmctl apps update customer-app --blueprint-id "$BLUEPRINT_ID"
+appmctl apps update customer-app --no-blueprint
 ```
 
 ### `appmctl identifiers`
@@ -409,18 +453,31 @@ appmctl sentry delete <dsn-id>
 
 The JSON config uses the same fields and validation as the Web UI: `name`,
 `routing_method`, optional `event_source`, `app_key`, `identifier_key`, `routes`,
-`forward_enabled`, optional `upstream_dsn`, and `enabled`.
+`target_mode`, `blueprint_ids`, `forward_enabled`, optional `upstream_dsn`, and
+`enabled`. Use `target_mode: all` for the full team, `blueprints` with selected
+blueprint IDs, or `selected` with explicit application/identifier routes.
 
 ### `appmctl telemetry`
 
 ```bash
 appmctl --app customer-app telemetry issues [--environment ENV] [--identifier UUID] [--search TEXT]
 appmctl --app customer-app telemetry issue <issue-id> [--event UUID]
+appmctl --app customer-app telemetry resolve <issue-id> [--comment TEXT]
+appmctl --app customer-app telemetry reopen <issue-id> [--comment TEXT]
+appmctl --app customer-app telemetry tags <issue-id> --tag 'urgent:#f43f5e:pulse'
 appmctl --app customer-app telemetry traces [--environment ENV] [--identifier UUID] [--search TEXT]
 appmctl --app customer-app telemetry trace <trace-id> [--event UUID]
 ```
 
+`--comment` is optional and is stored with the resolve/reopen actor and time. Repeat
+`--tag 'text[:#hex[:animation]]'` to replace an Issue's App Manager tags, or use
+`telemetry tags <issue-id> --clear`. Supported animations are `pulse`, `ping`, `flash`,
+`tada`, and `heartbeat`.
+
 Issue and trace detail responses contain a timeline plus the complete selected Sentry SDK event.
+App Manager Issue tags are separate from the SDK tags in that event, so attaching or removing them
+does not modify the original payload. Resolving, reopening, and editing tags requires `apps:write`;
+a new occurrence automatically reopens a resolved issue.
 
 ### `appmctl request` (legacy)
 
@@ -474,6 +531,9 @@ The team, app, and build ID are validated as simple path segments. The CLI rejec
 
 - `logs:write` in its default mode;
 - `logs:write` and `builds:write` with `--manage-status`.
+
+Blueprint commands use `blueprints:read` for `list`, `get`, and hook reads, and
+`blueprints:write` for create, update, evaluate, delete, and hook writes.
 
 The App Manager API also checks the team permissions of the user who created the key. Grant only the resources used by the job.
 
@@ -556,9 +616,10 @@ APP_MANAGER_BUILD_ID=$(
 )
 export APP_MANAGER_BUILD_ID
 
+appmctl build start
+
 appmctl stream \
   --build-id "$APP_MANAGER_BUILD_ID" \
-  --manage-status \
   --step 'Android bundle' \
   -- ./gradlew bundleRelease
 
@@ -567,6 +628,8 @@ appmctl artifacts upload \
   --name app-release.aab \
   --metadata '{"channel":"internal"}' \
   --file app/build/outputs/bundle/release/app-release.aab
+
+appmctl build completed
 ```
 
 The same workflow works with the generic `request` command for endpoints not yet covered by subcommands. Use a stable `--request-uuid` when a CI retry must resolve to the same build.

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
@@ -42,7 +43,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 ])]
 class BuildRecord extends Model implements Auditable
 {
-    use AuditableTrait, HasFactory, HasTags, HasUuids;
+    use AuditableTrait, HasFactory, HasTags, HasUuids, SoftDeletes;
 
     protected array $auditExclude = ['parameters'];
 
@@ -62,7 +63,7 @@ class BuildRecord extends Model implements Auditable
 
     public function appIdentifier(): BelongsTo
     {
-        return $this->belongsTo(AppIdentifier::class);
+        return $this->belongsTo(AppIdentifier::class)->withTrashed();
     }
 
     public function requestedBy(): BelongsTo
@@ -83,7 +84,12 @@ class BuildRecord extends Model implements Auditable
     protected static function booted(): void
     {
         static::deleting(function (BuildRecord $build): void {
-            $build->artifacts()->cursor()->each(fn (Artifact $artifact) => $artifact->delete());
+            if (! $build->isForceDeleting()) {
+                return;
+            }
+
+            $build->artifacts()->withTrashed()->cursor()
+                ->each(fn (Artifact $artifact) => $artifact->forceDelete());
 
             if ($build->log_archive_disk && $build->log_archive_path) {
                 Storage::disk($build->log_archive_disk)->delete($build->log_archive_path);

@@ -56,6 +56,15 @@ output=$("$CLI" apps update customer-app --name "Updated App" 2>&1)
 assert_contains "$output" 'updated' 'apps update prints confirmation'
 pass 'apps update'
 
+# --- blueprint attach and detach ---
+: >"$MOCK_LOG"
+"$CLI" apps update customer-app --blueprint-id blueprint-001 >/dev/null
+assert_contains "$(cat "$MOCK_LOG")" '"blueprint_id": "blueprint-001"' 'apps update attaches a blueprint'
+: >"$MOCK_LOG"
+"$CLI" apps update customer-app --no-blueprint >/dev/null
+assert_contains "$(cat "$MOCK_LOG")" '"blueprint_id": null' 'apps update detaches a blueprint'
+pass 'apps blueprint attachment'
+
 # --- apps delete ---
 : >"$MOCK_LOG"
 output=$("$CLI" apps delete customer-app 2>&1)
@@ -68,4 +77,4 @@ dry=$("$CLI" --dry-run apps list 2>&1)
 assert_contains "$dry" 'dry-run' 'apps list dry-run'
 pass 'apps dry-run'
 
-printf '1..6\n'
+printf '1..7\n'

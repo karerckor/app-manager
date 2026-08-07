@@ -13,6 +13,7 @@ use App\Integrations\Webhooks\WebhookPayload;
 use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Blueprints\BlueprintComplianceEvaluator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -23,7 +24,10 @@ class AppIdentifierController extends Controller
 {
     use ResolvesPageSize;
 
-    public function __construct(private readonly WebhookEventRecorder $webhookEvents) {}
+    public function __construct(
+        private readonly WebhookEventRecorder $webhookEvents,
+        private readonly BlueprintComplianceEvaluator $blueprints,
+    ) {}
 
     public function index(Request $request, Team $team, MobileApp $mobileApp): AnonymousResourceCollection
     {
@@ -36,6 +40,7 @@ class AppIdentifierController extends Controller
     {
         $appIdentifier = DB::transaction(function () use ($mobileApp, $team, $request) {
             $appIdentifier = $mobileApp->appIdentifiers()->create($request->validated());
+            $this->blueprints->evaluate($mobileApp);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierCreated,
@@ -62,8 +67,9 @@ class AppIdentifierController extends Controller
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
     ): AppIdentifierResource {
-        DB::transaction(function () use ($appIdentifier, $team, $request) {
+        DB::transaction(function () use ($appIdentifier, $mobileApp, $team, $request) {
             $appIdentifier->update($request->validated());
+            $this->blueprints->evaluate($mobileApp);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierUpdated,
@@ -81,9 +87,10 @@ class AppIdentifierController extends Controller
         MobileApp $mobileApp,
         AppIdentifier $appIdentifier,
     ): Response {
-        DB::transaction(function () use ($appIdentifier, $team) {
+        DB::transaction(function () use ($appIdentifier, $mobileApp, $team) {
             $payload = WebhookPayload::appIdentifier($appIdentifier);
             $appIdentifier->delete();
+            $this->blueprints->evaluate($mobileApp);
             $this->webhookEvents->record(
                 $team,
                 WebhookEventType::AppIdentifierDeleted,
@@ -93,5 +100,17 @@ class AppIdentifierController extends Controller
         });
 
         return response()->noContent();
+    }
+
+    public function restore(
+        Team $team,
+        MobileApp $mobileApp,
+        string $appIdentifier,
+    ): AppIdentifierResource {
+        $identifier = $mobileApp->appIdentifiers()->onlyTrashed()->whereKey($appIdentifier)->firstOrFail();
+        $identifier->restore();
+        $this->blueprints->evaluate($mobileApp);
+
+        return new AppIdentifierResource($identifier->refresh());
     }
 }

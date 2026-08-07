@@ -4,6 +4,7 @@ namespace App\Integrations\Sentry;
 
 use App\Models\SentryEvent;
 use App\Models\SentryIssue;
+use App\Support\Audit\ActorContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -52,6 +53,10 @@ class SentryIssueGrouper
                 if (! $issue) {
                     throw new \RuntimeException('The Sentry issue could not be grouped.');
                 }
+            }
+
+            if ($issue->status === 'resolved') {
+                $issue = app(SentryIssueStatusManager::class)->setStatus($issue, 'unresolved', ActorContext::system());
             }
 
             $issue->forceFill([

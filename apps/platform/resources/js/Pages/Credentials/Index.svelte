@@ -20,6 +20,7 @@
         LockKeyhole,
         Pencil,
         Plus,
+        RotateCcw,
         Search,
         ShieldCheck,
         Trash2,
@@ -38,6 +39,7 @@
     export let navigationTeams = [];
     export let navigationTeam = null;
     export let credentials = { data: [], links: [], total: 0 };
+    export let archivedCredentials = [];
     export let credentialTypes = [];
     export let apps = [];
     export let canManage = false;
@@ -208,6 +210,7 @@
         preserveScroll: true,
         onFinish: () => confirmingDelete = null,
     });
+    const restoreCredential = (credential) => router.post(credential.restore_url, {}, { preserveScroll: true });
     const hideSecrets = () => {
         clearTimeout(revealTimer);
         revealedCredentialId = null;
@@ -509,7 +512,7 @@
 
                             {#if confirmingDelete === credential.id}
                                 <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-4 py-3">
-                                    <span class="text-[11px] font-medium text-danger">{credential.attachments.length > 1 ? `Delete this credential permanently? ${credential.attachments.length} build targets use it.` : 'Delete this credential permanently?'}</span>
+                                    <span class="text-[11px] font-medium text-danger">{credential.attachments.length > 1 ? `Move this credential to trash? ${credential.attachments.length} build targets use it.` : 'Move this credential to trash? It can be restored during the retention window.'}</span>
                                     <span class="flex gap-2">
                                         <button type="button" class="ghost px-2.5 py-1.5 text-xs" on:click={() => confirmingDelete = null}>Cancel</button>
                                         <button type="button" class="danger px-2.5 py-1.5 text-xs" on:click={() => deleteCredential(credential)}>Delete</button>
@@ -552,6 +555,23 @@
                 </div>
             {/if}
         </section>
+
+        {#if archivedCredentials.length}
+            <section class="card mt-4 overflow-clip p-0">
+                <div class="border-b border-border-subtle px-5 py-3.5">
+                    <h2 class="text-xs font-bold text-text">Credential trash</h2>
+                    <p class="mt-0.5 text-[11px] text-faint">Secret payloads and private files stay encrypted and inaccessible until restored or purged.</p>
+                </div>
+                <div class="divide-y divide-border-subtle">
+                    {#each archivedCredentials as credential (credential.id)}
+                        <div class="flex items-center justify-between gap-4 px-5 py-3">
+                            <div class="min-w-0"><p class="truncate text-xs font-semibold text-text">{credential.name}</p><p class="text-[10px] text-faint">{typeLabel(credential.type)} · deleted {formatDate(credential.deleted_at)}</p></div>
+                            <button type="button" class="secondary shrink-0 px-3 py-1.5 text-xs" on:click={() => restoreCredential(credential)}><RotateCcw class="h-3.5 w-3.5" />Restore</button>
+                        </div>
+                    {/each}
+                </div>
+            </section>
+        {/if}
 </WorkspacePage>
 
 {#if revealTarget}

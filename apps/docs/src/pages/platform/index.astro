@@ -41,6 +41,11 @@ import Screenshot from '../../components/Screenshot.astro';
         <td><a href="/platform/applications">Applications</a></td>
       </tr>
       <tr>
+        <td>Blueprints</td>
+        <td>Reusable JSON, exact-file, and platform contracts with conditional tag hooks</td>
+        <td><a href="/platform/blueprints">Blueprints</a></td>
+      </tr>
+      <tr>
         <td>Credentials Vault</td>
         <td>Keystores, certificates, service accounts, and their expiry state</td>
         <td><a href="/platform/credentials-vault">Credentials Vault</a></td>
@@ -75,7 +80,7 @@ import Screenshot from '../../components/Screenshot.astro';
 
   <h2>Concepts worth knowing first</h2>
   <p>
-    Four ideas explain most of the interface, and getting them straight avoids a lot of confusion
+    Five ideas explain most of the interface, and getting them straight avoids a lot of confusion
     later.
   </p>
   <table>
@@ -92,6 +97,13 @@ import Screenshot from '../../components/Screenshot.astro';
         <td>
           What the app is called on one platform: an iOS bundle ID, an Android package name, a web
           domain. Build profiles and credentials attach here, not to the app.
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Blueprint</strong></td>
+        <td>
+          An optional application contract for metadata JSON, exact file names, and platforms. Its
+          conditional hooks can add or remove application tags when compliance changes.
         </td>
       </tr>
       <tr>

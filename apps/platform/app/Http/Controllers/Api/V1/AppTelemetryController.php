@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\AppTelemetryEventRequest;
 use App\Http\Requests\AppTelemetryFilterRequest;
+use App\Http\Requests\UpdateSentryIssueStatusRequest;
+use App\Http\Requests\UpdateSentryIssueTagsRequest;
+use App\Integrations\Sentry\SentryIssueStatusManager;
 use App\Models\MobileApp;
 use App\Models\SentryEvent;
 use App\Models\SentryIssue;
 use App\Models\Team;
+use App\Support\Audit\ActorContextManager;
 use App\Support\Sentry\SentryTelemetryPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -20,7 +24,9 @@ class AppTelemetryController extends Controller
     {
         $this->ensureEnabled();
         $filters = $request->telemetryFilters();
-        $query = $mobileApp->sentryIssues()->with('appIdentifier');
+        $query = $mobileApp->sentryIssues()->with([
+            'appIdentifier', 'resolvedByUser', 'resolvedByApiKey', 'statusChangedByUser', 'statusChangedByApiKey',
+        ]);
         $this->applyIssueFilters($query, $filters);
         $paginator = $query->latest('last_seen_at')->paginate($filters['per_page']);
 
@@ -34,6 +40,9 @@ class AppTelemetryController extends Controller
     {
         $this->ensureEnabled();
         abort_unless($sentryIssue->mobile_app_id === $mobileApp->id, 404);
+        $sentryIssue->load([
+            'appIdentifier', 'resolvedByUser', 'resolvedByApiKey', 'statusChangedByUser', 'statusChangedByApiKey',
+        ]);
         $events = $sentryIssue->events()->with(['appIdentifier', 'sentryDsn.integration', 'envelope'])->latest('occurred_at')->latest('created_at')->limit(100)->get();
         $selected = $request->eventId() ? $events->firstWhere('id', $request->eventId()) : $events->first();
         abort_unless($selected, 404);
@@ -42,8 +51,43 @@ class AppTelemetryController extends Controller
         return response()->json(['data' => [
             ...$this->issueSummary($sentryIssue->loadMissing('appIdentifier')),
             'timeline' => $events->map(fn (SentryEvent $event) => $presenter->occurrence($event, ''))->map(fn (array $event) => array_diff_key($event, ['url' => true]))->values(),
-            'selected_event' => $presenter->event($selected, $traceCount),
+            'selected_event' => $presenter->event($selected, $traceCount, $this->archiveUrl($team, $mobileApp, $selected)),
         ]]);
+    }
+
+    public function updateIssue(
+        UpdateSentryIssueStatusRequest $request,
+        Team $team,
+        MobileApp $mobileApp,
+        SentryIssue $sentryIssue,
+        SentryIssueStatusManager $statuses,
+        ActorContextManager $actors,
+    ): JsonResponse {
+        $this->ensureEnabled();
+        abort_unless($sentryIssue->mobile_app_id === $mobileApp->id, 404);
+        $issue = $statuses->setStatus(
+            $sentryIssue,
+            $request->validated('status'),
+            $actors->current(),
+            $request->validated('comment'),
+        );
+
+        return response()->json(['data' => $this->issueSummary($issue->loadMissing('appIdentifier'))]);
+    }
+
+    public function updateIssueTags(
+        UpdateSentryIssueTagsRequest $request,
+        Team $team,
+        MobileApp $mobileApp,
+        SentryIssue $sentryIssue,
+    ): JsonResponse {
+        $this->ensureEnabled();
+        abort_unless($sentryIssue->mobile_app_id === $mobileApp->id, 404);
+        $sentryIssue->syncTags($request->normalizedTags())->save();
+
+        return response()->json(['data' => $this->issueSummary($sentryIssue->refresh()->load([
+            'appIdentifier', 'resolvedByUser', 'resolvedByApiKey', 'statusChangedByUser', 'statusChangedByApiKey',
+        ]))]);
     }
 
     public function traces(AppTelemetryFilterRequest $request, Team $team, MobileApp $mobileApp): JsonResponse
@@ -73,14 +117,54 @@ class AppTelemetryController extends Controller
             'trace_id' => $traceId, 'title' => $traceEvent->title ?: $traceEvent->transaction ?: 'Untitled trace', 'events_count' => $events->count(),
             'first_seen_at' => $events->min('occurred_at'), 'last_seen_at' => $events->max('occurred_at'),
             'timeline' => $events->sortBy('occurred_at')->values()->map(fn (SentryEvent $event) => $presenter->occurrence($event, ''))->map(fn (array $event) => array_diff_key($event, ['url' => true]))->values(),
-            'selected_event' => $presenter->event($selected, $events->count()),
+            'selected_event' => $presenter->event($selected, $events->count(), $this->archiveUrl($team, $mobileApp, $selected)),
         ]]);
     }
 
     /** @return array<string, mixed> */
     private function issueSummary(SentryIssue $issue): array
     {
-        return ['id' => $issue->id, 'fingerprint' => $issue->fingerprint, 'status' => $issue->status, 'level' => $issue->level, 'title' => $issue->title, 'events_count' => $issue->events_count, 'first_seen_at' => $issue->first_seen_at, 'last_seen_at' => $issue->last_seen_at, 'identifier' => $issue->appIdentifier?->identifier, 'identifier_platform' => $issue->appIdentifier?->platform?->value];
+        return [
+            'id' => $issue->id, 'fingerprint' => $issue->fingerprint, 'status' => $issue->status, 'level' => $issue->level,
+            'title' => $issue->title, 'events_count' => $issue->events_count, 'first_seen_at' => $issue->first_seen_at,
+            'last_seen_at' => $issue->last_seen_at, 'identifier' => $issue->appIdentifier?->identifier,
+            'identifier_platform' => $issue->appIdentifier?->platform?->value, 'resolved_at' => $issue->resolved_at,
+            'tags' => $issue->tagList(),
+            'resolved_by' => $issue->status === 'resolved' ? [
+                'type' => $issue->resolvedByApiKey ? 'api_key' : 'user',
+                'id' => $issue->resolvedByApiKey?->id ?? $issue->resolvedByUser?->id,
+                'name' => $issue->resolvedByApiKey?->name ?? $issue->resolvedByUser?->name ?? 'Unknown user',
+                'user' => $issue->resolvedByApiKey && $issue->resolvedByUser ? ['id' => $issue->resolvedByUser->id, 'name' => $issue->resolvedByUser->name] : null,
+            ] : null,
+            'status_activity' => $this->statusActivity($issue),
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function statusActivity(SentryIssue $issue): ?array
+    {
+        if ($issue->status_changed_at === null) {
+            return null;
+        }
+
+        return [
+            'action' => $issue->status === 'resolved' ? 'resolved' : 'reopened',
+            'comment' => $issue->status_comment,
+            'changed_at' => $issue->status_changed_at,
+            'actor' => $issue->statusChangedByApiKey ? [
+                'type' => 'api_key',
+                'id' => $issue->statusChangedByApiKey->id,
+                'name' => $issue->statusChangedByApiKey->name,
+                'user' => $issue->statusChangedByUser ? [
+                    'id' => $issue->statusChangedByUser->id, 'name' => $issue->statusChangedByUser->name,
+                ] : null,
+            ] : ($issue->statusChangedByUser ? [
+                'type' => 'user', 'id' => $issue->statusChangedByUser->id,
+                'name' => $issue->statusChangedByUser->name, 'user' => null,
+            ] : [
+                'type' => 'system', 'id' => null, 'name' => 'System', 'user' => null,
+            ]),
+        ];
     }
 
     /** @param array<string, mixed> $filters */
@@ -117,5 +201,12 @@ class AppTelemetryController extends Controller
     private function ensureEnabled(): void
     {
         abort_unless(config('integrations.enabled') && config('integrations.sentry.enabled'), 404);
+    }
+
+    private function archiveUrl(Team $team, MobileApp $mobileApp, SentryEvent $event): ?string
+    {
+        return $event->envelope?->archive_path
+            ? route('api.v1.apps.telemetry.envelopes.archive', [$team, $mobileApp, $event->envelope])
+            : null;
     }
 }
