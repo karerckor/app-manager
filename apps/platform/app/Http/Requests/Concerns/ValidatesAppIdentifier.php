@@ -14,6 +14,7 @@ trait ValidatesAppIdentifier
         MobileApp $mobileApp,
         ?AppIdentifier $appIdentifier = null,
         bool $update = false,
+        bool $createMobilePair = false,
     ): array {
         $required = $update ? 'sometimes' : 'required';
         $platformValue = request()->input('platform', $appIdentifier?->platform->value);
@@ -33,21 +34,28 @@ trait ValidatesAppIdentifier
                     : 'regex:/^[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)+$/',
                 Rule::unique('app_identifiers')->where(fn ($query) => $query
                     ->where('mobile_app_id', $mobileApp->id)
-                    ->where('platform', $platformValue))->ignore($appIdentifier?->id),
+                    ->when(
+                        $createMobilePair,
+                        fn ($query) => $query->whereIn('platform', [
+                            Platform::Ios->value,
+                            Platform::Android->value,
+                        ]),
+                        fn ($query) => $query->where('platform', $platformValue),
+                    ))->ignore($appIdentifier?->id),
             ],
             'name' => [$required === 'required' ? 'nullable' : 'sometimes', 'nullable', 'string', 'max:255'],
             'version' => [$required === 'required' ? 'nullable' : 'sometimes', 'nullable', 'string', 'max:255'],
             'version_code' => [
                 $required === 'required' ? 'nullable' : 'sometimes',
                 'nullable',
-                Rule::prohibitedIf($platformValue !== Platform::Android->value),
+                Rule::prohibitedIf(! $createMobilePair && $platformValue !== Platform::Android->value),
                 'integer',
                 'min:1',
             ],
             'build_number' => [
                 $required === 'required' ? 'nullable' : 'sometimes',
                 'nullable',
-                Rule::prohibitedIf($platformValue !== Platform::Ios->value),
+                Rule::prohibitedIf(! $createMobilePair && $platformValue !== Platform::Ios->value),
                 'string',
                 'max:255',
             ],

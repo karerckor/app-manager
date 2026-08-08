@@ -178,7 +178,7 @@ App Manager also evaluates the team permissions associated with the API key crea
 | Signing credential actions | `profile_type`, `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
 | Service credential actions | `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
 | `app_manager_download_artifact` | `artifact_id`, `output_path` | `build_id` defaults to lane context, `overwrite: true` | Absolute output path |
-| `app_manager_create_build` | `profile_type` | `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
+| `app_manager_create_build` | `profile_type` | `platform` defaults to the current lane and resolves its default identifier; `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
 | `app_manager_build_start` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Updated build resource |
 | `app_manager_build_log` | `message` and a resolved build ID | `newline: true`, optional `build_id` | Build-log metadata |
 | `app_manager_build_finish` | A resolved build ID | `status: "completed"`; also accepts `failed`, `cancelled` | Updated build resource |
@@ -191,18 +191,18 @@ All download actions require:
 - `output_path`: the exact destination file path;
 - `overwrite`: whether to replace an existing file, defaults to `true`.
 
-Credential actions accept an optional `app_identifier` (bundle ID or Android package name). When omitted, the plugin requests the configured application's identifiers and uses the first one for the action platform. Signing actions require a `profile_type`:
+Credential actions accept an optional `app_identifier` (bundle ID or Android package name). When omitted, the plugin requests the configured application's identifiers and uses the declared default for the action platform. Legacy API responses without `is_default` still fall back to the first identifier. Signing actions require a `profile_type`:
 
 - iOS: `development`, `adhoc`, `appstore`, `enterprise`;
 - Android: `development`, `preview`, `production`.
 
-iOS-only actions select the first iOS identifier, and Android-only actions select the first Android identifier. `app_manager_download_firebase_config` uses the current Fastlane platform lane (`ios` or `android`); outside a platform lane it uses the first identifier returned by the API. Pass `app_identifier` explicitly only when the app has multiple identifiers for that platform and the action should not use the first one.
+iOS-only actions select the default iOS identifier, and Android-only actions select the default Android identifier. `app_manager_download_firebase_config` uses the current Fastlane platform lane (`ios` or `android`). Pass `app_identifier` explicitly when the action should target a non-default identifier.
 
 If more than one credential matches, the action stops and lists the candidates. Pass an exact `credential_id` or `credential_name` to disambiguate it.
 
 ## App info and white-label configuration
 
-`app_manager_app_info` combines the configured app with its identifiers. It preserves identifier order from the API and marks the first identifier encountered for each platform as `default: true`:
+`app_manager_app_info` combines the configured app with its identifiers and exposes the server-declared default for each platform. For legacy API responses only, it marks the first identifier encountered per platform as `default: true`:
 
 ```ruby
 info = app_manager_app_info
@@ -369,6 +369,8 @@ Use manual reporting when App Manager cannot or should not poll the CI provider.
 ```ruby
 build = app_manager_create_build(
   profile_type: "production",
+  # platform defaults to the current Fastlane lane. Passing it explicitly also works.
+  platform: "android",
   context: { commit: ENV["GITHUB_SHA"], runner: "self-hosted" }
 )
 

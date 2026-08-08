@@ -84,6 +84,7 @@ RSpec.describe "App Manager actions" do
     allow(Fastlane::Helper::AppManagerHelper).to receive(:create_build).and_return(build)
     allow(Fastlane::Helper::AppManagerHelper).to receive(:update_build)
       .and_return(build.merge("status" => "running"))
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::PLATFORM_NAME] = :android
 
     result = Fastlane::Actions::AppManagerCreateBuildAction.run(
       request_uuid: "request-1",
@@ -94,6 +95,13 @@ RSpec.describe "App Manager actions" do
     Fastlane::Actions::AppManagerBuildStartAction.run(build_id: nil)
 
     expect(result).to eq(build)
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:create_build).with(
+      request_uuid: "request-1",
+      profile_type: "production",
+      platform: "android",
+      app_identifier_id: nil,
+      context: { commit: "abc" }
+    )
     expect(Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_ID]).to eq("build-1")
     expect(Fastlane::Helper::AppManagerHelper).to have_received(:update_build).with(
       build_id: "build-1",
@@ -101,6 +109,7 @@ RSpec.describe "App Manager actions" do
     )
   ensure
     Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_ID] = nil
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::PLATFORM_NAME] = nil
   end
 
   it "appends a newline and reports a terminal build status" do

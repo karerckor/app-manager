@@ -22,6 +22,7 @@ class UpdateAppIdentifierRequest extends FormRequest
         return $this->identifierRules(
             $this->route('mobileApp'),
             $this->route('appIdentifier'),
+            update: true,
         );
     }
 
@@ -49,7 +50,12 @@ class UpdateAppIdentifierRequest extends FormRequest
 
     private function normalizeWebIdentifier(): void
     {
-        if ($this->input('platform') === 'web' && is_string($this->input('identifier'))) {
+        $platform = $this->input(
+            'platform',
+            $this->route('appIdentifier')?->platform?->value,
+        );
+
+        if ($platform === Platform::Web->value && is_string($this->input('identifier'))) {
             $this->merge(['identifier' => strtolower(trim($this->input('identifier')))]);
         }
     }

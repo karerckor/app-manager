@@ -24,7 +24,7 @@ appmctl eas sync --app customer-app --integration-id int-002
   <h2>Account actions</h2>
   <CodeBlock lang="bash" code={`appmctl eas connect  --token TOKEN [--account NAME]
 appmctl eas projects --integration-id ID
-appmctl eas import   --integration-id ID --project-id UUID
+appmctl eas import   --integration-id ID --project-id UUID [--default-ios-identifier ID] [--default-android-identifier ID]
 appmctl eas sync       --integration-id ID
 appmctl eas disconnect --integration-id ID`} />
 
@@ -62,7 +62,16 @@ appmctl eas disconnect --integration-id ID`} />
 # expo-proj-001   @acme/customer-app       11111111-2222-3333-4444-555555555555  true     2026-08-02T18:20:00+00:00
 # expo-proj-002   @acme/internal-tools     66666666-7777-8888-9999-000000000000  false
 
-appmctl eas import --integration-id int-002 --project-id expo-proj-001`} />
+appmctl eas import --integration-id int-002 --project-id expo-proj-001
+
+# Only needed when Expo contains more than one identifier for a platform
+appmctl eas import --integration-id int-002 --project-id expo-proj-001 \\
+  --default-ios-identifier com.example.customer \\
+  --default-android-identifier com.example.customer`} />
+  <p>
+    A platform's sole identifier becomes its default automatically. Unattended bulk imports use
+    the first identifier returned for each platform.
+  </p>
 
   <h3>Sync and disconnect</h3>
   <CodeBlock lang="bash" code={`appmctl eas sync --integration-id int-002

@@ -204,7 +204,7 @@ All subcommands support `--help` for detailed usage and `--dry-run` to preview t
 ```bash
 appmctl builds list [--app APP] [--status STATUS] [--page N]
 appmctl builds get [--app APP] <build-id>
-appmctl builds create [--app APP] --profile TYPE [--status pending|completed|failed] [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
+appmctl builds create [--app APP] --profile TYPE [--platform ios|android] [--app-identifier-id UUID] [--status pending|completed|failed] [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
 appmctl builds cancel [--app APP] <build-id>
 appmctl builds patch [--app APP] <build-id> [--status STATUS] [--expo-build-id ID] [--tag NAME[:#HEX]]
 ```
@@ -247,9 +247,13 @@ appmctl build failed --new --profile preview
 ```
 
 ```bash
-appmctl builds create --profile appstore --tag ios:#3b82f6 --tag 1.0.0:#f59e0b
+appmctl builds create --platform ios --profile appstore --tag ios:#3b82f6 --tag 1.0.0:#f59e0b
 appmctl builds patch bld-abc123 --tag ios:#3b82f6
 ```
+
+When `--platform` is present and `--app-identifier-id` is omitted, App Manager
+uses that platform's default identifier. A single configured identifier is used
+as a fallback; multiple identifiers require one to be marked as default.
 
 ### `appmctl logs`
 
@@ -356,18 +360,20 @@ appmctl apps update customer-app --no-blueprint
 appmctl identifiers list   [--app APP] [--per-page N]
 appmctl identifiers show   [--app APP] <identifier-id>
 appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID \
-                           [--name NAME] [--version VERSION] [--version-code N]
+                           [--name NAME] [--version VERSION] [--version-code N] \
+                           [--build-number N] [--default]
 appmctl identifiers update [--app APP] <identifier-id> [same flags]
 appmctl identifiers delete [--app APP] <identifier-id>
 ```
 
 Identifiers are the per-platform bundle IDs, package names, and web domains an app
-ships under. `--version-code` applies to Android only, and the API rejects it for
-other platforms. Uniqueness is enforced per app and platform.
+ships under. `--version-code` applies to Android, while `--build-number` applies
+to iOS. `--default` makes the identifier the automatic target for platform builds;
+`--no-default` clears it during an update. Uniqueness is enforced per app and platform.
 
 ```bash
 appmctl identifiers create --platform android --identifier com.acme.customer \
-  --name 'Customer App' --version 1.4.0 --version-code 42
+  --name 'Customer App' --version 1.4.0 --version-code 42 --default
 appmctl identifiers list
 ```
 
@@ -400,7 +406,8 @@ appmctl integrations refs --integration-id ID
 # Expo account, attached to an integration
 appmctl eas connect --token TOKEN [--account NAME]
 appmctl eas projects --integration-id ID
-appmctl eas import   --integration-id ID --project-id ID
+appmctl eas import   --integration-id ID --project-id ID \
+  [--default-ios-identifier ID] [--default-android-identifier ID]
 
 # Project link, attached to an app
 appmctl eas status            [--app APP]
@@ -415,6 +422,11 @@ appmctl eas attach-credential [--app APP] --identifier-id ID --credential-id ID
 appmctl eas sync       (--app APP | --integration-id ID)
 appmctl eas disconnect (--app APP | --integration-id ID)
 ```
+
+During import, the sole identifier for each platform becomes its default automatically.
+Use the platform-specific default flags when an Expo project contains more than one
+identifier for iOS or Android. Unattended bulk imports choose the first identifier for
+each platform.
 
 The Expo API splits across two scopes: the account hangs off an integration, and the
 project link hangs off an app. `sync` and `disconnect` exist in both, so they take the

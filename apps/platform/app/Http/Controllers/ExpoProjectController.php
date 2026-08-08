@@ -171,10 +171,20 @@ class ExpoProjectController extends Controller
             409,
             'This Expo project is already linked.',
         );
+        $data = $request->validate([
+            'default_identifiers' => ['sometimes', 'array:ios,android'],
+            'default_identifiers.ios' => ['nullable', 'string', 'max:255'],
+            'default_identifiers.android' => ['nullable', 'string', 'max:255'],
+        ]);
 
         try {
             $remote = $expo->projectWithCredentialSecrets($integration, $expoProject->external_id);
-            $result = $importer->handle($team, $expoProject, $remote);
+            $result = $importer->handle(
+                $team,
+                $expoProject,
+                $remote,
+                defaultIdentifiers: (array) ($data['default_identifiers'] ?? []),
+            );
         } catch (ExpoGraphqlException|RuntimeException $exception) {
             throw ValidationException::withMessages(['expo' => $exception->getMessage()]);
         }
@@ -253,7 +263,13 @@ class ExpoProjectController extends Controller
                 $project->integration,
                 $project->external_id,
             );
-            $importer->handle($team, $project, $remote, $mobileApp);
+            $importer->handle(
+                $team,
+                $project,
+                $remote,
+                $mobileApp,
+                useFirstIdentifierAsDefault: true,
+            );
         } catch (ExpoGraphqlException|RuntimeException $exception) {
             throw ValidationException::withMessages(['expo' => $exception->getMessage()]);
         }

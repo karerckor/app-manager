@@ -141,6 +141,21 @@ import Screenshot from '../../../components/Screenshot.astro';
     insert it. Variables with no value render as <code>—</code> rather than an empty gap.
   </p>
   <p>
+    Application metadata and build Launch parameters support arbitrary dotted paths. For example,
+    <code>&#123;&#123;app.metadata.owner.name&#125;&#125;</code> reads a nested metadata field and
+    <code>&#123;&#123;build.parameters.flags.minify&#125;&#125;</code> reads a nested Launch parameter.
+    Use <code>&#123;&#123;app.metadata_str&#125;&#125;</code> or
+    <code>&#123;&#123;build.parameters_str&#125;&#125;</code> to insert the complete object as compact JSON.
+    Objects and arrays selected by a path also render as compact JSON; booleans render as
+    <code>true</code> or <code>false</code>.
+  </p>
+  <p>
+    Launch parameters remain encrypted in storage and excluded from webhook payloads and audit
+    values. A notification template that references them deliberately sends the selected values to
+    the destination, so use these placeholders only with trusted channels — especially
+    <code>&#123;&#123;build.parameters_str&#125;&#125;</code>, which sends the complete object.
+  </p>
+  <p>
     <strong>Each event exposes its own set, and a variable outside that set is rejected on save</strong>
     rather than rendering as a literal <code>&#123;&#123;…&#125;&#125;</code> in a live message. The
     chips under the textarea are the authoritative list for the event you have selected; the tables
@@ -161,6 +176,8 @@ import Screenshot from '../../../components/Screenshot.astro';
       <tr><td><code>&#123;&#123;actor.name&#125;&#125;</code></td><td>Who created or deleted it</td><td>Maya Chen</td></tr>
       <tr><td><code>&#123;&#123;app.tags&#125;&#125;</code></td><td>App tags prefixed with #</td><td>#ios #production</td></tr>
       <tr><td><code>&#123;&#123;app.tags_str&#125;&#125;</code></td><td>App tags as plain text</td><td>ios production</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata.*&#125;&#125;</code></td><td>Any application metadata value at a dotted path</td><td>Mobile Platform</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata_str&#125;&#125;</code></td><td>Complete application metadata as compact JSON</td><td>&#123;&quot;tier&quot;:&quot;production&quot;&#125;</td></tr>
     </tbody>
   </table>
 
@@ -178,6 +195,7 @@ import Screenshot from '../../../components/Screenshot.astro';
       <tr><td><code>&#123;&#123;identifier.url&#125;&#125;</code></td><td>Link to the identifier settings</td><td>https://…/identifiers/ios</td></tr>
       <tr><td><code>&#123;&#123;actor.name&#125;&#125;</code></td><td>Who made the change</td><td>Maya Chen</td></tr>
       <tr><td><code>&#123;&#123;app.tags&#125;&#125;</code>, <code>&#123;&#123;app.tags_str&#125;&#125;</code></td><td>App tags, with and without <code>#</code></td><td>#ios #production</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata.*&#125;&#125;</code>, <code>&#123;&#123;app.metadata_str&#125;&#125;</code></td><td>Application metadata by path or as complete JSON</td><td>production</td></tr>
     </tbody>
   </table>
 
@@ -198,6 +216,9 @@ import Screenshot from '../../../components/Screenshot.astro';
       <tr><td><code>&#123;&#123;build.url&#125;&#125;</code></td><td>Direct link to the build</td><td>https://…/builds/482</td></tr>
       <tr><td><code>&#123;&#123;build.tags&#125;&#125;</code></td><td>Build tags prefixed with #</td><td>#release #hotfix</td></tr>
       <tr><td><code>&#123;&#123;build.tags_str&#125;&#125;</code></td><td>Build tags as plain text</td><td>release hotfix</td></tr>
+      <tr><td><code>&#123;&#123;build.parameters.*&#125;&#125;</code></td><td>Any Launch parameter at a dotted path</td><td>internal</td></tr>
+      <tr><td><code>&#123;&#123;build.parameters_str&#125;&#125;</code></td><td>Complete Launch parameters as compact JSON</td><td>&#123;&quot;channel&quot;:&quot;internal&quot;&#125;</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata.*&#125;&#125;</code>, <code>&#123;&#123;app.metadata_str&#125;&#125;</code></td><td>Application metadata by path or as complete JSON</td><td>production</td></tr>
     </tbody>
   </table>
   <p>
@@ -219,6 +240,8 @@ import Screenshot from '../../../components/Screenshot.astro';
       <tr><td><code>&#123;&#123;artifact.download_url&#125;&#125;</code></td><td>Direct download link</td><td>https://…/atlas-4.8.0.ipa</td></tr>
       <tr><td><code>&#123;&#123;build.number&#125;&#125;</code></td><td>The source build sequence number</td><td>482</td></tr>
       <tr><td><code>&#123;&#123;build.tags&#125;&#125;</code>, <code>&#123;&#123;build.tags_str&#125;&#125;</code></td><td>Build tags, with and without <code>#</code></td><td>#release #hotfix</td></tr>
+      <tr><td><code>&#123;&#123;build.parameters.*&#125;&#125;</code>, <code>&#123;&#123;build.parameters_str&#125;&#125;</code></td><td>Source build Launch parameters by path or as complete JSON</td><td>internal</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata.*&#125;&#125;</code>, <code>&#123;&#123;app.metadata_str&#125;&#125;</code></td><td>Application metadata by path or as complete JSON</td><td>production</td></tr>
     </tbody>
   </table>
 
@@ -244,6 +267,7 @@ import Screenshot from '../../../components/Screenshot.astro';
         <td>Maya Chen</td>
       </tr>
       <tr><td><code>&#123;&#123;credential.tags&#125;&#125;</code>, <code>&#123;&#123;credential.tags_str&#125;&#125;</code></td><td>Credential tags, with and without <code>#</code></td><td>#ios #certificate</td></tr>
+      <tr><td><code>&#123;&#123;app.metadata.*&#125;&#125;</code>, <code>&#123;&#123;app.metadata_str&#125;&#125;</code></td><td>Metadata for the first linked application, when any</td><td>production</td></tr>
     </tbody>
   </table>
   <p>

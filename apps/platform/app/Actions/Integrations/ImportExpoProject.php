@@ -39,6 +39,8 @@ class ImportExpoProject
      * intentionally never requested from Expo.
      *
      * @param  array<string, mixed>  $remote
+     * @param  array{ios?: string, android?: string}  $defaultIdentifiers
+     * @param  bool  $useFirstIdentifierAsDefault  Used by unattended imports and syncs.
      * @return array{app: MobileApp, identifiers: int, credentials: int, restored_from_trash: bool}
      */
     public function handle(
@@ -46,8 +48,17 @@ class ImportExpoProject
         ExpoProject $project,
         array $remote,
         ?MobileApp $existingApp = null,
+        array $defaultIdentifiers = [],
+        bool $useFirstIdentifierAsDefault = false,
     ): array {
-        $result = DB::transaction(function () use ($team, $project, $remote, $existingApp): array {
+        $result = DB::transaction(function () use (
+            $team,
+            $project,
+            $remote,
+            $existingApp,
+            $defaultIdentifiers,
+            $useFirstIdentifierAsDefault,
+        ): array {
             $team = Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
             $project = ExpoProject::query()->lockForUpdate()->findOrFail($project->id);
             $appWasCreated = false;
@@ -97,7 +108,13 @@ class ImportExpoProject
                 }
             }
 
-            $identifiers = $this->importIdentifiers($app, $remote, $identifierEvents);
+            $identifiers = $this->importIdentifiers(
+                $app,
+                $remote,
+                $identifierEvents,
+                $defaultIdentifiers,
+                $useFirstIdentifierAsDefault,
+            );
             $credentialIds = [];
 
             foreach ((array) ($remote['androidAppCredentials'] ?? []) as $appCredentials) {
@@ -480,6 +497,8 @@ class ImportExpoProject
         MobileApp $app,
         array $remote,
         array &$webhookEvents,
+        array $defaultIdentifiers = [],
+        bool $useFirstIdentifierAsDefault = false,
     ): array {
         $candidates = [];
 
@@ -488,6 +507,7 @@ class ImportExpoProject
                 $candidates,
                 Platform::Android,
                 $credentials['applicationIdentifier'] ?? null,
+                authoritative: true,
             );
         }
 
@@ -496,6 +516,7 @@ class ImportExpoProject
                 $candidates,
                 Platform::Ios,
                 data_get($credentials, 'appleAppIdentifier.bundleIdentifier'),
+                authoritative: true,
             );
         }
 
@@ -518,6 +539,13 @@ class ImportExpoProject
             );
         }
 
+        $this->resolveDefaultIdentifiers(
+            $app,
+            $candidates,
+            $defaultIdentifiers,
+            $useFirstIdentifierAsDefault,
+        );
+
         return collect($candidates)
             ->mapWithKeys(function (array $candidate, string $key) use ($app, &$webhookEvents): array {
                 $identifier = $app->appIdentifiers()->firstOrNew([
@@ -534,9 +562,17 @@ class ImportExpoProject
                 if ($candidate['version_code'] !== null) {
                     $identifier->version_code = $candidate['version_code'];
                 }
+                if ($candidate['is_default'] !== null) {
+                    $identifier->is_default = $candidate['is_default'];
+                }
                 $identifier->save();
 
-                if ($wasCreated || $identifier->wasChanged(['name', 'version', 'version_code'])) {
+                if ($wasCreated || $identifier->wasChanged([
+                    'name',
+                    'version',
+                    'version_code',
+                    'is_default',
+                ])) {
                     $webhookEvents[$identifier->id] = [
                         'type' => $wasCreated
                             ? WebhookEventType::AppIdentifierCreated
@@ -559,6 +595,7 @@ class ImportExpoProject
         mixed $identifier,
         mixed $version = null,
         mixed $versionCode = null,
+        bool $authoritative = false,
     ): void {
         $identifier = trim((string) $identifier);
         if ($identifier === '') {
@@ -571,6 +608,8 @@ class ImportExpoProject
             'identifier' => $identifier,
             'version' => null,
             'version_code' => null,
+            'authoritative' => false,
+            'is_default' => null,
         ];
         $candidate['version'] ??= filled($version) ? (string) $version : null;
         if ($platform === Platform::Android && filled($versionCode)) {
@@ -578,7 +617,82 @@ class ImportExpoProject
                 ? (int) $versionCode
                 : null;
         }
+        $candidate['authoritative'] = $candidate['authoritative'] || $authoritative;
         $candidates[$key] = $candidate;
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $candidates
+     * @param  array<string, mixed>  $requestedDefaults
+     */
+    private function resolveDefaultIdentifiers(
+        MobileApp $app,
+        array &$candidates,
+        array $requestedDefaults,
+        bool $useFirstIdentifierAsDefault,
+    ): void {
+        foreach ([Platform::Ios, Platform::Android] as $platform) {
+            $platformLabel = $platform === Platform::Ios ? 'iOS' : 'Android';
+            $platformCandidates = collect($candidates)
+                ->filter(fn (array $candidate) => $candidate['platform'] === $platform);
+            if ($platformCandidates->isEmpty()) {
+                if (filled($requestedDefaults[$platform->value] ?? null)) {
+                    throw new RuntimeException(
+                        "Expo did not return the selected default {$platformLabel} identifier.",
+                    );
+                }
+
+                continue;
+            }
+
+            $requested = trim((string) ($requestedDefaults[$platform->value] ?? ''));
+            $defaultKey = $requested !== '' ? $platform->value.'|'.$requested : null;
+
+            if ($defaultKey !== null && ! $platformCandidates->has($defaultKey)) {
+                throw new RuntimeException(
+                    "The selected default {$platformLabel} identifier was not returned by Expo.",
+                );
+            }
+
+            if ($defaultKey === null) {
+                $existingDefault = $app->appIdentifiers()
+                    ->where('platform', $platform)
+                    ->where('is_default', true)
+                    ->first();
+                if ($existingDefault) {
+                    $existingKey = $platform->value.'|'.$existingDefault->identifier;
+                    if ($platformCandidates->has($existingKey)) {
+                        $defaultKey = $existingKey;
+                    } else {
+                        continue;
+                    }
+                }
+            }
+
+            if ($defaultKey === null) {
+                $authoritative = $platformCandidates
+                    ->filter(fn (array $candidate) => $candidate['authoritative']);
+                if ($authoritative->count() === 1) {
+                    $defaultKey = $authoritative->keys()->first();
+                } elseif ($platformCandidates->count() === 1) {
+                    $defaultKey = $platformCandidates->keys()->first();
+                } elseif ($useFirstIdentifierAsDefault) {
+                    $defaultKey = $platformCandidates->keys()->first();
+                } else {
+                    $choices = $platformCandidates
+                        ->pluck('identifier')
+                        ->implode(', ');
+
+                    throw new RuntimeException(
+                        "Choose a default {$platformLabel} identifier before importing: {$choices}.",
+                    );
+                }
+            }
+
+            foreach ($platformCandidates->keys() as $key) {
+                $candidates[$key]['is_default'] = $key === $defaultKey;
+            }
+        }
     }
 
     /**

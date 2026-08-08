@@ -286,6 +286,13 @@
         templateInput?.setSelectionRange(start + token.length, start + token.length);
     };
 
+    const displayVariableKey = (variable) => variable.pattern ?? variable.key;
+    const dynamicPreviewValue = (event, key) => event.variables.find((variable) => {
+        if (!variable.prefix || !key.startsWith(variable.prefix)) return false;
+
+        return /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/.test(key.slice(variable.prefix.length));
+    })?.example;
+
     const renderPreview = (event, templates, tags) => {
         const examples = Object.fromEntries(event.variables.map((variable) => [variable.key, variable.example]));
         // Global variables live outside event.variables, so they'd otherwise stay
@@ -295,7 +302,13 @@
         examples['tags_str'] = (tags ?? []).join(' ');
 
         return (templates[event.key] ?? '')
-            .replace(/{{\s*([a-zA-Z0-9_.]+)\s*}}/g, (token, key) => examples[key] ?? token);
+            .replace(/{{\s*([^{}]+?)\s*}}/g, (token, rawKey) => {
+                const key = rawKey.trim();
+
+                if (Object.prototype.hasOwnProperty.call(examples, key)) return examples[key];
+
+                return dynamicPreviewValue(event, key) ?? token;
+            });
     };
 
     const eventError = (eventKey) => notificationForm.errors[`templates.${eventKey}`];
@@ -608,10 +621,10 @@
                                             <button
                                                 type="button"
                                                 class="chip border-border bg-surface-sunken font-mono text-xs text-text hover:border-brand-soft-line hover:bg-brand-soft hover:text-brand"
-                                                title={variable.description}
+                                                title={variable.pattern ? `${variable.description} Inserts {{${variable.key}}} as an editable example.` : variable.description}
                                                 on:click={() => insertVariable(variable.key)}
                                             >
-                                                <Plus class="h-3 w-3" />{`{{${variable.key}}}`}
+                                                <Plus class="h-3 w-3" />{`{{${displayVariableKey(variable)}}}`}
                                             </button>
                                         {/each}
                                         <span class="mx-1 h-4 w-px bg-border"></span>
@@ -665,11 +678,14 @@
                                     {#each selectedEvent.variables as variable (variable.key)}
                                         <button
                                             type="button"
-                                            class="group justify-start rounded-md border border-border bg-surface-raised p-3 text-left text-text shadow-none hover:border-brand-soft-line hover:bg-brand-soft"
+                                            class="group justify-start rounded-md border p-3 text-left text-text shadow-none hover:border-brand-soft-line hover:bg-brand-soft {variable.pattern ? 'border-dashed border-brand-soft-line bg-brand-soft/40' : 'border-border bg-surface-raised'}"
                                             on:click={() => insertVariable(variable.key)}
                                         >
                                             <span class="min-w-0">
-                                                <span class="block truncate font-mono text-xs text-brand">{`{{${variable.key}}}`}</span>
+                                                <span class="flex min-w-0 items-center gap-2">
+                                                    <span class="block truncate font-mono text-xs text-brand">{`{{${displayVariableKey(variable)}}}`}</span>
+                                                    {#if variable.pattern}<span class="shrink-0 rounded-sm border border-brand-soft-line bg-surface-raised px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-brand">path</span>{/if}
+                                                </span>
                                                 <span class="mt-1 block text-sm font-semibold">{variable.label}</span>
                                                 <span class="mt-0.5 block text-xs font-normal leading-4 text-faint">{variable.description}</span>
                                                 {#if variable.options?.length}
@@ -682,7 +698,7 @@
                                                         {/each}
                                                     </span>
                                                 {:else}
-                                                    <span class="mt-2 block truncate font-mono text-xs font-normal text-muted">e.g. {variable.example}</span>
+                                                    <span class="mt-2 block truncate font-mono text-xs font-normal text-muted">{variable.pattern ? `inserts {{${variable.key}}} → ${variable.example}` : `e.g. ${variable.example}`}</span>
                                                 {/if}
                                             </span>
                                         </button>

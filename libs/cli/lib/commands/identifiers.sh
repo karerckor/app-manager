@@ -25,6 +25,9 @@ Options:
   --name NAME         Display name
   --version VERSION   Marketing version
   --version-code N    Android version code (android only)
+  --build-number N    iOS build number (iOS only)
+  --default           Make this the default for its platform
+  --no-default        Clear the default flag when updating
   --per-page N        Page size for list
 
 Run "appmctl identifiers <action> --help" for action-specific help.
@@ -153,6 +156,8 @@ _identifiers_create() {
   local name=""
   local version=""
   local version_code=""
+  local build_number=""
+  local default_state=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -169,10 +174,14 @@ _identifiers_create() {
       --version=*) version=${1#*=}; shift ;;
       --version-code) require_value "$1" "$2"; version_code="$2"; shift 2 ;;
       --version-code=*) version_code=${1#*=}; shift ;;
+      --build-number) require_value "$1" "$2"; build_number="$2"; shift 2 ;;
+      --build-number=*) build_number=${1#*=}; shift ;;
+      --default) default_state=true; shift ;;
+      --no-default) default_state=false; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID [--name NAME] [--version VERSION] [--version-code N]\n'
+        printf 'Usage: appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID [--name NAME] [--version VERSION] [--version-code N] [--build-number N] [--default]\n'
         return 0
         ;;
       *) die "unknown identifiers create option: $1" ;;
@@ -189,7 +198,7 @@ _identifiers_create() {
   require_jq
   ensure_tmpdir
   body_file=$(new_temp_file identifiers-create) || return 1
-  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code" "$build_number" "$default_state"
 
   local path="apps/$APP/identifiers"
 
@@ -216,6 +225,8 @@ _identifiers_update() {
   local name=""
   local version=""
   local version_code=""
+  local build_number=""
+  local default_state=""
   local has_fields=0
   local body_file
 
@@ -233,10 +244,14 @@ _identifiers_update() {
       --version=*) version=${1#*=}; has_fields=1; shift ;;
       --version-code) require_value "$1" "$2"; version_code="$2"; has_fields=1; shift 2 ;;
       --version-code=*) version_code=${1#*=}; has_fields=1; shift ;;
+      --build-number) require_value "$1" "$2"; build_number="$2"; has_fields=1; shift 2 ;;
+      --build-number=*) build_number=${1#*=}; has_fields=1; shift ;;
+      --default) default_state=true; has_fields=1; shift ;;
+      --no-default) default_state=false; has_fields=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl identifiers update [--app APP] <identifier-id> [--platform PLATFORM] [--identifier ID] [--name NAME] [--version VERSION] [--version-code N]\n'
+        printf 'Usage: appmctl identifiers update [--app APP] <identifier-id> [--platform PLATFORM] [--identifier ID] [--name NAME] [--version VERSION] [--version-code N] [--build-number N] [--default|--no-default]\n'
         return 0
         ;;
       -*) die "unknown identifiers update option: $1" ;;
@@ -258,7 +273,7 @@ _identifiers_update() {
   require_jq
   ensure_tmpdir
   body_file=$(new_temp_file identifiers-update) || return 1
-  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code" "$build_number" "$default_state"
 
   local path="apps/$APP/identifiers/$identifier_id"
 
@@ -337,6 +352,8 @@ _identifiers_build_body() {
   local name="$4"
   local version="$5"
   local version_code="$6"
+  local build_number="$7"
+  local default_state="$8"
 
   local jq_args=(-n)
   local jq_expr='{'
@@ -371,11 +388,23 @@ _identifiers_build_body() {
     jq_expr="$jq_expr version_code: \$version_code"
     first=0
   fi
+  if [ -n "$build_number" ]; then
+    jq_args+=(--arg build_number "$build_number")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr build_number: \$build_number"
+    first=0
+  fi
+  if [ -n "$default_state" ]; then
+    jq_args+=(--argjson is_default "$default_state")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr is_default: \$is_default"
+    first=0
+  fi
 
   jq_expr="$jq_expr }"
   "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build the request body"
 }
 
 _identifiers_resource_format() {
-  printf '%s' '{"type":"resource","fields":{"id":"id","platform":"platform","identifier":"identifier","name":"name","version":"version","version_code":"version_code","created_at":"created_at","updated_at":"updated_at"}}'
+  printf '%s' '{"type":"resource","fields":{"id":"id","platform":"platform","identifier":"identifier","name":"name","version":"version","version_code":"version_code","build_number":"build_number","is_default":"is_default","created_at":"created_at","updated_at":"updated_at"}}'
 }

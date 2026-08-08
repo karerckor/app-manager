@@ -67,6 +67,8 @@ class AppIdentifierPageController extends Controller
                     'identifier' => $identifier->identifier,
                     'version' => $identifier->version,
                     'version_code' => $identifier->version_code,
+                    'build_number' => $identifier->build_number,
+                    'is_default' => $identifier->is_default,
                     'credentials_count' => $identifier->platform === Platform::Web
                         ? 0
                         : $identifier->credentials_count,
@@ -115,6 +117,8 @@ class AppIdentifierPageController extends Controller
                         'identifier' => $identifier['identifier'],
                         'version' => null,
                         'version_code' => null,
+                        'build_number' => null,
+                        'is_default' => false,
                         'credentials_count' => null,
                         'sources' => [
                             'database' => false,

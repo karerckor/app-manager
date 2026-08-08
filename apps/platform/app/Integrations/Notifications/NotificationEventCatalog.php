@@ -146,6 +146,7 @@ final class NotificationEventCatalog
                     self::variable('build.requested_by', 'Requested by', 'The person or automation that requested the build.', 'Maya Chen'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
                     ...self::buildTagVariables(),
+                    ...self::appMetadataVariables(),
                 ],
             ),
             self::event(
@@ -161,6 +162,7 @@ final class NotificationEventCatalog
                     self::variable('build.branch', 'Branch', 'The source branch or ref.', 'release/4.8'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
                     ...self::buildTagVariables(),
+                    ...self::appMetadataVariables(),
                 ],
             ),
             self::event(
@@ -183,6 +185,7 @@ final class NotificationEventCatalog
                     self::variable('build.duration', 'Duration', 'The human-readable build duration.', '8m 42s'),
                     self::variable('build.url', 'Build URL', 'A direct link to the build details.', 'https://manager.example/builds/482'),
                     ...self::buildTagVariables(),
+                    ...self::appMetadataVariables(),
                 ],
             ),
             self::event(
@@ -199,6 +202,7 @@ final class NotificationEventCatalog
                     self::variable('artifact.download_url', 'Download URL', 'A direct download link.', 'https://manager.example/artifacts/atlas-4.8.0.ipa'),
                     self::variable('build.number', 'Build number', 'The source build sequence number.', '482'),
                     ...self::buildTagVariables(),
+                    ...self::appMetadataVariables(),
                 ],
             ),
             self::event(
@@ -238,6 +242,28 @@ final class NotificationEventCatalog
         return [
             self::variable('app.tags', 'App tags', 'App tags prefixed with #, separated by spaces.', '#ios #production'),
             self::variable('app.tags_str', 'App tags (plain)', 'App tags as plain text, separated by spaces.', 'ios production'),
+            ...self::appMetadataVariables(),
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function appMetadataVariables(): array
+    {
+        return [
+            self::dynamicVariable(
+                'app.metadata.owner.name',
+                'app.metadata.*',
+                'app.metadata.',
+                'App metadata field',
+                'A value at any dotted path in the application metadata. Edit the inserted example path to match your JSON.',
+                'Mobile Platform',
+            ),
+            self::variable(
+                'app.metadata_str',
+                'App metadata (JSON)',
+                'The complete application metadata object as compact JSON.',
+                '{"owner":{"name":"Mobile Platform"},"tier":"production"}',
+            ),
         ];
     }
 
@@ -246,6 +272,20 @@ final class NotificationEventCatalog
         return [
             self::variable('build.tags', 'Build tags', 'Build tags prefixed with #, separated by spaces.', '#release #hotfix'),
             self::variable('build.tags_str', 'Build tags (plain)', 'Build tags as plain text, separated by spaces.', 'release hotfix'),
+            self::dynamicVariable(
+                'build.parameters.channel',
+                'build.parameters.*',
+                'build.parameters.',
+                'Launch parameter',
+                'A value at any dotted path in the build Launch parameters. Edit the inserted example path and send only to trusted destinations.',
+                'internal',
+            ),
+            self::variable(
+                'build.parameters_str',
+                'Launch parameters (JSON)',
+                'The complete build Launch parameters object as compact JSON. Send only to trusted destinations.',
+                '{"channel":"internal","flags":{"minify":true}}',
+            ),
         ];
     }
 
@@ -268,6 +308,7 @@ final class NotificationEventCatalog
             self::variable('credential.url', 'Credential URL', 'A link to Credentials Vault.', 'https://manager.example/credentials'),
             self::variable('actor.name', $actorLabel, 'The person or automation that made the change.', 'Maya Chen'),
             ...self::credentialTagVariables(),
+            ...self::appMetadataVariables(),
         ];
     }
 
@@ -282,6 +323,7 @@ final class NotificationEventCatalog
             self::variable('credential.days_remaining', 'Days remaining', 'The reminder milestone for this event.', $daysRemaining),
             self::variable('credential.url', 'Credential URL', 'A link to Credentials Vault.', 'https://manager.example/credentials'),
             ...self::credentialTagVariables(),
+            ...self::appMetadataVariables(),
         ];
     }
 
@@ -326,8 +368,19 @@ final class NotificationEventCatalog
         $examples['tags_str'] = implode(' ', $tags);
 
         return preg_replace_callback(
-            '/{{\s*([a-zA-Z0-9_.]+)\s*}}/',
-            fn (array $match) => (string) ($examples[$match[1]] ?? $match[0]),
+            '/{{\s*([^{}]+?)\s*}}/',
+            function (array $match) use ($examples, $event): string {
+                $key = trim($match[1]);
+
+                if (array_key_exists($key, $examples)) {
+                    return (string) $examples[$key];
+                }
+
+                $dynamic = collect($event['variables'])
+                    ->first(fn (array $variable) => self::matchesDynamicVariable($key, $variable));
+
+                return $dynamic ? (string) $dynamic['example'] : $match[0];
+            },
             $template,
         ) ?? $template;
     }
@@ -358,13 +411,19 @@ final class NotificationEventCatalog
             return [];
         }
 
-        preg_match_all('/{{\s*([a-zA-Z0-9_.]+)\s*}}/', $template, $matches);
-        $allowed = array_merge(
-            array_column($event['variables'], 'key'),
-            array_column(self::globalVariables(), 'key'),
-        );
+        preg_match_all('/{{\s*([^{}]+?)\s*}}/', $template, $matches);
+        $variables = array_merge($event['variables'], self::globalVariables());
+        $allowed = array_column($variables, 'key');
 
-        return array_values(array_diff(array_unique($matches[1] ?? []), $allowed));
+        return collect($matches[1] ?? [])
+            ->map(fn (string $key) => trim($key))
+            ->unique()
+            ->reject(fn (string $key) => in_array($key, $allowed, true)
+                || collect($variables)->contains(
+                    fn (array $variable) => self::matchesDynamicVariable($key, $variable),
+                ))
+            ->values()
+            ->all();
     }
 
     /** @return list<array<string, mixed>> */
@@ -403,5 +462,31 @@ final class NotificationEventCatalog
     ): array {
         return compact('key', 'label', 'description', 'example')
             + ($options === [] ? [] : ['options' => $options]);
+    }
+
+    /** @return array<string, mixed> */
+    private static function dynamicVariable(
+        string $key,
+        string $pattern,
+        string $prefix,
+        string $label,
+        string $description,
+        string $example,
+    ): array {
+        return compact('key', 'pattern', 'prefix', 'label', 'description', 'example');
+    }
+
+    /** @param array<string, mixed> $variable */
+    private static function matchesDynamicVariable(string $key, array $variable): bool
+    {
+        $prefix = $variable['prefix'] ?? null;
+
+        if (! is_string($prefix) || ! str_starts_with($key, $prefix)) {
+            return false;
+        }
+
+        $path = substr($key, strlen($prefix));
+
+        return preg_match('/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/', $path) === 1;
     }
 }

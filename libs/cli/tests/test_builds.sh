@@ -76,10 +76,11 @@ pass 'builds get'
 
 # --- builds create ---
 : >"$MOCK_LOG"
-output=$("$CLI" --json builds create --app customer-app --profile production 2>&1)
+output=$("$CLI" --json builds create --app customer-app --platform android --profile production 2>&1)
 assert_contains "$output" 'bld-003' 'builds create returns new build'
 request_body=$(grep -o 'profile_type.*production' "$MOCK_LOG" || true)
 [ -n "$request_body" ] || fail 'builds create sends profile in body'
+assert_contains "$(cat "$MOCK_LOG")" '"platform": "android"' 'builds create sends the target platform'
 pass 'builds create'
 
 # --- builds cancel ---

@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Builds\CreateManualBuild;
+use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Models\AppIdentifier;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Builds\AppIdentifierResolver;
+use App\Support\Credentials\BuildProfileSchema;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ManualBuildController extends Controller
 {
@@ -19,6 +23,7 @@ class ManualBuildController extends Controller
         Team $team,
         MobileApp $mobileApp,
         CreateManualBuild $create,
+        AppIdentifierResolver $identifiers,
     ): RedirectResponse {
         Gate::forUser($request->user())->authorize('runPipelines', $team);
         abort_unless($mobileApp->team_id === $team->id, 404);
@@ -27,6 +32,7 @@ class ManualBuildController extends Controller
             'request_uuid' => ['required', 'uuid'],
             'profile_type' => ['required', Rule::enum(ProfileType::class)],
             'app_identifier_id' => ['nullable', 'uuid'],
+            'platform' => ['sometimes', Rule::enum(Platform::class)],
             'parameters' => [
                 'sometimes',
                 'array',
@@ -43,6 +49,23 @@ class ManualBuildController extends Controller
                 ->where('mobile_app_id', $mobileApp->id)
                 ->firstOrFail()
             : null;
+        $platform = isset($data['platform']) ? Platform::from($data['platform']) : null;
+
+        if ($identifier && $platform && $identifier->platform !== $platform) {
+            throw ValidationException::withMessages([
+                'platform' => 'The selected identifier does not belong to this platform.',
+            ]);
+        }
+
+        if ($identifier === null && $platform) {
+            $identifier = $identifiers->resolve($mobileApp, $platform);
+        }
+
+        if ($platform && ! BuildProfileSchema::supportsPlatform(ProfileType::from($data['profile_type']), $platform)) {
+            throw ValidationException::withMessages([
+                'profile_type' => 'This build target cannot be used with the selected platform.',
+            ]);
+        }
         $build = $create->handle(
             $team,
             $mobileApp,

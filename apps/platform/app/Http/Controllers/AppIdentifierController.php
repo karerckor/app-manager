@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\Platform;
 use App\Enums\WebhookEventType;
 use App\Http\Requests\StoreAppIdentifierRequest;
 use App\Http\Requests\UpdateAppIdentifierRequest;
@@ -24,18 +25,42 @@ class AppIdentifierController extends Controller
 
     public function store(StoreAppIdentifierRequest $request, Team $team, MobileApp $mobileApp): RedirectResponse
     {
-        DB::transaction(function () use ($mobileApp, $team, $request) {
-            $identifier = $mobileApp->appIdentifiers()->create($request->validated());
+        $created = DB::transaction(function () use ($mobileApp, $team, $request) {
+            $data = $request->validated();
+            $createMobilePair = (bool) ($data['create_for_both_platforms'] ?? false);
+            unset($data['create_for_both_platforms']);
+
+            if (($data['is_default'] ?? null) === false) {
+                unset($data['is_default']);
+            }
+
+            $platforms = $createMobilePair
+                ? [Platform::Ios, Platform::Android]
+                : [Platform::from($data['platform'])];
+            $identifiers = collect($platforms)->map(function (Platform $platform) use ($mobileApp, $team, $data) {
+                $identifier = $mobileApp->appIdentifiers()->create([
+                    ...$data,
+                    'platform' => $platform,
+                ]);
+                $this->webhookEvents->record(
+                    $team,
+                    WebhookEventType::AppIdentifierCreated,
+                    $identifier,
+                    WebhookPayload::appIdentifier($identifier),
+                );
+
+                return $identifier;
+            });
+
             $this->blueprints->evaluate($mobileApp);
-            $this->webhookEvents->record(
-                $team,
-                WebhookEventType::AppIdentifierCreated,
-                $identifier,
-                WebhookPayload::appIdentifier($identifier),
-            );
+
+            return $identifiers;
         });
 
-        return back()->with('status', 'App identifier added.');
+        return back()->with(
+            'status',
+            $created->count() === 2 ? 'iOS and Android identifiers added.' : 'App identifier added.',
+        );
     }
 
     public function update(

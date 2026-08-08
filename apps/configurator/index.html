@@ -116,6 +116,7 @@
                     dbConnectionString: '',
                     dbSslMode: 'prefer',
                     useRedis: true,
+                    useCloudQueue: false,
                     redisHost: 'redis',
                     redisPort: '6379',
                     storage: 'local',
@@ -155,6 +156,7 @@
                         this.config.dbHost = 'postgres';
                         this.config.redisHost = 'redis';
                         this.config.useRedis = true;
+                        this.config.useCloudQueue = false;
                         this.config.storage = 'local';
                     } else if (target === 'cloud') {
                         if (previous !== 'cloud') this.config.appUrl = 'https://app.example.com';
@@ -167,6 +169,7 @@
                         this.config.dbHost = '127.0.0.1';
                         this.config.redisHost = '127.0.0.1';
                         this.config.useRedis = false;
+                        this.config.useCloudQueue = false;
                         this.config.storage = 'local';
                     }
                 },
@@ -439,7 +442,7 @@
                     databaseValues.push(
                         ['SESSION_DRIVER', 'database'],
                         ['SESSION_ENCRYPT', 'true'],
-                        ['QUEUE_CONNECTION', 'database'],
+                        ['QUEUE_CONNECTION', c.target === 'cloud' && c.useCloudQueue ? 'cloud' : 'database'],
                         ['CACHE_STORE', c.useRedis ? 'redis' : 'database'],
                     );
 
@@ -453,6 +456,10 @@
                                 ['REDIS_PORT', c.redisPort],
                             );
                         }
+                    }
+
+                    if (c.target === 'cloud' && c.useCloudQueue) {
+                        databaseNotes.push('Cloud Queue must be enabled for this Laravel Cloud environment.');
                     }
 
                     section('Database and runtime', databaseValues, databaseNotes);
@@ -832,10 +839,20 @@
                             <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
                                 <span>
                                     <strong class="block text-sm" x-text="config.target === 'cloud' ? 'Laravel KV Store attached' : 'Use Redis for cache'"></strong>
-                                    <span class="mt-1 block text-xs leading-5 text-slate-500">Sessions and queues remain in PostgreSQL; Redis accelerates shared cache and locks.</span>
+                                    <span class="mt-1 block text-xs leading-5 text-slate-500" x-text="config.target === 'cloud' ? 'Sessions stay in PostgreSQL; the KV Store accelerates shared cache and locks.' : 'Sessions and queues remain in PostgreSQL; Redis accelerates shared cache and locks.'"></span>
                                 </span>
                                 <span class="shrink-0">
                                     <input class="switch sr-only" type="checkbox" x-model="config.useRedis">
+                                    <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
+                                </span>
+                            </label>
+                            <label x-show="config.target === 'cloud'" class="mt-3 flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
+                                <span>
+                                    <strong class="block text-sm">Laravel Cloud Queue enabled</strong>
+                                    <span class="mt-1 block text-xs leading-5 text-slate-500">Emit <code class="font-mono">QUEUE_CONNECTION=cloud</code>. Enable this only when managed Cloud Queue is active for this environment.</span>
+                                </span>
+                                <span class="shrink-0">
+                                    <input class="switch sr-only" type="checkbox" x-model="config.useCloudQueue">
                                     <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
                                 </span>
                             </label>

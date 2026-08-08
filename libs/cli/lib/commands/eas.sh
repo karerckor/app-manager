@@ -39,6 +39,10 @@ Options:
   --token TOKEN       Expo access token (connect)
   --account NAME      Expo account name (connect)
   --project-id ID     Expo project ID (import, link)
+  --default-ios-identifier ID
+                      Default iOS identifier for an import
+  --default-android-identifier ID
+                      Default Android identifier for an import
   --mode MODE         create or existing (link)
   --enabled BOOL      true or false (auto-sync)
   --identifier-id ID  App identifier ID (provision, attach-credential)
@@ -298,6 +302,9 @@ _eas_projects() {
 _eas_import() {
   local integration_id=""
   local project_id=""
+  local default_ios_identifier=""
+  local default_android_identifier=""
+  local body_file=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -305,11 +312,19 @@ _eas_import() {
       --integration-id=*) integration_id=${1#*=}; shift ;;
       --project-id) require_value "$1" "$2"; project_id="$2"; shift 2 ;;
       --project-id=*) project_id=${1#*=}; shift ;;
+      --default-ios-identifier) require_value "$1" "$2"; default_ios_identifier="$2"; shift 2 ;;
+      --default-ios-identifier=*) default_ios_identifier=${1#*=}; shift ;;
+      --default-android-identifier) require_value "$1" "$2"; default_android_identifier="$2"; shift 2 ;;
+      --default-android-identifier=*) default_android_identifier=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl eas import --integration-id ID --project-id ID\n'
-        printf '\nUse "appmctl eas projects" to find the project ID.\n'
+        printf 'Usage: appmctl eas import --integration-id ID --project-id ID [options]\n'
+        printf '\nOptions:\n'
+        printf '  --default-ios-identifier ID      Default imported iOS bundle identifier\n'
+        printf '  --default-android-identifier ID  Default imported Android application ID\n'
+        printf '\nA platform with one Expo identifier is selected automatically.\n'
+        printf 'Use "appmctl eas projects" to find the project ID.\n'
         return 0
         ;;
       *) die "unknown eas import option: $1" ;;
@@ -320,12 +335,26 @@ _eas_import() {
   [ -n "$project_id" ] || die "--project-id is required"
   local path="integrations/$integration_id/expo/projects/$project_id/import"
 
+  if [ -n "$default_ios_identifier" ] || [ -n "$default_android_identifier" ]; then
+    require_jq
+    ensure_tmpdir
+    body_file=$(new_temp_file eas-import) || return 1
+    "$JQ_BIN" -n \
+      --arg ios "$default_ios_identifier" \
+      --arg android "$default_android_identifier" \
+      '{default_identifiers: ({ios: $ios, android: $android} | with_entries(select(.value != "")))}' \
+      >"$body_file" || die "could not build the request body"
+  fi
+
   if [ "$DRY_RUN" -eq 1 ]; then
-    _eas_dry_run_plan POST "$path"
+    _eas_dry_run_plan POST "$path" || return 1
+    if [ -n "$body_file" ]; then
+      printf 'body: %s\n' "$(cat "$body_file")"
+    fi
     return 0
   fi
 
-  api_post "$path" "" || return 1
+  api_post "$path" "$body_file" || return 1
   local fmt='{"type":"resource","fields":{"project":"full_name","expo_project_id":"external_id","app":"mobile_app.slug","exists_on_expo":"exists_on_expo"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }

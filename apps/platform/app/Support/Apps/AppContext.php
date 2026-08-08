@@ -29,6 +29,7 @@ class AppContext
                     'platform' => $identifier->platform->value,
                     'identifier' => $identifier->identifier,
                     'name' => $identifier->name,
+                    'is_default' => $identifier->is_default,
                 ])->values(),
             'buildProfiles' => fn () => BuildProfileSchema::definitions(),
             'tag_suggestions' => fn () => self::tagSuggestions($app),

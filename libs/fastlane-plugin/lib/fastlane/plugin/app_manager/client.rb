@@ -131,12 +131,13 @@ module Fastlane
         builds
       end
 
-      def create_build(request_uuid:, profile_type:, app_identifier_id: nil, context: {})
+      def create_build(request_uuid:, profile_type:, platform: nil, app_identifier_id: nil, context: {})
         payload = {
           request_uuid: request_uuid,
           profile_type: profile_type,
           context: context
         }
+        payload[:platform] = platform if present?(platform)
         payload[:app_identifier_id] = app_identifier_id if present?(app_identifier_id)
         build_data(json_request(app_endpoint("builds"), method: :post, body: payload))
       end
@@ -491,9 +492,17 @@ module Fastlane
           identifiers = identifiers.select { |identifier| identifier["platform"] == platform.to_s }
         end
 
-        identifier = identifiers.first
+        default = identifiers.find { |identifier| identifier["is_default"] == true }
+        default_declared = identifiers.any? { |identifier| identifier.key?("is_default") }
+        identifier = default
+        identifier ||= identifiers.first unless default_declared && identifiers.length > 1
         platform_label = present?(platform) ? " #{platform}" : ""
         unless identifier && present?(identifier["identifier"])
+          if default_declared && identifiers.length > 1
+            raise Error,
+                  "No default#{platform_label} app identifier is configured for App Manager app #{@configuration.app}"
+          end
+
           raise Error,
                 "No#{platform_label} app identifier is configured for App Manager app #{@configuration.app}"
         end

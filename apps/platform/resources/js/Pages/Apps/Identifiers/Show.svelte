@@ -194,7 +194,8 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <h1 class="truncate text-xl font-bold tracking-tight">{identifier.name || platformName(identifier.platform)}</h1>
                     <span class="rounded bg-border-subtle px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-muted uppercase">{identifier.platform}</span>
-                    {#if identifier.version || identifier.version_code}<span class="rounded bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold text-brand">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}</span>{/if}
+                    {#if identifier.is_default}<span class="rounded bg-brand px-1.5 py-0.5 text-[9px] font-bold text-white">Default</span>{/if}
+                    {#if identifier.version || identifier.version_code || identifier.build_number}<span class="rounded bg-brand-soft px-1.5 py-0.5 text-[9px] font-bold text-brand">{identifier.version ? `v${identifier.version}` : ''}{identifier.version_code ? `${identifier.version ? ' · ' : ''}code ${identifier.version_code}` : ''}{identifier.build_number ? `${identifier.version ? ' · ' : ''}build ${identifier.build_number}` : ''}</span>{/if}
                 </div>
                 <code class="mt-1 block truncate text-xs text-muted">{identifier.identifier}</code>
             </div>

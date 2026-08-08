@@ -28,8 +28,8 @@ class NotificationTemplateRenderer
         $values['tags_str'] = $this->formatTags($destination->tags ?? [], '');
 
         return preg_replace_callback(
-            '/{{\s*([a-zA-Z0-9_.]+)\s*}}/',
-            fn (array $match) => (string) ($values[$match[1]] ?? '—'),
+            '/{{\s*([^{}]+?)\s*}}/',
+            fn (array $match) => (string) ($values[trim($match[1])] ?? '—'),
             (string) $template,
         ) ?? (string) $template;
     }
@@ -47,6 +47,7 @@ class NotificationTemplateRenderer
             'actor.name' => $actor,
             'team.name' => $team?->name ?? 'Workspace',
             'app.name' => $app?->name ?? 'Unknown app',
+            ...$this->structuredValues('app.metadata', $app?->metadata),
         ];
 
         if (str_starts_with($event->event_type->value, 'mobile_app.')) {
@@ -58,6 +59,10 @@ class NotificationTemplateRenderer
                     ? route('accounts.apps.show', [$team, $app])
                     : route('accounts.apps.index', $team),
                 ...$this->modelTags($app, 'app'),
+                ...$this->structuredValues(
+                    'app.metadata',
+                    array_key_exists('metadata', $payload) ? $payload['metadata'] : $app?->metadata,
+                ),
             ]);
         }
 
@@ -81,6 +86,7 @@ class NotificationTemplateRenderer
                         ? route('accounts.apps.identifiers.index', [$team, $identifierApp])
                         : route('accounts.apps.index', $team)),
                 ...$this->modelTags($identifierApp, 'app'),
+                ...$this->structuredValues('app.metadata', $identifierApp?->metadata),
             ]);
         }
 
@@ -96,6 +102,7 @@ class NotificationTemplateRenderer
                 'build.profile' => (string) (data_get($payload, 'profile_type') ?: $build?->profile_type?->value ?: '—'),
                 'build.requested_by' => $build?->requestedBy?->name ?? $actor,
                 'build.branch' => (string) (data_get($payload, 'parameters.ref')
+                    ?: data_get($build?->parameters, 'ref')
                     ?: data_get($build?->ciCdRun?->request_snapshot, 'ref')
                     ?: '—'),
                 'build.status' => str_replace('_', ' ', $status),
@@ -108,6 +115,8 @@ class NotificationTemplateRenderer
                     ? route('accounts.apps.builds.show', [$team, $build->mobileApp, $build])
                     : route('accounts.apps.index', $team),
                 ...$this->modelTags($build, 'build'),
+                ...$this->structuredValues('app.metadata', $build?->mobileApp?->metadata),
+                ...$this->structuredValues('build.parameters', $build?->parameters),
             ]);
         }
 
@@ -127,6 +136,8 @@ class NotificationTemplateRenderer
                     : route('accounts.apps.index', $team),
                 'build.number' => $build?->id ? substr($build->id, 0, 8) : '—',
                 ...$this->modelTags($build, 'build'),
+                ...$this->structuredValues('app.metadata', $build?->mobileApp?->metadata),
+                ...$this->structuredValues('build.parameters', $build?->parameters),
             ]);
         }
 
@@ -219,5 +230,77 @@ class NotificationTemplateRenderer
             "{$prefix}.tags" => $this->formatTags($texts, '#'),
             "{$prefix}.tags_str" => $this->formatTags($texts, ''),
         ];
+    }
+
+    /** @return array<string, string> */
+    private function structuredValues(string $prefix, mixed $value): array
+    {
+        $values = ["{$prefix}_str" => $this->stringify($value)];
+
+        if (! is_array($value)) {
+            return $values;
+        }
+
+        foreach ($value as $key => $item) {
+            $segment = (string) $key;
+
+            if (preg_match('/^[a-zA-Z0-9_-]+$/', $segment) !== 1) {
+                continue;
+            }
+
+            $path = "{$prefix}.{$segment}";
+            $values[$path] = $this->stringify($item);
+
+            if (is_array($item)) {
+                $values = array_merge($values, $this->nestedStructuredValues($path, $item));
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $value
+     * @return array<string, string>
+     */
+    private function nestedStructuredValues(string $prefix, array $value): array
+    {
+        $values = [];
+
+        foreach ($value as $key => $item) {
+            $segment = (string) $key;
+
+            if (preg_match('/^[a-zA-Z0-9_-]+$/', $segment) !== 1) {
+                continue;
+            }
+
+            $path = "{$prefix}.{$segment}";
+            $values[$path] = $this->stringify($item);
+
+            if (is_array($item)) {
+                $values = array_merge($values, $this->nestedStructuredValues($path, $item));
+            }
+        }
+
+        return $values;
+    }
+
+    private function stringify(mixed $value): string
+    {
+        if ($value === null) {
+            return '—';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_string($value) || is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        return $json === false ? '—' : $json;
     }
 }

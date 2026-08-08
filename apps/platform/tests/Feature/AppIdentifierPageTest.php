@@ -44,11 +44,90 @@ class AppIdentifierPageTest extends TestCase
                 ->where('app.id', $app->id)
                 ->has('identifiers', 1)
                 ->where('identifiers.0.identifier', 'com.example.atlas')
+                ->where('identifiers.0.is_default', true)
                 ->where('identifiers.0.sync_status', 'database')
                 ->where('identifiers.0.sources.database', true)
                 ->where('identifiers.0.sources.expo', false)
                 ->where('expoIdentifiers.linked', false)
                 ->where('identifiers.0.show_url', route('accounts.apps.identifiers.show', [$team, $app, $identifier])));
+    }
+
+    public function test_mobile_identifiers_can_be_created_as_an_atomic_pair_with_a_shared_identifier(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+
+        $this->actingAs($user)->post(route('accounts.apps.identifiers.store', [$team, $app]), [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas',
+            'name' => 'Atlas Mobile',
+            'version' => '2.3.0',
+            'version_code' => 20300,
+            'build_number' => '42',
+            'is_default' => true,
+            'create_for_both_platforms' => true,
+        ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'iOS and Android identifiers added.');
+
+        $identifiers = $app->appIdentifiers()->orderBy('platform')->get();
+        $this->assertCount(2, $identifiers);
+        $this->assertEqualsCanonicalizing(
+            [Platform::Ios, Platform::Android],
+            $identifiers->pluck('platform')->all(),
+        );
+        $this->assertSame(['com.example.atlas'], $identifiers->pluck('identifier')->unique()->values()->all());
+        $this->assertTrue($identifiers->every(fn ($identifier) => $identifier->is_default));
+        $this->assertSame(20300, $identifiers->firstWhere('platform', Platform::Android)->version_code);
+        $this->assertSame('42', $identifiers->firstWhere('platform', Platform::Ios)->build_number);
+    }
+
+    public function test_mobile_pair_is_not_partially_created_when_one_platform_identifier_exists(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $app->appIdentifiers()->create([
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.atlas',
+        ]);
+
+        $this->actingAs($user)->post(route('accounts.apps.identifiers.store', [$team, $app]), [
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas',
+            'create_for_both_platforms' => true,
+        ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('identifier');
+
+        $this->assertSame(1, $app->appIdentifiers()->count());
+        $this->assertFalse($app->appIdentifiers()->where('platform', Platform::Ios->value)->exists());
+    }
+
+    public function test_identifier_can_be_made_the_platform_default_from_the_app_page(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $current = $app->appIdentifiers()->create([
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.atlas',
+            'is_default' => true,
+        ]);
+        $next = $app->appIdentifiers()->create([
+            'platform' => Platform::Ios,
+            'identifier' => 'com.example.atlas.beta',
+            'is_default' => false,
+        ]);
+
+        $this->actingAs($user)->patch(
+            route('accounts.apps.identifiers.update', [$team, $app, $next]),
+            ['is_default' => true],
+        )
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($current->fresh()->is_default);
+        $this->assertTrue($next->fresh()->is_default);
     }
 
     public function test_index_forbidden_for_non_member(): void
@@ -77,6 +156,7 @@ class AppIdentifierPageTest extends TestCase
                 ->component('Apps/Identifiers/Show')
                 ->where('identifier.id', $identifier->id)
                 ->where('identifier.identifier', 'com.example.atlas')
+                ->where('identifier.is_default', true)
                 ->has('identifier.services')
                 ->has('identifier.build_targets')
                 ->has('credentialTypes'));

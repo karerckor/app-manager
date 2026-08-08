@@ -234,6 +234,7 @@ class ExpoApiTest extends TestCase
             'mobile_app_id' => MobileApp::firstOrFail()->id,
             'platform' => Platform::Android->value,
             'identifier' => 'com.example.atlas',
+            'is_default' => true,
         ]);
         $this->assertNotNull($project->refresh()->mobile_app_id);
 

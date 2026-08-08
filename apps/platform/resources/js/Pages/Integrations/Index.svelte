@@ -64,6 +64,7 @@
     let syncingExpoIntegrationId = null;
     let expoSyncErrors = {};
     let importingExpoProjectId = null;
+    let importingExpoProject = null;
     let expoImportErrors = {};
     let selectedExpoProjectIds = {};
     let bulkImportingExpoIntegrationId = null;
@@ -88,6 +89,12 @@
     const expoForm = useForm({
         access_token: '',
         account_name: '',
+    });
+    const expoImportForm = useForm({
+        default_identifiers: {
+            ios: '',
+            android: '',
+        },
     });
 
     const openSelfHostedGitLab = () => {
@@ -188,13 +195,32 @@
         expoSearch = '';
         searchExpoProjects();
     };
-    const importExpoProject = (project) => {
+    const openExpoProjectImport = (project) => {
         if (importingExpoProjectId) return;
 
+        expoImportForm.reset();
+        expoImportForm.clearErrors();
+        importingExpoProject = project;
+    };
+    const closeExpoProjectImport = () => {
+        if (expoImportForm.processing) return;
+
+        importingExpoProject = null;
+        expoImportForm.reset();
+        expoImportForm.clearErrors();
+    };
+    const importExpoProject = () => {
+        if (!importingExpoProject || importingExpoProjectId || expoImportForm.processing) return;
+
+        const project = importingExpoProject;
         importingExpoProjectId = project.id;
         expoImportErrors = { ...expoImportErrors, [project.id]: '' };
-        router.post(project.import_url, {}, {
+        expoImportForm.post(project.import_url, {
             preserveScroll: true,
+            onSuccess: () => {
+                importingExpoProject = null;
+                expoImportForm.reset();
+            },
             onError: (errors) => {
                 expoImportErrors = {
                     ...expoImportErrors,
@@ -202,6 +228,7 @@
                 };
             },
             onCancel: () => {
+                expoImportForm.setError('expo', 'Expo project import was cancelled. Please try again.');
                 expoImportErrors = {
                     ...expoImportErrors,
                     [project.id]: 'Expo project import was cancelled. Please try again.',
@@ -611,7 +638,7 @@
                                         </div>
                                         <div class="flex items-center gap-2">
                                             {#if !project.exists_on_expo}<span class="rounded-full bg-danger/10 px-2 py-1 text-[10px] font-semibold text-danger">Missing on Expo</span>{/if}
-                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null} on:click={() => importExpoProject(project)}>{importingExpoProjectId === project.id ? (project.app_archived ? 'Restoring…' : 'Importing…') : (project.app_archived ? 'Restore & import' : 'Import as application')}</button>{/if}
+                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null} on:click={() => openExpoProjectImport(project)}>{importingExpoProjectId === project.id ? (project.app_archived ? 'Restoring…' : 'Importing…') : (project.app_archived ? 'Restore & import' : 'Import as application')}</button>{/if}
                                         </div>
                                     </div>
                                 {/each}
@@ -791,6 +818,47 @@
                 {#if expoClientError}<span class="error">{expoClientError}</span>{/if}
             </div>
             <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={() => showExpo = false}>Cancel</button><button type="button" data-testid="expo-connect-submit" disabled={expoSubmitting || expoForm.processing} on:click={connectExpo}>{expoSubmitting || expoForm.processing ? 'Connecting…' : 'Connect Expo'}</button></div>
+        </form>
+    </div>
+{/if}
+
+{#if importingExpoProject}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeExpoProjectImport()}>
+        <form class="modal max-w-2xl" on:submit|preventDefault={importExpoProject}>
+            <div class="flex items-start justify-between border-b border-border-subtle px-6 py-5">
+                <div>
+                    <p class="eyebrow mb-1">Expo import</p>
+                    <h2 class="text-lg font-bold">Choose default identifiers</h2>
+                    <p class="mt-1 text-sm text-muted">{importingExpoProject.full_name}</p>
+                </div>
+                <button type="button" class="ghost p-2" aria-label="Close Expo import" disabled={expoImportForm.processing} on:click={closeExpoProjectImport}>✕</button>
+            </div>
+            <div class="space-y-5 p-6">
+                <div class="flex items-start gap-3 rounded-md border border-brand-soft-line bg-brand-soft px-4 py-3 text-xs leading-5 text-brand">
+                    <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.9} />
+                    <p>Builds without an explicit identifier use the default for their platform. If Expo returns only one identifier, App Manager selects it automatically.</p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="rounded-md border border-border bg-surface-sunken p-4">
+                        <span class="label">Default iOS identifier</span>
+                        <input class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.ios} placeholder="com.example.app" autocomplete="off" />
+                        <span class="mt-1.5 block text-xs leading-5 text-muted">Enter the bundle identifier exactly as it appears in Expo.</span>
+                        {#if expoImportForm.errors['default_identifiers.ios']}<span class="error">{expoImportForm.errors['default_identifiers.ios']}</span>{/if}
+                    </label>
+                    <label class="rounded-md border border-border bg-surface-sunken p-4">
+                        <span class="label">Default Android identifier</span>
+                        <input class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.android} placeholder="com.example.app" autocomplete="off" />
+                        <span class="mt-1.5 block text-xs leading-5 text-muted">Enter the application ID exactly as it appears in Expo.</span>
+                        {#if expoImportForm.errors['default_identifiers.android']}<span class="error">{expoImportForm.errors['default_identifiers.android']}</span>{/if}
+                    </label>
+                </div>
+                <p class="text-xs leading-5 text-muted">Leave a platform blank to use its sole current Expo identifier. If Expo contains several possible identifiers, the import will list the values you can choose from.</p>
+                {#if expoImportForm.errors.expo}<div class="rounded-md border border-danger bg-danger/10 px-4 py-3 text-xs leading-5 text-danger">{expoImportForm.errors.expo}</div>{/if}
+            </div>
+            <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4">
+                <button type="button" class="secondary" disabled={expoImportForm.processing} on:click={closeExpoProjectImport}>Cancel</button>
+                <button disabled={expoImportForm.processing}>{expoImportForm.processing ? (importingExpoProject.app_archived ? 'Restoring…' : 'Importing…') : (importingExpoProject.app_archived ? 'Restore & import' : 'Import application')}</button>
+            </div>
         </form>
     </div>
 {/if}

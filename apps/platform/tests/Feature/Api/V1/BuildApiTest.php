@@ -6,6 +6,7 @@ use App\Actions\Integrations\RequestPipelineBuildCancellation;
 use App\Enums\ApiKeyScope;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
+use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Enums\WebhookEventType;
 use App\Models\AppIdentifier;
@@ -95,6 +96,58 @@ class BuildApiTest extends TestCase
 
         $this->assertSame(2, WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->count());
         $this->assertSame(2, WebhookEvent::query()->where('event_type', WebhookEventType::BuildCompleted)->count());
+    }
+
+    public function test_platform_build_without_an_explicit_identifier_uses_the_default(): void
+    {
+        [$user, $team, $app, $first] = $this->context();
+        $first->update([
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.first',
+            'is_default' => false,
+        ]);
+        $default = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.default',
+            'is_default' => true,
+        ]);
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+
+        $response = $this->postJson($this->api($team, $app, '/builds'), [
+            'request_uuid' => (string) Str::uuid(),
+            'platform' => Platform::Android->value,
+            'profile_type' => ProfileType::Production->value,
+        ])->assertCreated()
+            ->assertJsonPath('data.app_identifier_id', $default->id);
+
+        $build = BuildRecord::query()->findOrFail($response->json('data.id'));
+        $this->assertSame($default->id, $build->app_identifier_id);
+        $this->assertSame('com.example.default', $build->context_snapshot['target']['identifier']);
+    }
+
+    public function test_platform_build_is_rejected_when_multiple_identifiers_have_no_default(): void
+    {
+        [$user, $team, $app, $first] = $this->context();
+        $first->update([
+            'platform' => Platform::Android,
+            'is_default' => false,
+        ]);
+        AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android,
+            'is_default' => false,
+        ]);
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+
+        $this->postJson($this->api($team, $app, '/builds'), [
+            'request_uuid' => (string) Str::uuid(),
+            'platform' => Platform::Android->value,
+            'profile_type' => ProfileType::Production->value,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('identifier');
+
+        $this->assertDatabaseCount('build_records', 0);
     }
 
     public function test_terminal_status_cannot_be_set_when_creating_an_eas_build(): void

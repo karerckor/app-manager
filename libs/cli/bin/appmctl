@@ -1560,6 +1560,7 @@ Options:
   --context JSON           Inline JSON context/metadata
   --reporting-mode MODE    Build reporting mode: manual (default) or eas
   --expo-build-id ID       Expo/EAS build ID (required when reporting-mode=eas)
+  --platform PLATFORM      iOS or Android; resolves the default identifier
   --app-identifier-id UUID Target app identifier ID
   --tag NAME[:#HEX]        Attach a tag; repeatable (e.g. --tag ios:#3b82f6)
 
@@ -1568,6 +1569,7 @@ Examples:
   appmctl builds create --profile production --status completed
   appmctl builds create --profile staging --request-uuid "$(uuidgen)"
   appmctl builds create --profile production --context '{"runner":"github"}'
+  appmctl builds create --platform android --profile production
   appmctl builds create --profile production --reporting-mode eas --expo-build-id "abc-123"
   appmctl builds create --profile production --tag ios:#3b82f6 --tag 1.0.0
 EOF
@@ -1838,6 +1840,7 @@ _builds_create() {
   local reporting_mode="manual"
   local expo_build_id=""
   local app_identifier_id=""
+  local platform=""
   local tag_specs=()
   local body_file
 
@@ -1859,6 +1862,8 @@ _builds_create() {
       --expo-build-id=*) expo_build_id=${1#*=}; shift ;;
       --app-identifier-id) require_value "$1" "$2"; app_identifier_id="$2"; shift 2 ;;
       --app-identifier-id=*) app_identifier_id=${1#*=}; shift ;;
+      --platform) require_value "$1" "$2"; platform="$2"; shift 2 ;;
+      --platform=*) platform=${1#*=}; shift ;;
       --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;;
       --tag=*) tag_specs+=("${1#*=}"); shift ;;
       --dry-run) DRY_RUN=1; shift ;;
@@ -1873,6 +1878,10 @@ _builds_create() {
   APP="$app"
   require_app
   [ -n "$profile" ] || die "--profile is required"
+  case "$platform" in
+    ""|ios|android) ;;
+    *) die "--platform must be 'ios' or 'android'" ;;
+  esac
   case "$reporting_mode" in
     manual|eas) ;;
     *) die "--reporting-mode must be 'manual' or 'eas'" ;;
@@ -1917,6 +1926,11 @@ _builds_create() {
   if [ -n "$app_identifier_id" ]; then
     jq_args+=(--arg iid "$app_identifier_id")
     jq_filter="$jq_filter, app_identifier_id: \$iid"
+  fi
+
+  if [ -n "$platform" ]; then
+    jq_args+=(--arg platform "$platform")
+    jq_filter="$jq_filter, platform: \$platform"
   fi
 
   if [ -n "$context" ]; then
@@ -3460,6 +3474,9 @@ Options:
   --name NAME         Display name
   --version VERSION   Marketing version
   --version-code N    Android version code (android only)
+  --build-number N    iOS build number (iOS only)
+  --default           Make this the default for its platform
+  --no-default        Clear the default flag when updating
   --per-page N        Page size for list
 
 Run "appmctl identifiers <action> --help" for action-specific help.
@@ -3588,6 +3605,8 @@ _identifiers_create() {
   local name=""
   local version=""
   local version_code=""
+  local build_number=""
+  local default_state=""
   local body_file
 
   while [ "$#" -gt 0 ]; do
@@ -3604,10 +3623,14 @@ _identifiers_create() {
       --version=*) version=${1#*=}; shift ;;
       --version-code) require_value "$1" "$2"; version_code="$2"; shift 2 ;;
       --version-code=*) version_code=${1#*=}; shift ;;
+      --build-number) require_value "$1" "$2"; build_number="$2"; shift 2 ;;
+      --build-number=*) build_number=${1#*=}; shift ;;
+      --default) default_state=true; shift ;;
+      --no-default) default_state=false; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID [--name NAME] [--version VERSION] [--version-code N]\n'
+        printf 'Usage: appmctl identifiers create [--app APP] --platform ios|android|web --identifier ID [--name NAME] [--version VERSION] [--version-code N] [--build-number N] [--default]\n'
         return 0
         ;;
       *) die "unknown identifiers create option: $1" ;;
@@ -3624,7 +3647,7 @@ _identifiers_create() {
   require_jq
   ensure_tmpdir
   body_file=$(new_temp_file identifiers-create) || return 1
-  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code" "$build_number" "$default_state"
 
   local path="apps/$APP/identifiers"
 
@@ -3651,6 +3674,8 @@ _identifiers_update() {
   local name=""
   local version=""
   local version_code=""
+  local build_number=""
+  local default_state=""
   local has_fields=0
   local body_file
 
@@ -3668,10 +3693,14 @@ _identifiers_update() {
       --version=*) version=${1#*=}; has_fields=1; shift ;;
       --version-code) require_value "$1" "$2"; version_code="$2"; has_fields=1; shift 2 ;;
       --version-code=*) version_code=${1#*=}; has_fields=1; shift ;;
+      --build-number) require_value "$1" "$2"; build_number="$2"; has_fields=1; shift 2 ;;
+      --build-number=*) build_number=${1#*=}; has_fields=1; shift ;;
+      --default) default_state=true; has_fields=1; shift ;;
+      --no-default) default_state=false; has_fields=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl identifiers update [--app APP] <identifier-id> [--platform PLATFORM] [--identifier ID] [--name NAME] [--version VERSION] [--version-code N]\n'
+        printf 'Usage: appmctl identifiers update [--app APP] <identifier-id> [--platform PLATFORM] [--identifier ID] [--name NAME] [--version VERSION] [--version-code N] [--build-number N] [--default|--no-default]\n'
         return 0
         ;;
       -*) die "unknown identifiers update option: $1" ;;
@@ -3693,7 +3722,7 @@ _identifiers_update() {
   require_jq
   ensure_tmpdir
   body_file=$(new_temp_file identifiers-update) || return 1
-  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code"
+  _identifiers_build_body "$body_file" "$platform" "$identifier" "$name" "$version" "$version_code" "$build_number" "$default_state"
 
   local path="apps/$APP/identifiers/$identifier_id"
 
@@ -3772,6 +3801,8 @@ _identifiers_build_body() {
   local name="$4"
   local version="$5"
   local version_code="$6"
+  local build_number="$7"
+  local default_state="$8"
 
   local jq_args=(-n)
   local jq_expr='{'
@@ -3806,13 +3837,25 @@ _identifiers_build_body() {
     jq_expr="$jq_expr version_code: \$version_code"
     first=0
   fi
+  if [ -n "$build_number" ]; then
+    jq_args+=(--arg build_number "$build_number")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr build_number: \$build_number"
+    first=0
+  fi
+  if [ -n "$default_state" ]; then
+    jq_args+=(--argjson is_default "$default_state")
+    [ "$first" -eq 0 ] && jq_expr="$jq_expr,"
+    jq_expr="$jq_expr is_default: \$is_default"
+    first=0
+  fi
 
   jq_expr="$jq_expr }"
   "$JQ_BIN" "${jq_args[@]}" "$jq_expr" >"$body_file" || die "could not build the request body"
 }
 
 _identifiers_resource_format() {
-  printf '%s' '{"type":"resource","fields":{"id":"id","platform":"platform","identifier":"identifier","name":"name","version":"version","version_code":"version_code","created_at":"created_at","updated_at":"updated_at"}}'
+  printf '%s' '{"type":"resource","fields":{"id":"id","platform":"platform","identifier":"identifier","name":"name","version":"version","version_code":"version_code","build_number":"build_number","is_default":"is_default","created_at":"created_at","updated_at":"updated_at"}}'
 }
 
 
@@ -5446,6 +5489,10 @@ Options:
   --token TOKEN       Expo access token (connect)
   --account NAME      Expo account name (connect)
   --project-id ID     Expo project ID (import, link)
+  --default-ios-identifier ID
+                      Default iOS identifier for an import
+  --default-android-identifier ID
+                      Default Android identifier for an import
   --mode MODE         create or existing (link)
   --enabled BOOL      true or false (auto-sync)
   --identifier-id ID  App identifier ID (provision, attach-credential)
@@ -5705,6 +5752,9 @@ _eas_projects() {
 _eas_import() {
   local integration_id=""
   local project_id=""
+  local default_ios_identifier=""
+  local default_android_identifier=""
+  local body_file=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -5712,11 +5762,19 @@ _eas_import() {
       --integration-id=*) integration_id=${1#*=}; shift ;;
       --project-id) require_value "$1" "$2"; project_id="$2"; shift 2 ;;
       --project-id=*) project_id=${1#*=}; shift ;;
+      --default-ios-identifier) require_value "$1" "$2"; default_ios_identifier="$2"; shift 2 ;;
+      --default-ios-identifier=*) default_ios_identifier=${1#*=}; shift ;;
+      --default-android-identifier) require_value "$1" "$2"; default_android_identifier="$2"; shift 2 ;;
+      --default-android-identifier=*) default_android_identifier=${1#*=}; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       --json) PRETTY_JSON=1; shift ;;
       -h|--help)
-        printf 'Usage: appmctl eas import --integration-id ID --project-id ID\n'
-        printf '\nUse "appmctl eas projects" to find the project ID.\n'
+        printf 'Usage: appmctl eas import --integration-id ID --project-id ID [options]\n'
+        printf '\nOptions:\n'
+        printf '  --default-ios-identifier ID      Default imported iOS bundle identifier\n'
+        printf '  --default-android-identifier ID  Default imported Android application ID\n'
+        printf '\nA platform with one Expo identifier is selected automatically.\n'
+        printf 'Use "appmctl eas projects" to find the project ID.\n'
         return 0
         ;;
       *) die "unknown eas import option: $1" ;;
@@ -5727,12 +5785,26 @@ _eas_import() {
   [ -n "$project_id" ] || die "--project-id is required"
   local path="integrations/$integration_id/expo/projects/$project_id/import"
 
+  if [ -n "$default_ios_identifier" ] || [ -n "$default_android_identifier" ]; then
+    require_jq
+    ensure_tmpdir
+    body_file=$(new_temp_file eas-import) || return 1
+    "$JQ_BIN" -n \
+      --arg ios "$default_ios_identifier" \
+      --arg android "$default_android_identifier" \
+      '{default_identifiers: ({ios: $ios, android: $android} | with_entries(select(.value != "")))}' \
+      >"$body_file" || die "could not build the request body"
+  fi
+
   if [ "$DRY_RUN" -eq 1 ]; then
-    _eas_dry_run_plan POST "$path"
+    _eas_dry_run_plan POST "$path" || return 1
+    if [ -n "$body_file" ]; then
+      printf 'body: %s\n' "$(cat "$body_file")"
+    fi
     return 0
   fi
 
-  api_post "$path" "" || return 1
+  api_post "$path" "$body_file" || return 1
   local fmt='{"type":"resource","fields":{"project":"full_name","expo_project_id":"external_id","app":"mobile_app.slug","exists_on_expo":"exists_on_expo"}}'
   emit_formatted_response "$LAST_RESPONSE_FILE" "$fmt"
 }

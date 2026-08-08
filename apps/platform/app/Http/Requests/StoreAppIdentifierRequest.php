@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\Platform;
 use App\Http\Requests\Concerns\ValidatesAppIdentifier;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreAppIdentifierRequest extends FormRequest
 {
@@ -18,9 +20,20 @@ class StoreAppIdentifierRequest extends FormRequest
 
     public function rules(): array
     {
-        return $this->identifierRules(
-            $this->route('mobileApp'),
-        );
+        $createMobilePair = $this->boolean('create_for_both_platforms');
+
+        return [
+            ...$this->identifierRules(
+                $this->route('mobileApp'),
+                createMobilePair: $createMobilePair,
+            ),
+            'create_for_both_platforms' => [
+                'sometimes',
+                'boolean',
+                Rule::prohibitedIf(fn () => $createMobilePair
+                    && $this->input('platform') === Platform::Web->value),
+            ],
+        ];
     }
 
     protected function prepareForValidation(): void

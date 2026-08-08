@@ -10,6 +10,7 @@ use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Enums\TeamRole;
 use App\Enums\WebhookEventType;
+use App\Integrations\Expo\ExpoClient;
 use App\Jobs\Integrations\ImportExpoProject;
 use App\Models\Credential;
 use App\Models\ExpoCredentialLink;
@@ -1034,6 +1035,7 @@ class ExpoIntegrationTest extends TestCase
             'identifier' => 'com.example.atlas',
             'version' => '1.0.0',
             'version_code' => 1,
+            'is_default' => true,
         ]);
         $this->assertDatabaseHas('app_identifiers', [
             'mobile_app_id' => $app->id,
@@ -1041,6 +1043,7 @@ class ExpoIntegrationTest extends TestCase
             'identifier' => 'com.example.atlas.ios',
             'version' => '2.1.0',
             'version_code' => null,
+            'is_default' => true,
         ]);
         $this->assertDatabaseCount('credentials', 7);
         $this->assertDatabaseCount('expo_credential_links', 7);
@@ -1149,6 +1152,139 @@ class ExpoIntegrationTest extends TestCase
                     'variables.includeCredentialSecrets',
                 ) === true;
         });
+    }
+
+    public function test_import_uses_the_requested_default_identifier_for_a_platform(): void
+    {
+        [$owner, $team] = $this->member();
+        [$integration] = $this->expoIntegration($team);
+        $project = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'exists_on_expo' => true,
+        ]);
+        $remote = $this->remoteProject();
+        $remote['androidAppCredentials'][] = [
+            'id' => 'android-creds-2',
+            'applicationIdentifier' => 'com.example.atlas.preview',
+            'googleServiceAccountKeyForFcmV1' => null,
+            'googleServiceAccountKeyForSubmissions' => null,
+            'androidAppBuildCredentialsList' => [],
+        ];
+        Http::fake([
+            'https://expo.test/graphql' => Http::response([
+                'data' => ['app' => ['byId' => $remote]],
+            ]),
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.expo.projects.import', [
+                $team,
+                $integration,
+                $project,
+            ]), [
+                'default_identifiers' => [
+                    'android' => 'com.example.atlas.preview',
+                ],
+            ])
+            ->assertRedirect();
+
+        $app = MobileApp::sole();
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.atlas',
+            'is_default' => false,
+        ]);
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.atlas.preview',
+            'is_default' => true,
+        ]);
+    }
+
+    public function test_queued_bulk_import_uses_the_first_identifier_as_each_platform_default(): void
+    {
+        [, $team] = $this->member();
+        [$integration] = $this->expoIntegration($team);
+        $project = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'exists_on_expo' => true,
+        ]);
+        $remote = $this->remoteProject();
+        $remote['androidAppCredentials'][] = [
+            'id' => 'android-creds-2',
+            'applicationIdentifier' => 'com.example.atlas.preview',
+            'googleServiceAccountKeyForFcmV1' => null,
+            'googleServiceAccountKeyForSubmissions' => null,
+            'androidAppBuildCredentialsList' => [],
+        ];
+        $remote['iosAppCredentials'] = [[
+            'id' => 'ios-creds-1',
+            'appleAppIdentifier' => [
+                'id' => 'apple-app-id-1',
+                'bundleIdentifier' => 'com.example.atlas.ios',
+            ],
+            'iosAppBuildCredentialsList' => [],
+        ], [
+            'id' => 'ios-creds-2',
+            'appleAppIdentifier' => [
+                'id' => 'apple-app-id-2',
+                'bundleIdentifier' => 'com.example.atlas.preview.ios',
+            ],
+            'iosAppBuildCredentialsList' => [],
+        ]];
+        Http::fake([
+            'https://expo.test/graphql' => Http::response([
+                'data' => ['app' => ['byId' => $remote]],
+            ]),
+        ]);
+
+        $job = new ImportExpoProject($team->id, $project->id);
+        $job->handle(
+            app(ExpoClient::class),
+            app(\App\Actions\Integrations\ImportExpoProject::class),
+        );
+
+        $app = MobileApp::sole();
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.atlas',
+            'is_default' => true,
+        ]);
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android->value,
+            'identifier' => 'com.example.atlas.preview',
+            'is_default' => false,
+        ]);
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas.ios',
+            'is_default' => true,
+        ]);
+        $this->assertDatabaseHas('app_identifiers', [
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Ios->value,
+            'identifier' => 'com.example.atlas.preview.ios',
+            'is_default' => false,
+        ]);
     }
 
     public function test_import_records_webhooks_for_created_app_identifiers_and_credentials(): void

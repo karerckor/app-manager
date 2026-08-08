@@ -144,6 +144,7 @@ Options:
   --context JSON           Inline JSON context/metadata
   --reporting-mode MODE    Build reporting mode: manual (default) or eas
   --expo-build-id ID       Expo/EAS build ID (required when reporting-mode=eas)
+  --platform PLATFORM      iOS or Android; resolves the default identifier
   --app-identifier-id UUID Target app identifier ID
   --tag NAME[:#HEX]        Attach a tag; repeatable (e.g. --tag ios:#3b82f6)
 
@@ -152,6 +153,7 @@ Examples:
   appmctl builds create --profile production --status completed
   appmctl builds create --profile staging --request-uuid "$(uuidgen)"
   appmctl builds create --profile production --context '{"runner":"github"}'
+  appmctl builds create --platform android --profile production
   appmctl builds create --profile production --reporting-mode eas --expo-build-id "abc-123"
   appmctl builds create --profile production --tag ios:#3b82f6 --tag 1.0.0
 EOF
@@ -422,6 +424,7 @@ _builds_create() {
   local reporting_mode="manual"
   local expo_build_id=""
   local app_identifier_id=""
+  local platform=""
   local tag_specs=()
   local body_file
 
@@ -443,6 +446,8 @@ _builds_create() {
       --expo-build-id=*) expo_build_id=${1#*=}; shift ;;
       --app-identifier-id) require_value "$1" "$2"; app_identifier_id="$2"; shift 2 ;;
       --app-identifier-id=*) app_identifier_id=${1#*=}; shift ;;
+      --platform) require_value "$1" "$2"; platform="$2"; shift 2 ;;
+      --platform=*) platform=${1#*=}; shift ;;
       --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;;
       --tag=*) tag_specs+=("${1#*=}"); shift ;;
       --dry-run) DRY_RUN=1; shift ;;
@@ -457,6 +462,10 @@ _builds_create() {
   APP="$app"
   require_app
   [ -n "$profile" ] || die "--profile is required"
+  case "$platform" in
+    ""|ios|android) ;;
+    *) die "--platform must be 'ios' or 'android'" ;;
+  esac
   case "$reporting_mode" in
     manual|eas) ;;
     *) die "--reporting-mode must be 'manual' or 'eas'" ;;
@@ -501,6 +510,11 @@ _builds_create() {
   if [ -n "$app_identifier_id" ]; then
     jq_args+=(--arg iid "$app_identifier_id")
     jq_filter="$jq_filter, app_identifier_id: \$iid"
+  fi
+
+  if [ -n "$platform" ]; then
+    jq_args+=(--arg platform "$platform")
+    jq_filter="$jq_filter, platform: \$platform"
   fi
 
   if [ -n "$context" ]; then

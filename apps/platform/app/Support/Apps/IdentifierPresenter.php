@@ -29,6 +29,8 @@ class IdentifierPresenter
             'identifier' => $identifier->identifier,
             'version' => $identifier->version,
             'version_code' => $identifier->version_code,
+            'build_number' => $identifier->build_number,
+            'is_default' => $identifier->is_default,
             'supports_credentials' => $supportsCredentials,
             'update_url' => route('accounts.apps.identifiers.update', [
                 'team' => $team,

@@ -92,6 +92,11 @@ pass 'eas projects'
 log_contents=$(cat "$MOCK_LOG")
 assert_contains "$log_contents" 'POST' 'eas import posts'
 assert_contains "$log_contents" 'expo/projects/expo-proj-001/import' 'eas import targets the project'
+dry=$("$CLI" --dry-run eas import --integration-id int-002 --project-id expo-proj-001 \
+  --default-ios-identifier com.example.ios \
+  --default-android-identifier com.example.android 2>&1)
+assert_contains "$dry" '"ios": "com.example.ios"' 'eas import sends the default iOS identifier'
+assert_contains "$dry" '"android": "com.example.android"' 'eas import sends the default Android identifier'
 pass 'eas import'
 
 # --- eas link ---

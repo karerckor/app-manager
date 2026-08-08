@@ -39,6 +39,11 @@ class ImportExpoProject implements ShouldQueue
 
         $team = Team::query()->findOrFail($this->teamId);
         $remote = $expo->projectWithCredentialSecrets($project->integration, $project->external_id);
-        $importer->handle($team, $project, $remote);
+        $importer->handle(
+            $team,
+            $project,
+            $remote,
+            useFirstIdentifierAsDefault: true,
+        );
     }
 }

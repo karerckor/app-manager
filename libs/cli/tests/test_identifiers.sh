@@ -58,10 +58,11 @@ pass 'identifiers create'
 
 # --- identifiers create sends a well-formed body ---
 dry=$("$CLI" --dry-run identifiers create --platform android --identifier com.example.customer \
-  --name 'Customer App' --version 1.4.0 --version-code 42 2>&1)
+  --name 'Customer App' --version 1.4.0 --version-code 42 --default 2>&1)
 assert_contains "$dry" '"platform": "android"' 'create body carries the platform'
 assert_contains "$dry" '"identifier": "com.example.customer"' 'create body carries the identifier'
 assert_contains "$dry" '"version_code": 42' 'create body sends version_code as a number'
+assert_contains "$dry" '"is_default": true' 'create body sends the default flag as a boolean'
 pass 'identifiers create body'
 
 # --- identifiers update ---
@@ -71,6 +72,9 @@ log_contents=$(cat "$MOCK_LOG")
 assert_contains "$log_contents" 'PATCH' 'identifiers update patches'
 assert_contains "$log_contents" 'identifiers/ident-001' 'identifiers update targets the identifier'
 pass 'identifiers update'
+
+dry=$("$CLI" --dry-run identifiers update ident-001 --no-default 2>&1)
+assert_contains "$dry" '"is_default": false' 'update body can clear the default flag'
 
 # --- identifiers delete ---
 : >"$MOCK_LOG"

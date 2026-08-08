@@ -19,6 +19,7 @@ The page uses Tailwind CSS and Alpine.js from their CDNs. All configuration and 
 - Docker Compose, Laravel Cloud, or a manually managed server.
 - First owner through the one-time Web Installer or `php artisan user:create`.
 - PostgreSQL fields, platform-injected credentials, or parsed `postgres://` / `postgresql://` connection strings.
+- Optional Laravel Cloud Queue output through `QUEUE_CONNECTION=cloud` for environments with managed Cloud Queue enabled.
 - Local private storage or an S3-compatible bucket, including import from AWS and `MEDIA_S3_*` environment-variable blocks.
 - Credential storage and API access boundaries.
 - Review the complete generated `.env` in the browser, copy it, or download it; deployment commands have their own preview.

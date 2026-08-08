@@ -147,6 +147,41 @@ RSpec.describe Fastlane::AppManager::Client do
 
       expect(credential["id"]).to eq("certificate-1")
     end
+
+    it "uses the declared default app identifier when none is provided" do
+      identifiers = [
+        { "platform" => "ios", "identifier" => "com.example.second-ios", "is_default" => false },
+        { "platform" => "ios", "identifier" => "com.example.ios", "is_default" => true }
+      ]
+      allow(client).to receive(:get_json).and_return(
+        { "data" => identifiers },
+        { "data" => credentials }
+      )
+
+      credential = client.find_credential(
+        type: "ios_certificate",
+        platform: "ios",
+        profile_type: "appstore"
+      )
+
+      expect(credential["id"]).to eq("certificate-1")
+    end
+
+    it "requires a declared default when multiple identifiers opt into default semantics" do
+      identifiers = [
+        { "platform" => "ios", "identifier" => "com.example.ios", "is_default" => false },
+        { "platform" => "ios", "identifier" => "com.example.second-ios", "is_default" => false }
+      ]
+      allow(client).to receive(:get_json).and_return("data" => identifiers)
+
+      expect do
+        client.find_credential(
+          type: "ios_certificate",
+          platform: "ios",
+          profile_type: "appstore"
+        )
+      end.to raise_error(Fastlane::AppManager::Error, /No default ios app identifier/)
+    end
   end
 
   describe "downloads" do
@@ -243,6 +278,7 @@ RSpec.describe Fastlane::AppManager::Client do
         body: {
           request_uuid: "request-1",
           profile_type: "production",
+          platform: "android",
           context: { commit: "abc" }
         }
       ).and_return(response)
@@ -250,6 +286,7 @@ RSpec.describe Fastlane::AppManager::Client do
       build = client.create_build(
         request_uuid: "request-1",
         profile_type: "production",
+        platform: "android",
         context: { commit: "abc" }
       )
 

@@ -6,6 +6,7 @@ use App\Enums\BuildReportingMode;
 use App\Enums\IntegrationKind;
 use App\Enums\IntegrationProvider;
 use App\Enums\IntegrationStatus;
+use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Enums\TeamRole;
 use App\Enums\WebhookEventType;
@@ -129,6 +130,25 @@ class BuildParametersTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('pipelines.0.input_schema.channel.type', 'choice')
                 ->where('builds.0.parameters', $parameters));
+    }
+
+    public function test_manual_platform_build_uses_the_default_identifier_without_an_override(): void
+    {
+        [$owner, $team, $app, $identifier] = $this->context();
+        $identifier->update(['is_default' => true]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.apps.builds.store', [$team, $app]), [
+                'request_uuid' => (string) Str::uuid(),
+                'platform' => Platform::Android->value,
+                'profile_type' => ProfileType::Production->value,
+            ])
+            ->assertRedirect(route('accounts.apps.builds.index', [$team, $app]))
+            ->assertSessionHasNoErrors();
+
+        $build = BuildRecord::query()->sole();
+        $this->assertSame($identifier->id, $build->app_identifier_id);
+        $this->assertSame($identifier->identifier, $build->context_snapshot['target']['identifier']);
     }
 
     public function test_user_without_pipeline_permission_cannot_create_a_manual_build(): void

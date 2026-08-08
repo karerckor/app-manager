@@ -8,6 +8,7 @@ use App\Actions\Builds\CreateManualBuild;
 use App\Actions\Integrations\RequestPipelineBuildCancellation;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
+use App\Enums\Platform;
 use App\Enums\ProfileType;
 use App\Exceptions\InvalidBuildTransition;
 use App\Http\Concerns\ResolvesPageSize;
@@ -18,12 +19,15 @@ use App\Models\AppIdentifier;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
+use App\Support\Builds\AppIdentifierResolver;
 use App\Support\Builds\BuildLifecycle;
+use App\Support\Credentials\BuildProfileSchema;
 use App\Support\Tags\TagRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BuildController extends Controller
 {
@@ -44,6 +48,7 @@ class BuildController extends Controller
         MobileApp $mobileApp,
         CreateManualBuild $createManual,
         CreateEasBuild $createEas,
+        AppIdentifierResolver $identifiers,
     ): JsonResponse {
         $this->assertApp($team, $mobileApp);
         $data = $request->validate([
@@ -61,6 +66,7 @@ class BuildController extends Controller
             ],
             'expo_build_id' => ['required_if:reporting_mode,eas', 'nullable', 'string'],
             'app_identifier_id' => ['nullable', 'uuid'],
+            'platform' => ['sometimes', Rule::enum(Platform::class)],
             'context' => ['sometimes', 'array'],
             'parameters' => [
                 'sometimes',
@@ -81,6 +87,23 @@ class BuildController extends Controller
                 ->where('mobile_app_id', $mobileApp->id)
                 ->firstOrFail()
             : null;
+        $platform = isset($data['platform']) ? Platform::from($data['platform']) : null;
+
+        if ($identifier && $platform && $identifier->platform !== $platform) {
+            throw ValidationException::withMessages([
+                'platform' => 'The selected identifier does not belong to this platform.',
+            ]);
+        }
+
+        if ($identifier === null && $platform) {
+            $identifier = $identifiers->resolve($mobileApp, $platform);
+        }
+
+        if ($platform && ! BuildProfileSchema::supportsPlatform(ProfileType::from($data['profile_type']), $platform)) {
+            throw ValidationException::withMessages([
+                'profile_type' => 'This build target cannot be used with the selected platform.',
+            ]);
+        }
 
         if ($reportingMode === 'eas') {
             $build = $createEas->handle(

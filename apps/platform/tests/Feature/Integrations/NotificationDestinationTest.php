@@ -13,7 +13,10 @@ use App\Integrations\Notifications\NotificationSender;
 use App\Integrations\Notifications\NotificationTemplateRenderer;
 use App\Jobs\Notifications\DeliverNotification;
 use App\Jobs\Notifications\PublishNotificationEvent;
+use App\Models\AppIdentifier;
+use App\Models\BuildRecord;
 use App\Models\Integration;
+use App\Models\MobileApp;
 use App\Models\NotificationDelivery;
 use App\Models\NotificationDestination;
 use App\Models\Team;
@@ -52,6 +55,8 @@ class NotificationDestinationTest extends TestCase
                 ->where('notificationsEnabled', true)
                 ->has('notificationEvents', 18)
                 ->where('notificationEvents.0.group', 'Application events')
+                ->where('notificationEvents.0.variables.7.pattern', 'app.metadata.*')
+                ->where('notificationEvents.0.variables.8.key', 'app.metadata_str')
                 ->where('notificationEvents.2.group', 'App Identifiers and Platforms')
                 ->where('notificationEvents.5.group', 'Credentials')
                 ->where('notificationEvents.12.key', 'credential.verification_failed')
@@ -72,6 +77,10 @@ class NotificationDestinationTest extends TestCase
                 ->where('notificationEvents.15.variables.3.options.1.value', '❌')
                 ->where('notificationEvents.15.variables.3.options.2.label', 'cancelled')
                 ->where('notificationEvents.15.variables.3.options.2.value', '⚪')
+                ->where('notificationEvents.15.variables.8.pattern', 'build.parameters.*')
+                ->where('notificationEvents.15.variables.9.key', 'build.parameters_str')
+                ->where('notificationEvents.15.variables.10.pattern', 'app.metadata.*')
+                ->where('notificationEvents.15.variables.11.key', 'app.metadata_str')
                 ->has('notificationProviders', 3)
                 ->where('notificationProviders.0.value', 'slack')
                 ->where('notificationProviders.1.value', 'discord')
@@ -182,6 +191,60 @@ class NotificationDestinationTest extends TestCase
         [$owner, $team] = $this->member(TeamRole::Owner);
         $templates = NotificationEventCatalog::defaultTemplates();
         $templates['build.completed'] = 'Download {{artifact.download_url}}';
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.notifications.store', $team), [
+                'name' => 'Build room',
+                'provider' => 'slack',
+                'destination' => '#builds',
+                'webhook_url' => 'https://hooks.slack.com/services/T000/B000/secret',
+                'events' => ['build.completed'],
+                'templates' => $templates,
+                'enabled' => true,
+            ])
+            ->assertSessionHasErrors('templates.build.completed');
+
+        $this->assertDatabaseCount('notification_destinations', 0);
+    }
+
+    public function test_templates_accept_dotted_metadata_and_launch_parameter_paths(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $templates = NotificationEventCatalog::defaultTemplates();
+        $templates['build.completed'] = implode(' · ', [
+            '{{app.metadata.release.owner}}',
+            '{{app.metadata_str}}',
+            '{{build.parameters.flags.minify}}',
+            '{{build.parameters_str}}',
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.notifications.store', $team), [
+                'name' => 'Build metadata room',
+                'provider' => 'slack',
+                'destination' => '#builds',
+                'webhook_url' => 'https://hooks.slack.com/services/T000/B000/secret',
+                'events' => ['build.completed'],
+                'templates' => $templates,
+                'enabled' => true,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseCount('notification_destinations', 1);
+        $this->assertSame(
+            'Mobile Platform · internal',
+            NotificationEventCatalog::renderExample(
+                'build.completed',
+                '{{app.metadata.release.owner}} · {{build.parameters.delivery.channel}}',
+            ),
+        );
+    }
+
+    public function test_templates_reject_an_incomplete_dynamic_path(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $templates = NotificationEventCatalog::defaultTemplates();
+        $templates['build.completed'] = '{{build.parameters.}}';
 
         $this->actingAs($owner)
             ->post(route('accounts.integrations.notifications.store', $team), [
@@ -430,6 +493,69 @@ class NotificationDestinationTest extends TestCase
         $message = app(NotificationTemplateRenderer::class)->render($event, $destination->fresh());
 
         $this->assertSame('custom #019fbcba #release', $message);
+    }
+
+    public function test_renderer_reads_app_metadata_and_encrypted_launch_parameters(): void
+    {
+        [$owner, $team] = $this->member(TeamRole::Owner);
+        $app = MobileApp::factory()->create([
+            'team_id' => $team->id,
+            'metadata' => [
+                'owner' => ['name' => 'Mobile Platform'],
+                'rollout' => 75,
+                'enabled' => true,
+            ],
+        ]);
+        $identifier = AppIdentifier::factory()->create(['mobile_app_id' => $app->id]);
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => $identifier->id,
+            'parameters' => [
+                'channel' => 'internal',
+                'flags' => ['minify' => true],
+            ],
+        ]);
+        $destination = $this->destination($team, $owner);
+        $destination->update([
+            'templates' => [
+                'build.completed' => implode(' | ', [
+                    '{{app.metadata.owner.name}}',
+                    '{{app.metadata.rollout}}',
+                    '{{app.metadata.enabled}}',
+                    '{{app.metadata_str}}',
+                    '{{build.parameters.channel}}',
+                    '{{build.parameters.flags.minify}}',
+                    '{{build.parameters_str}}',
+                    '{{app.metadata.missing}}',
+                ]),
+            ],
+        ]);
+        $event = WebhookEvent::create([
+            'team_id' => $team->id,
+            'event_type' => WebhookEventType::BuildCompleted,
+            'schema_version' => 2,
+            'aggregate_type' => 'BuildRecord',
+            'aggregate_id' => $build->id,
+            'source' => 'web',
+            'payload' => [
+                'id' => $build->id,
+                'status' => 'completed',
+                'actor' => ['type' => 'user', 'display_name' => $owner->name],
+            ],
+            'filter_context' => ['mobile_app_ids' => [$app->id]],
+            'occurred_at' => now(),
+            'published_at' => now(),
+        ]);
+
+        $message = app(NotificationTemplateRenderer::class)->render($event, $destination->fresh());
+
+        $this->assertSame(
+            'Mobile Platform | 75 | true | {"owner":{"name":"Mobile Platform"},"rollout":75,"enabled":true}'
+                .' | internal | true | {"channel":"internal","flags":{"minify":true}} | —',
+            $message,
+        );
+        $this->assertArrayNotHasKey('parameters', $event->payload);
     }
 
     /** @param array<string, string> $credentials */

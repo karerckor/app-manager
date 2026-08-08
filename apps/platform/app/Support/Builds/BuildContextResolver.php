@@ -14,6 +14,10 @@ use Illuminate\Validation\ValidationException;
 
 class BuildContextResolver
 {
+    public function __construct(
+        private readonly AppIdentifierResolver $identifiers,
+    ) {}
+
     public function resolve(
         MobileApp $mobileApp,
         Platform $platform,
@@ -28,7 +32,7 @@ class BuildContextResolver
             ]);
         }
 
-        $target = $this->target($mobileApp, $platform, $identifier);
+        $target = $this->identifiers->resolve($mobileApp, $platform, $identifier);
         $profile = $target->profiles()
             ->where('type', $profileType->value)
             ->first();
@@ -39,48 +43,6 @@ class BuildContextResolver
             'profile_definition' => $profileDefinition,
             'credentials' => $this->credentials($mobileApp, $target, $profile),
         ];
-    }
-
-    private function target(
-        MobileApp $mobileApp,
-        Platform $platform,
-        ?string $identifier,
-    ): AppIdentifier {
-        $query = $mobileApp->appIdentifiers()
-            ->where('platform', $platform->value);
-
-        if ($identifier !== null) {
-            return (clone $query)
-                ->where('identifier', $identifier)
-                ->firstOrFail();
-        }
-
-        $default = (clone $query)
-            ->where('is_default', true)
-            ->first();
-
-        if ($default) {
-            return $default;
-        }
-
-        $candidates = $query
-            ->orderBy('identifier')
-            ->get();
-
-        if ($candidates->count() === 1) {
-            return $candidates->first();
-        }
-
-        if ($candidates->isEmpty()) {
-            throw ValidationException::withMessages([
-                'identifier' => "No {$platform->value} identifier is configured for this application.",
-            ]);
-        }
-
-        throw ValidationException::withMessages([
-            'identifier' => 'Multiple identifiers match; select one explicitly: '
-                .$candidates->pluck('identifier')->join(', '),
-        ]);
     }
 
     private function credentials(
