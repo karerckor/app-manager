@@ -21,7 +21,7 @@ class RedeliverWebhook
             'payload_snapshot' => $source->payload_snapshot,
         ]));
 
-        DB::afterCommit(fn () => DeliverWebhook::dispatch($delivery->id)->onQueue('webhooks'));
+        DB::afterCommit(fn () => DeliverWebhook::dispatch($delivery->id));
 
         return $delivery;
     }

@@ -157,7 +157,7 @@ class DeliverWebhook implements ShouldQueue
             'next_attempt_at' => now()->addSeconds($delay),
         ]);
 
-        self::dispatch($delivery->id)->delay($delay)->onQueue('webhooks');
+        self::dispatch($delivery->id)->delay($delay);
     }
 
     private function exhaust(

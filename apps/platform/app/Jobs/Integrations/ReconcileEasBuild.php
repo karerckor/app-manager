@@ -108,8 +108,7 @@ class ReconcileEasBuild implements ShouldBeUniqueUntilProcessing, ShouldQueue
         }
 
         self::dispatch($build->id, notify: $this->notify)
-            ->delay(now()->addSeconds(10))
-            ->onQueue('integrations');
+            ->delay(now()->addSeconds(10));
     }
 
     /** @return array<string, mixed>|null */

@@ -106,6 +106,6 @@ class DeliverNotification implements ShouldQueue
             'next_attempt_at' => now()->addSeconds($delay),
         ]);
 
-        self::dispatch($delivery->id)->delay($delay)->onQueue('notifications');
+        self::dispatch($delivery->id)->delay($delay);
     }
 }

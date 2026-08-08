@@ -654,8 +654,7 @@ class ExpoIntegrationTest extends TestCase
         Queue::assertPushed(ImportExpoProject::class, 2);
         Queue::assertPushed(ImportExpoProject::class, function ($job) use ($team, $first, $second) {
             return $job->teamId === $team->id
-                && in_array($job->projectId, [$first->id, $second->id], true)
-                && $job->queue === 'integrations';
+                && in_array($job->projectId, [$first->id, $second->id], true);
         });
     }
 

@@ -80,7 +80,7 @@ class ExpoAutoSyncDispatcher
                     ]);
 
                 if ($queued) {
-                    PushExpoProject::dispatch($projectId)->onQueue('integrations');
+                    PushExpoProject::dispatch($projectId);
                 }
             });
         }

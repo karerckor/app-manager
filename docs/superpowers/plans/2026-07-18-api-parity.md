@@ -2281,7 +2281,7 @@ git commit -m "feat(api): manage webhook endpoints and secrets"
 - Test: `tests/Feature/Api/V1/WebhookDeliveryApiTest.php`
 
 **Interfaces:**
-- Consumes: `WebhookDelivery` model, `DeliverWebhook::dispatch($id)->onQueue('webhooks')` (exists), `WebhookDeliveryStatus`.
+- Consumes: `WebhookDelivery` model, `DeliverWebhook::dispatch($id)` (exists), `WebhookDeliveryStatus`.
 - Produces: `RedeliverWebhook::handle(WebhookDelivery $source): WebhookDelivery`; routes `webhooks.deliveries.index/show/redeliver`; `WebhookDeliveryResource`.
 
 - [ ] **Step 1: Write the failing feature test**
@@ -2448,7 +2448,7 @@ class RedeliverWebhook
             'payload_snapshot' => $source->payload_snapshot,
         ]));
 
-        DB::afterCommit(fn () => DeliverWebhook::dispatch($delivery->id)->onQueue('webhooks'));
+        DB::afterCommit(fn () => DeliverWebhook::dispatch($delivery->id));
 
         return $delivery;
     }

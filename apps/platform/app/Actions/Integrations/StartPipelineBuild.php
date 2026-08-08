@@ -152,7 +152,7 @@ class StartPipelineBuild
                 ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
 
-            DB::afterCommit(fn () => DispatchCiCdRun::dispatch($run->id)->onQueue('integrations'));
+            DB::afterCommit(fn () => DispatchCiCdRun::dispatch($run->id));
 
             return $build->load('ciCdRun');
         });

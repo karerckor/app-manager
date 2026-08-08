@@ -100,7 +100,7 @@ class ForwardSentryEnvelope implements ShouldQueue
         ]);
 
         if ($delay !== null) {
-            self::dispatch($envelope->id)->delay($delay)->onQueue('integrations');
+            self::dispatch($envelope->id)->delay($delay);
         }
     }
 }

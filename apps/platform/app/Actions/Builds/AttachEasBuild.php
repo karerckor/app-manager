@@ -69,7 +69,7 @@ class AttachEasBuild
                 'context_snapshot' => $context,
             ]);
 
-            DB::afterCommit(fn () => ReconcileEasBuild::dispatch($current->id)->onQueue('integrations'));
+            DB::afterCommit(fn () => ReconcileEasBuild::dispatch($current->id));
 
             return $current->refresh();
         });

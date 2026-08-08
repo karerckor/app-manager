@@ -50,7 +50,7 @@ The image ships an `app-manager` entry command that selects the role, so one ima
 | Command | Process |
 |---|---|
 | (default) | nginx + PHP-FPM |
-| `app-manager queue` | `php artisan queue:work --queue=notifications,integrations,webhooks,default --tries=3 --max-time=3600` |
+| `app-manager queue` | `php artisan queue:work --queue=default --tries=3 --max-time=3600` |
 | `app-manager scheduler` | `php artisan schedule:work` |
 | `app-manager init` | one-shot: `migrate --force` → `app:bootstrap`, then exit 0 |
 | `app-manager generate-key` | prints a fresh `base64:` key to stdout and exits — no side effects |

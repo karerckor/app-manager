@@ -76,7 +76,7 @@ class PublishNotificationEvent implements ShouldQueue
         });
 
         foreach ($deliveryIds as $deliveryId) {
-            DeliverNotification::dispatch($deliveryId)->onQueue('notifications');
+            DeliverNotification::dispatch($deliveryId);
         }
     }
 }

@@ -48,7 +48,7 @@ class RequestPipelineBuildCancellation
         }
 
         if ($run->external_run_id !== null) {
-            CancelCiCdRun::dispatch($run->id)->onQueue('integrations');
+            CancelCiCdRun::dispatch($run->id);
         }
 
         return $build->refresh();

@@ -66,11 +66,11 @@ class WebhookEventRecorder
         ]);
 
         if ($webhooksEnabled) {
-            DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id)->onQueue('webhooks'));
+            DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id));
         }
 
         if ($notificationsEnabled) {
-            DB::afterCommit(fn () => PublishNotificationEvent::dispatch($event->id)->onQueue('notifications'));
+            DB::afterCommit(fn () => PublishNotificationEvent::dispatch($event->id));
         }
 
         return $event;

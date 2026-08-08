@@ -228,8 +228,7 @@ class ExpoProjectController extends Controller
         }
 
         DB::afterCommit(fn () => $projects->each(
-            fn (string $projectId) => ImportExpoProjectJob::dispatch($team->id, $projectId)
-                ->onQueue('integrations'),
+            fn (string $projectId) => ImportExpoProjectJob::dispatch($team->id, $projectId),
         ));
 
         return back()->with('status', "{$projects->count()} Expo project(s) queued for import.");

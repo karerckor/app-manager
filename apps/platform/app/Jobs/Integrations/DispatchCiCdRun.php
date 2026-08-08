@@ -98,15 +98,14 @@ class DispatchCiCdRun implements ShouldQueue
             ]);
 
             if ($run->buildRecord()->where('status', BuildStatus::CancelRequested)->exists()) {
-                CancelCiCdRun::dispatch($run->id)->onQueue('integrations');
+                CancelCiCdRun::dispatch($run->id);
 
                 return;
             }
 
             if ($run->reporting_mode === BuildReportingMode::Automatic) {
                 ReconcileCiCdRun::dispatch($run->id)
-                    ->delay(now()->addSeconds(5))
-                    ->onQueue('integrations');
+                    ->delay(now()->addSeconds(5));
             }
         });
     }

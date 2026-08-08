@@ -98,7 +98,7 @@ class SentryEnvelopeController extends Controller
         }
 
         if (filled($dsn->upstream_dsn)) {
-            ForwardSentryEnvelope::dispatch($envelope->id)->onQueue('integrations')->afterCommit();
+            ForwardSentryEnvelope::dispatch($envelope->id)->afterCommit();
         }
 
         return $this->json([

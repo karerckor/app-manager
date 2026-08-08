@@ -115,7 +115,7 @@ class CreateEasBuild
                 ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
 
-            DB::afterCommit(fn () => ReconcileEasBuild::dispatch($build->id)->onQueue('integrations'));
+            DB::afterCommit(fn () => ReconcileEasBuild::dispatch($build->id));
 
             return $build->refresh();
         });

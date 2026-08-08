@@ -1040,7 +1040,7 @@ shift
 case "$role" in
     queue)
         exec php artisan queue:work \
-            --queue=notifications,integrations,webhooks,default \
+            --queue=default \
             --tries=3 \
             --max-time=3600 "$@"
         ;;

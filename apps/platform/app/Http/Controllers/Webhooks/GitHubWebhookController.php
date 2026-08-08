@@ -45,7 +45,7 @@ class GitHubWebhookController extends Controller
         abort_if(! hash_equals($delivery->payload_hash, $hash), 409, 'Delivery ID was reused with a different payload.');
 
         if ($delivery->wasRecentlyCreated) {
-            ProcessGitHubWebhook::dispatch($deliveryId)->onQueue('integrations');
+            ProcessGitHubWebhook::dispatch($deliveryId);
         }
 
         return response('', 202);

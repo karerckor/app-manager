@@ -37,7 +37,7 @@ Schedule::call(function () {
             BuildStatus::Cancelled->value,
         ]))
         ->pluck('id')
-        ->each(fn (string $id) => ReconcileCiCdRun::dispatch($id)->onQueue('integrations'));
+        ->each(fn (string $id) => ReconcileCiCdRun::dispatch($id));
 })->everyFiveMinutes()->name('reconcile-ci-cd-runs')->withoutOverlapping();
 
 Schedule::call(function () {
@@ -56,7 +56,7 @@ Schedule::call(function () {
         ]))
         ->limit(100)
         ->pluck('id')
-        ->each(fn (string $id) => SyncCiCdRunLogs::dispatch($id)->onQueue('integrations'));
+        ->each(fn (string $id) => SyncCiCdRunLogs::dispatch($id));
 })->everyFiveMinutes()->name('sync-ci-cd-run-logs')->withoutOverlapping();
 
 Schedule::call(function () {
@@ -70,7 +70,7 @@ Schedule::call(function () {
         ->whereNull('published_at')
         ->limit(500)
         ->pluck('id')
-        ->each(fn (string $id) => PublishWebhookEvent::dispatch($id)->onQueue('webhooks'));
+        ->each(fn (string $id) => PublishWebhookEvent::dispatch($id));
 })->everyMinute()->name('publish-webhook-outbox')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.webhooks.enabled'));
 
@@ -86,7 +86,7 @@ Schedule::call(function () {
                 ->where('updated_at', '<=', now()->subMinutes(15))))
         ->limit(500)
         ->pluck('id')
-        ->each(fn (string $id) => DeliverWebhook::dispatch($id)->onQueue('webhooks'));
+        ->each(fn (string $id) => DeliverWebhook::dispatch($id));
 })->everyMinute()->name('recover-webhook-deliveries')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.webhooks.enabled'));
 
@@ -95,7 +95,7 @@ Schedule::call(function () {
         ->whereNull('notifications_published_at')
         ->limit(500)
         ->pluck('id')
-        ->each(fn (string $id) => PublishNotificationEvent::dispatch($id)->onQueue('notifications'));
+        ->each(fn (string $id) => PublishNotificationEvent::dispatch($id));
 })->everyMinute()->name('publish-notification-outbox')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.notifications.enabled'));
 
@@ -111,7 +111,7 @@ Schedule::call(function () {
                 ->where('updated_at', '<=', now()->subMinutes(15))))
         ->limit(500)
         ->pluck('id')
-        ->each(fn (string $id) => DeliverNotification::dispatch($id)->onQueue('notifications'));
+        ->each(fn (string $id) => DeliverNotification::dispatch($id));
 })->everyMinute()->name('recover-notification-deliveries')->withoutOverlapping()
     ->when(fn () => config('integrations.enabled') && config('integrations.notifications.enabled'));
 

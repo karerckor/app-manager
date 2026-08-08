@@ -36,7 +36,7 @@ class ReconcileCiCdRun implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
         if ($run->buildRecord->status->isTerminal()) {
             if ($run->buildRecord->logs_updated_at === null) {
-                SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations');
+                SyncCiCdRunLogs::dispatch($run->id);
             }
 
             return;
@@ -46,13 +46,11 @@ class ReconcileCiCdRun implements ShouldBeUniqueUntilProcessing, ShouldQueue
         $sync->handle($run, $status);
 
         if ($status->status === 'completed') {
-            SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations');
+            SyncCiCdRunLogs::dispatch($run->id);
 
             return;
         }
 
-        self::dispatch($run->id)
-            ->delay(now()->addSeconds(10))
-            ->onQueue('integrations');
+        self::dispatch($run->id)->delay(now()->addSeconds(10));
     }
 }

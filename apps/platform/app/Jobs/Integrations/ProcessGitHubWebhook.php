@@ -133,7 +133,7 @@ class ProcessGitHubWebhook implements ShouldQueue
         ));
 
         if (($workflowRun['status'] ?? null) === 'completed') {
-            SyncCiCdRunLogs::dispatch($run->id)->onQueue('integrations')->afterCommit();
+            SyncCiCdRunLogs::dispatch($run->id)->afterCommit();
         }
     }
 

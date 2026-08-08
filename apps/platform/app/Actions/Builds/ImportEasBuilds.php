@@ -169,8 +169,7 @@ class ImportEasBuilds
             }
 
             ReconcileEasBuild::dispatch($build->id, notify: false)
-                ->delay(now()->addSeconds(count($imported) * 2))
-                ->onQueue('integrations');
+                ->delay(now()->addSeconds(count($imported) * 2));
 
             $imported[] = $build;
         }

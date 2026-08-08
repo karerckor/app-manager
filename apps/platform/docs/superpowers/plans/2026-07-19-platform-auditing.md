@@ -1348,7 +1348,7 @@ class WebhookEventRecorder
             'occurred_at' => now(),
         ]);
 
-        DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id)->onQueue('webhooks'));
+        DB::afterCommit(fn () => PublishWebhookEvent::dispatch($event->id));
 
         return $event;
     }

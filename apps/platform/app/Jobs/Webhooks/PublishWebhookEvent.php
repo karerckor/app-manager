@@ -70,7 +70,7 @@ class PublishWebhookEvent implements ShouldQueue
         });
 
         foreach ($deliveryIds as $deliveryId) {
-            DeliverWebhook::dispatch($deliveryId)->onQueue('webhooks');
+            DeliverWebhook::dispatch($deliveryId);
         }
     }
 }
