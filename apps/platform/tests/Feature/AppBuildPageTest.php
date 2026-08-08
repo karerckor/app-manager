@@ -145,6 +145,38 @@ class AppBuildPageTest extends TestCase
             ->where('filters.duration_min', '10'));
     }
 
+    public function test_index_filters_eas_builds_by_reporting_mode(): void
+    {
+        [$user, $team] = $this->userWithTeam();
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $easBuild = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'reporting_mode' => 'eas',
+        ]);
+        BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'reporting_mode' => 'manual',
+        ]);
+        BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'reporting_mode' => 'automatic',
+        ]);
+
+        $this->actingAs($user)->get(route('accounts.apps.builds.index', [
+            $team,
+            $app,
+            'reporting_mode' => 'eas',
+        ]))->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('builds', 1)
+                ->where('builds.0.id', $easBuild->id)
+                ->where('builds.0.reporting_mode', 'eas')
+                ->where('filters.reporting_mode', 'eas'));
+    }
+
     public function test_show_returns_single_build(): void
     {
         [$user, $team] = $this->userWithTeam();

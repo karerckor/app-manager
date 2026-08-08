@@ -111,9 +111,7 @@ curl -s -H "Authorization: Bearer $APP_MANAGER_API_KEY" -H "Accept: application/
 - EAS rows carry an `EAS` badge and show Expo's own durations and dates — proof the
   status came from Expo, not from the script
 
-Heads-up for the walkthrough: the **Reporting** filter only offers `Manual` and
-`Automatic`, and EAS builds are stored as `eas`, so neither option matches them.
-Filter by tag (`expo`) instead if you want to isolate them.
+Use **Reporting → EAS** to isolate builds whose status is synchronized from Expo.
 
 ---
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BuildReportingMode;
 use App\Enums\TeamPermission;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
@@ -29,7 +30,7 @@ class AppBuildPageController extends Controller
             'duration_min' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'duration_max' => ['nullable', 'integer', 'min:0', 'max:100000'],
             'artifacts' => ['nullable', Rule::in(['with', 'without'])],
-            'reporting_mode' => ['nullable', Rule::in(['manual', 'automatic'])],
+            'reporting_mode' => ['nullable', Rule::enum(BuildReportingMode::class)],
             'pipelines' => ['nullable', 'array', 'max:50'],
             'pipelines.*' => ['string', 'max:100'],
         ]);

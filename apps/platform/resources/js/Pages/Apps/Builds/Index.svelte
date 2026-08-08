@@ -152,7 +152,7 @@
                     <div>
                         <span class="label">Reporting</span>
                         <div class="inline-flex rounded-sm bg-surface-sunken p-0.5" role="group" aria-label="Reporting mode filter">
-                            {#each [['', 'All'], ['manual', 'Manual'], ['automatic', 'Automatic']] as option}
+                            {#each [['', 'All'], ['manual', 'Manual'], ['automatic', 'Automatic'], ['eas', 'EAS']] as option}
                                 <button type="button" aria-pressed={reportingMode === option[0]} class="rounded-sm px-3 py-1.5 text-xs font-semibold shadow-none transition {segmentClass(reportingMode, option[0])}" on:click={() => selectReportingMode(option[0])}>{option[1]}</button>
                             {/each}
                         </div>
