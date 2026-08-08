@@ -639,7 +639,7 @@ class IntegrationIndexController extends Controller
             : 1;
         $search = trim((string) $request->query('expo_search', ''));
         $projects = $integration->expoProjects()
-            ->with('mobileApp')
+            ->with(['mobileApp' => fn ($query) => $query->withTrashed()])
             ->when($search !== '', fn ($query) => $query->where(
                 fn ($query) => $query
                     ->whereLike('name', "%{$search}%")
@@ -657,7 +657,7 @@ class IntegrationIndexController extends Controller
 
         if ($projects->total() > 0 && $requestedPage > $projects->lastPage()) {
             $projects = $integration->expoProjects()
-                ->with('mobileApp')
+                ->with(['mobileApp' => fn ($query) => $query->withTrashed()])
                 ->when($search !== '', fn ($query) => $query->where(
                     fn ($query) => $query
                         ->whereLike('name', "%{$search}%")
@@ -702,7 +702,8 @@ class IntegrationIndexController extends Controller
                     'icon_url' => $project->icon_url,
                     'exists_on_expo' => $project->exists_on_expo,
                     'app_name' => $project->mobileApp?->name,
-                    'app_url' => $project->mobileApp
+                    'app_archived' => $project->mobileApp?->trashed() ?? false,
+                    'app_url' => $project->mobileApp && ! $project->mobileApp->trashed()
                         ? route('accounts.apps.expo.index', [$team, $project->mobileApp])
                         : null,
                     'import_url' => route(

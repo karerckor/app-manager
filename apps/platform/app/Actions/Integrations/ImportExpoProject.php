@@ -39,7 +39,7 @@ class ImportExpoProject
      * intentionally never requested from Expo.
      *
      * @param  array<string, mixed>  $remote
-     * @return array{app: MobileApp, identifiers: int, credentials: int}
+     * @return array{app: MobileApp, identifiers: int, credentials: int, restored_from_trash: bool}
      */
     public function handle(
         Team $team,
@@ -51,6 +51,7 @@ class ImportExpoProject
             $team = Team::query()->whereKey($team->id)->lockForUpdate()->firstOrFail();
             $project = ExpoProject::query()->lockForUpdate()->findOrFail($project->id);
             $appWasCreated = false;
+            $appWasRestored = false;
             $identifierEvents = [];
             $credentialEvents = [];
 
@@ -63,18 +64,37 @@ class ImportExpoProject
                 );
                 $app = $existingApp;
             } else {
-                abort_if($project->mobile_app_id, 409, 'This Expo project is already linked.');
-                $app = $team->mobileApps()->create([
-                    'name' => $project->name,
-                    'slug' => $this->availableSlug($team, $project),
-                    'description' => $project->description,
-                ]);
-                $appWasCreated = true;
+                $linkedApp = $project->mobile_app_id
+                    ? MobileApp::query()
+                        ->withTrashed()
+                        ->whereKey($project->mobile_app_id)
+                        ->lockForUpdate()
+                        ->first()
+                    : null;
 
-                $project->update([
-                    'mobile_app_id' => $app->id,
-                    'sync_metadata' => true,
-                ]);
+                if ($linkedApp) {
+                    abort_unless(
+                        $linkedApp->team_id === $team->id && $linkedApp->trashed(),
+                        409,
+                        'This Expo project is already linked.',
+                    );
+                    $linkedApp->restore();
+                    $app = $linkedApp;
+                    $appWasRestored = true;
+                } else {
+                    abort_if($project->mobile_app_id, 409, 'This Expo project is already linked.');
+                    $app = $team->mobileApps()->create([
+                        'name' => $project->name,
+                        'slug' => $this->availableSlug($team, $project),
+                        'description' => $project->description,
+                    ]);
+                    $appWasCreated = true;
+
+                    $project->update([
+                        'mobile_app_id' => $app->id,
+                        'sync_metadata' => true,
+                    ]);
+                }
             }
 
             $identifiers = $this->importIdentifiers($app, $remote, $identifierEvents);
@@ -350,6 +370,7 @@ class ImportExpoProject
                 'app' => $app,
                 'identifiers' => count($identifiers),
                 'credentials' => count($credentialIds),
+                'restored_from_trash' => $appWasRestored,
             ];
         });
 
@@ -443,7 +464,7 @@ class ImportExpoProject
         $slug = $baseSlug;
         $suffix = 2;
 
-        while ($team->mobileApps()->where('slug', $slug)->exists()) {
+        while ($team->mobileApps()->withTrashed()->where('slug', $slug)->exists()) {
             $slug = $baseSlug.'-'.$suffix++;
         }
 

@@ -212,7 +212,8 @@
             },
         });
     };
-    const importableExpoProjects = (integration) => integration.projects.filter((project) => !project.app_url && project.exists_on_expo);
+    const canBulkImportExpoProject = (project) => !project.app_url && !project.app_archived && project.exists_on_expo;
+    const importableExpoProjects = (integration) => integration.projects.filter(canBulkImportExpoProject);
     const selectedExpoProjects = (integration, selection = selectedExpoProjectIds) => importableExpoProjects(integration)
         .filter((project) => selection[project.id]);
     const toggleExpoProject = (project) => {
@@ -586,7 +587,7 @@
                                 {#each integration.projects as project}
                                     <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 transition hover:bg-surface-sunken">
                                         <div class="flex min-w-0 items-center gap-3">
-                                            {#if !project.app_url && project.exists_on_expo}
+                                            {#if canBulkImportExpoProject(project)}
                                                 <input
                                                     class="h-4 w-4 shrink-0 rounded border-control p-0 accent-brand shadow-none focus:ring-2 focus:ring-brand/20"
                                                     aria-label={`Select ${project.name} for import`}
@@ -602,7 +603,7 @@
                                                 {/if}
                                             </span>
                                             <div class="min-w-0">
-                                                <div class="flex items-center gap-2"><p class="truncate text-[12px] font-semibold text-text">{project.name}</p>{#if project.app_url}<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ok"><CheckCircle2 class="h-3 w-3" />In App Manager</span>{/if}</div>
+                                                <div class="flex items-center gap-2"><p class="truncate text-[12px] font-semibold text-text">{project.name}</p>{#if project.app_url}<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ok"><CheckCircle2 class="h-3 w-3" />In App Manager</span>{:else if project.app_archived}<span class="inline-flex shrink-0 items-center rounded-full bg-warn-text/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warn-fill">In trash</span>{/if}</div>
                                                 <code class="mt-0.5 block truncate text-[10px] text-faint">{project.full_name}</code>
                                                 <p class="mt-0.5 truncate font-mono text-[9px] text-faint">Slug {project.slug} · Project ID {project.project_id}</p>
                                                 {#if expoImportErrors[project.id]}<p class="mt-1 text-xs font-medium text-danger">{expoImportErrors[project.id]}</p>{/if}
@@ -610,7 +611,7 @@
                                         </div>
                                         <div class="flex items-center gap-2">
                                             {#if !project.exists_on_expo}<span class="rounded-full bg-danger/10 px-2 py-1 text-[10px] font-semibold text-danger">Missing on Expo</span>{/if}
-                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null} on:click={() => importExpoProject(project)}>{importingExpoProjectId === project.id ? 'Importing…' : 'Import as application'}</button>{/if}
+                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null} on:click={() => importExpoProject(project)}>{importingExpoProjectId === project.id ? (project.app_archived ? 'Restoring…' : 'Importing…') : (project.app_archived ? 'Restore & import' : 'Import as application')}</button>{/if}
                                         </div>
                                     </div>
                                 {/each}

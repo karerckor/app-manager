@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Generate a production-ready App Manager environment configuration.">
+    <title>App Manager Configurator</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ink: '#172033',
+                        paper: '#f2f5f9',
+                        panel: '#ffffff',
+                        line: '#d9e0e9',
+                        cobalt: '#2557d6',
+                        'cobalt-soft': '#e9efff',
+                        amber: '#b45309',
+                        'amber-soft': '#fff7e8',
+                        mint: '#087f5b',
+                        'mint-soft': '#e7f8f1',
+                    },
+                    fontFamily: {
+                        sans: ['IBM Plex Sans', 'ui-sans-serif', 'system-ui'],
+                        condensed: ['IBM Plex Sans Condensed', 'ui-sans-serif', 'system-ui'],
+                        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
+                    },
+                    boxShadow: {
+                        sheet: '0 20px 60px rgba(30, 45, 75, 0.10)',
+                    },
+                },
+            },
+        };
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+        * { scrollbar-width: thin; scrollbar-color: #b9c4d3 transparent; }
+        body {
+            background-image:
+                linear-gradient(rgba(37, 87, 214, 0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(37, 87, 214, 0.035) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+        .field {
+            width: 100%;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.55rem;
+            background: #fff;
+            padding: 0.7rem 0.8rem;
+            color: #172033;
+            outline: none;
+            transition: border-color 140ms ease, box-shadow 140ms ease;
+        }
+        .field:focus {
+            border-color: #2557d6;
+            box-shadow: 0 0 0 3px rgba(37, 87, 214, 0.12);
+        }
+        .field::placeholder { color: #94a3b8; }
+        .choice:has(input:checked) {
+            border-color: #2557d6;
+            background: #f5f7ff;
+            box-shadow: inset 3px 0 0 #2557d6;
+        }
+        .switch:checked + span { background: #2557d6; }
+        .switch:checked + span::after { transform: translateX(1.25rem); }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+
+    <script>
+        function appManagerConfigurator() {
+            return {
+                step: 0,
+                maxStep: 0,
+                copied: '',
+                previewMode: 'env',
+                showSecrets: false,
+                pgParsed: false,
+                pgParseType: '',
+                pgParseMessage: '',
+                s3ParseType: '',
+                s3ParseMessage: '',
+                steps: [
+                    { label: 'Route', hint: 'Where and how' },
+                    { label: 'Identity', hint: 'URL, key, owner' },
+                    { label: 'Services', hint: 'Database and cache' },
+                    { label: 'Storage', hint: 'Private files' },
+                    { label: 'Policy', hint: 'Access boundaries' },
+                    { label: 'Export', hint: 'Config and commands' },
+                ],
+                config: {
+                    target: 'docker',
+                    onboarding: 'installer',
+                    appName: 'App Manager',
+                    appUrl: 'http://localhost:8000',
+                    appPort: '8000',
+                    appKey: '',
+                    ownerEmail: 'owner@example.com',
+                    ownerPassword: '',
+                    teamName: 'My Team',
+                    dbHost: 'postgres',
+                    dbPort: '5432',
+                    dbName: 'app_manager',
+                    dbUser: 'app_manager',
+                    dbPassword: '',
+                    dbSource: 'fields',
+                    dbConnectionString: '',
+                    dbSslMode: 'prefer',
+                    useRedis: true,
+                    redisHost: 'redis',
+                    redisPort: '6379',
+                    storage: 'local',
+                    localRoot: '',
+                    s3AccessKey: '',
+                    s3SecretKey: '',
+                    s3SessionToken: '',
+                    s3Region: 'us-east-1',
+                    s3Bucket: '',
+                    s3Endpoint: '',
+                    s3Prefix: 'production/media',
+                    s3PathStyle: false,
+                    s3Acl: 'bucket-owner-full-control',
+                    s3Encryption: 'AES256',
+                    s3KmsKey: '',
+                    s3EnvPaste: '',
+                    credentialModes: 'local,external',
+                    apiProfile: 'full',
+                    publicRegistration: false,
+                    teamInvitations: true,
+                    trustedProxies: false,
+                },
+
+                init() {
+                    this.generateAppKey();
+                    this.config.dbPassword = this.randomSecret(28);
+                    this.config.ownerPassword = this.randomSecret(22);
+                },
+
+                setTarget(target) {
+                    const previous = this.config.target;
+                    this.config.target = target;
+
+                    if (target === 'docker') {
+                        if (previous !== 'docker') this.config.appUrl = 'http://localhost:8000';
+                        if (this.config.dbSource === 'injected') this.config.dbSource = 'fields';
+                        this.config.dbHost = 'postgres';
+                        this.config.redisHost = 'redis';
+                        this.config.useRedis = true;
+                        this.config.storage = 'local';
+                    } else if (target === 'cloud') {
+                        if (previous !== 'cloud') this.config.appUrl = 'https://app.example.com';
+                        if (this.config.dbSource === 'fields') this.config.dbSource = 'injected';
+                        this.config.useRedis = false;
+                        this.config.storage = 's3';
+                    } else {
+                        if (previous !== 'server') this.config.appUrl = 'https://app.example.com';
+                        if (this.config.dbSource === 'injected') this.config.dbSource = 'fields';
+                        this.config.dbHost = '127.0.0.1';
+                        this.config.redisHost = '127.0.0.1';
+                        this.config.useRedis = false;
+                        this.config.storage = 'local';
+                    }
+                },
+
+                randomSecret(length = 24) {
+                    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%_-';
+                    const bytes = new Uint8Array(length);
+                    crypto.getRandomValues(bytes);
+                    return Array.from(bytes, byte => alphabet[byte % alphabet.length]).join('');
+                },
+
+                generateAppKey() {
+                    const bytes = new Uint8Array(32);
+                    crypto.getRandomValues(bytes);
+                    let binary = '';
+                    bytes.forEach(byte => binary += String.fromCharCode(byte));
+                    this.config.appKey = `base64:${btoa(binary)}`;
+                },
+
+                parseEnvText(input) {
+                    const variables = {};
+
+                    String(input || '').split(/\r?\n/).forEach(sourceLine => {
+                        let line = sourceLine.trim().replace(/^\d+\.\s*/, '');
+                        if (!line || line.startsWith('#')) return;
+                        line = line.replace(/^export\s+/, '');
+
+                        const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+                        if (!match) return;
+
+                        let value = match[2].trim();
+                        const quote = value[0];
+                        if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+                            value = value.slice(1, -1);
+                            if (quote === '"') {
+                                value = value
+                                    .replace(/\\n/g, '\n')
+                                    .replace(/\\"/g, '"')
+                                    .replace(/\\\\/g, '\\');
+                            }
+                        }
+                        variables[match[1]] = value;
+                    });
+
+                    return variables;
+                },
+
+                parsePgConnectionString() {
+                    this.pgParseType = '';
+                    this.pgParseMessage = '';
+                    this.pgParsed = false;
+
+                    try {
+                        const pasted = this.config.dbConnectionString.trim();
+                        const variables = this.parseEnvText(pasted);
+                        const connection = variables.DB_URL
+                            || variables.DATABASE_URL
+                            || variables.POSTGRES_URL
+                            || pasted;
+                        const parsed = new URL(connection);
+
+                        if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
+                            throw new Error('Use a postgres:// or postgresql:// URL.');
+                        }
+
+                        const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+                        if (!parsed.hostname || !database || !parsed.username) {
+                            throw new Error('The URL must include a host, database, and username.');
+                        }
+
+                        this.config.dbConnectionString = connection;
+                        this.config.dbHost = parsed.hostname;
+                        this.config.dbPort = parsed.port || '5432';
+                        this.config.dbName = database;
+                        this.config.dbUser = decodeURIComponent(parsed.username);
+                        this.config.dbPassword = decodeURIComponent(parsed.password);
+                        this.config.dbSslMode = parsed.searchParams.get('sslmode') || 'prefer';
+                        this.config.dbSource = 'url';
+                        this.pgParsed = true;
+                        this.pgParseType = 'success';
+                        this.pgParseMessage = `Parsed ${parsed.hostname}:${parsed.port || '5432'}/${database}.`;
+                    } catch (error) {
+                        this.pgParseType = 'error';
+                        this.pgParseMessage = error instanceof Error
+                            ? error.message
+                            : 'Could not parse this PostgreSQL connection string.';
+                    }
+                },
+
+                parseS3Environment() {
+                    this.s3ParseType = '';
+                    this.s3ParseMessage = '';
+
+                    const variables = this.parseEnvText(this.config.s3EnvPaste);
+                    const aliases = {
+                        s3Endpoint: ['MEDIA_S3_ENDPOINT', 'AWS_ENDPOINT_URL_S3', 'AWS_ENDPOINT_URL'],
+                        s3AccessKey: ['MEDIA_S3_ACCESS_KEY_ID', 'AWS_ACCESS_KEY_ID'],
+                        s3SecretKey: ['MEDIA_S3_SECRET_ACCESS_KEY', 'AWS_SECRET_ACCESS_KEY'],
+                        s3SessionToken: ['MEDIA_S3_SESSION_TOKEN', 'AWS_SESSION_TOKEN'],
+                        s3Region: ['MEDIA_S3_REGION', 'AWS_REGION', 'AWS_DEFAULT_REGION'],
+                        s3Bucket: ['MEDIA_S3_BUCKET', 'AWS_BUCKET', 'AWS_BUCKET_NAME', 'S3_BUCKET'],
+                        s3Prefix: ['MEDIA_S3_PREFIX'],
+                        s3Acl: ['MEDIA_S3_OBJECT_ACL'],
+                        s3Encryption: ['MEDIA_S3_SERVER_SIDE_ENCRYPTION'],
+                        s3KmsKey: ['MEDIA_S3_KMS_KEY_ID'],
+                    };
+                    const labels = {
+                        s3Endpoint: 'endpoint',
+                        s3AccessKey: 'access key',
+                        s3SecretKey: 'secret key',
+                        s3SessionToken: 'session token',
+                        s3Region: 'region',
+                        s3Bucket: 'bucket',
+                        s3Prefix: 'prefix',
+                        s3Acl: 'ACL',
+                        s3Encryption: 'encryption',
+                        s3KmsKey: 'KMS key',
+                    };
+                    const imported = [];
+
+                    Object.entries(aliases).forEach(([field, names]) => {
+                        const name = names.find(alias => Object.hasOwn(variables, alias));
+                        if (!name) return;
+                        this.config[field] = variables[name];
+                        imported.push(labels[field]);
+                    });
+
+                    const pathStyleName = ['MEDIA_S3_USE_PATH_STYLE_ENDPOINT', 'AWS_USE_PATH_STYLE_ENDPOINT']
+                        .find(alias => Object.hasOwn(variables, alias));
+                    if (pathStyleName) {
+                        this.config.s3PathStyle = ['1', 'true', 'yes', 'on'].includes(variables[pathStyleName].toLowerCase());
+                        imported.push('path style');
+                    }
+
+                    if (!imported.length) {
+                        this.s3ParseType = 'error';
+                        this.s3ParseMessage = 'No supported S3 variables were found.';
+                        return;
+                    }
+
+                    this.config.storage = 's3';
+                    this.s3ParseType = 'success';
+                    const bucketHint = this.config.s3Bucket ? '' : ' Add the bucket name below.';
+                    this.s3ParseMessage = `Imported ${imported.join(', ')}.${bucketHint}`;
+                },
+
+                goTo(index) {
+                    if (index <= this.maxStep) this.step = index;
+                },
+
+                next() {
+                    if (!this.canContinue || this.step >= this.steps.length - 1) return;
+                    this.step += 1;
+                    this.maxStep = Math.max(this.maxStep, this.step);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+
+                previous() {
+                    if (this.step > 0) this.step -= 1;
+                },
+
+                get canContinue() {
+                    if (this.step === 0) return Boolean(this.config.target && this.config.onboarding);
+                    if (this.step === 1) {
+                        const identityReady = this.config.appName.trim()
+                            && /^https?:\/\//.test(this.config.appUrl)
+                            && this.config.appKey.startsWith('base64:');
+                        if (this.config.onboarding === 'artisan') {
+                            return Boolean(identityReady
+                                && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.config.ownerEmail)
+                                && this.config.ownerPassword.length >= 8
+                                && this.config.teamName.trim());
+                        }
+                        return Boolean(identityReady);
+                    }
+                    if (this.step === 2) {
+                        if (this.config.dbSource === 'injected') return this.config.target === 'cloud';
+                        if (this.config.dbSource === 'url') return Boolean(this.pgParsed && this.config.dbConnectionString);
+                        return Boolean(this.config.dbHost.trim()
+                            && this.config.dbPort.trim()
+                            && this.config.dbName.trim()
+                            && this.config.dbUser.trim()
+                            && this.config.dbPassword);
+                    }
+                    if (this.step === 3 && this.config.storage === 's3') {
+                        const keyPairReady = (!this.config.s3AccessKey && !this.config.s3SecretKey)
+                            || (this.config.s3AccessKey && this.config.s3SecretKey);
+                        const kmsReady = this.config.s3Encryption !== 'aws:kms' || this.config.s3KmsKey;
+                        return Boolean(this.config.s3Region && this.config.s3Bucket && keyPairReady && kmsReady);
+                    }
+                    return true;
+                },
+
+                get validationHint() {
+                    if (this.canContinue) return '';
+                    if (this.step === 1 && this.config.onboarding === 'artisan') {
+                        return 'Add a valid owner email, a password of at least 8 characters, and a team name.';
+                    }
+                    if (this.step === 1) return 'Use an http(s) URL and generate a valid APP_KEY.';
+                    if (this.step === 2 && this.config.dbSource === 'url') return 'Parse a valid PostgreSQL connection string before continuing.';
+                    if (this.step === 2) return 'Complete the PostgreSQL connection fields.';
+                    if (this.step === 3) return 'S3 requires a region and bucket. Credentials must be supplied as a pair.';
+                    return 'Choose one option to continue.';
+                },
+
+                envValue(value) {
+                    const string = String(value ?? '');
+                    if (string === '') return '';
+                    if (/^[A-Za-z0-9_./:@,=-]+$/.test(string)) return string;
+                    return `"${string.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\n/g, '\\n')}"`;
+                },
+
+                envLine(key, value) {
+                    return `${key}=${this.envValue(value)}`;
+                },
+
+                get envOutput() {
+                    const c = this.config;
+                    const lines = [];
+                    const section = (title, values = [], notes = []) => {
+                        if (lines.length) lines.push('');
+                        lines.push(`# ${title}`);
+                        notes.forEach(note => lines.push(`# ${note}`));
+                        values.forEach(([key, value]) => lines.push(this.envLine(key, value)));
+                    };
+
+                    section('Application', [
+                        ['APP_NAME', c.appName],
+                        ['APP_ENV', 'production'],
+                        ['APP_KEY', c.appKey],
+                        ['APP_DEBUG', 'false'],
+                        ['APP_URL', c.appUrl.replace(/\/$/, '')],
+                        ...(c.target === 'docker' ? [['APP_PORT', c.appPort]] : []),
+                        ['LOG_CHANNEL', 'stderr'],
+                        ['LOG_LEVEL', 'warning'],
+                    ]);
+
+                    section('First run', [
+                        ['APP_DISTRIBUTION', 'self-hosted'],
+                        ['APP_MANAGER_BOOTSTRAP', 'installer'],
+                        ['SELF_HOSTED_INSTALLER_ENABLED', c.onboarding === 'installer' ? 'true' : 'false'],
+                        ['ALLOW_PUBLIC_REGISTRATION', c.publicRegistration ? 'true' : 'false'],
+                        ['TEAM_INVITATIONS_ENABLED', c.teamInvitations ? 'true' : 'false'],
+                    ], c.onboarding === 'artisan'
+                        ? ['The web installer is disabled; create the first owner with user:create after deployment.']
+                        : ['Keep installer mode enabled after setup; the installation record locks /install.']);
+
+                    const databaseValues = [['DB_CONNECTION', 'pgsql']];
+                    const databaseNotes = [];
+
+                    if (c.dbSource === 'injected') {
+                        databaseNotes.push('Laravel Cloud injects DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME and DB_PASSWORD.');
+                    } else if (c.dbSource === 'url') {
+                        databaseValues.push(
+                            ['DB_URL', c.dbConnectionString],
+                            ['DB_SSLMODE', c.dbSslMode],
+                        );
+                        databaseNotes.push('DB_URL was imported from the parsed PostgreSQL connection string.');
+                    } else {
+                        databaseValues.push(
+                            ['DB_HOST', c.dbHost],
+                            ['DB_PORT', c.dbPort],
+                            ['DB_DATABASE', c.dbName],
+                            ['DB_USERNAME', c.dbUser],
+                            ['DB_PASSWORD', c.dbPassword],
+                            ['DB_SSLMODE', c.dbSslMode],
+                        );
+                    }
+
+                    databaseValues.push(
+                        ['SESSION_DRIVER', 'database'],
+                        ['SESSION_ENCRYPT', 'true'],
+                        ['QUEUE_CONNECTION', 'database'],
+                        ['CACHE_STORE', c.useRedis ? 'redis' : 'database'],
+                    );
+
+                    if (c.useRedis) {
+                        databaseValues.push(['REDIS_CLIENT', 'phpredis']);
+                        if (c.target === 'cloud') {
+                            databaseNotes.push('Attach a KV Store; Cloud injects its connection credentials.');
+                        } else {
+                            databaseValues.push(
+                                ['REDIS_HOST', c.redisHost],
+                                ['REDIS_PORT', c.redisPort],
+                            );
+                        }
+                    }
+
+                    section('Database and runtime', databaseValues, databaseNotes);
+
+                    if (c.storage === 'local') {
+                        section('Private media storage', [
+                            ['MEDIA_STORAGE_DRIVER', 'local'],
+                            ...(c.localRoot ? [['MEDIA_LOCAL_ROOT', c.localRoot]] : []),
+                        ], c.target === 'cloud'
+                            ? ['Warning: local storage is ephemeral on Laravel Cloud; S3 is recommended.']
+                            : ['Back up this storage together with the database and APP_KEY.']);
+                    } else {
+                        section('Private media storage', [
+                            ['MEDIA_STORAGE_DRIVER', 's3'],
+                            ['MEDIA_S3_ACCESS_KEY_ID', c.s3AccessKey],
+                            ['MEDIA_S3_SECRET_ACCESS_KEY', c.s3SecretKey],
+                            ['MEDIA_S3_SESSION_TOKEN', c.s3SessionToken],
+                            ['MEDIA_S3_REGION', c.s3Region],
+                            ['MEDIA_S3_BUCKET', c.s3Bucket],
+                            ['MEDIA_S3_ENDPOINT', c.s3Endpoint],
+                            ['MEDIA_S3_PREFIX', c.s3Prefix],
+                            ['MEDIA_S3_USE_PATH_STYLE_ENDPOINT', c.s3PathStyle ? 'true' : 'false'],
+                            ['MEDIA_S3_OBJECT_ACL', c.s3Acl],
+                            ['MEDIA_S3_SERVER_SIDE_ENCRYPTION', c.s3Encryption],
+                            ...(c.s3Encryption === 'aws:kms' ? [['MEDIA_S3_KMS_KEY_ID', c.s3KmsKey]] : []),
+                        ], (!c.s3AccessKey && !c.s3SecretKey)
+                            ? ['Credentials are blank so the runtime can provide them through its role.']
+                            : []);
+                    }
+
+                    section('Credential boundaries', [
+                        ['CREDENTIAL_STORAGE_MODES', c.credentialModes],
+                        ['CREDENTIALS_API_PROFILE', c.apiProfile],
+                        ...(c.trustedProxies ? [['TRUSTED_PROXIES', '*']] : []),
+                        ...(c.appUrl.startsWith('https://') ? [['SESSION_SECURE_COOKIE', 'true']] : []),
+                    ]);
+
+                    return lines.join('\n');
+                },
+
+                shellQuote(value) {
+                    return `'${String(value).replace(/'/g, `'"'"'`)}'`;
+                },
+
+                get commandOutput() {
+                    const c = this.config;
+                    const lines = [];
+
+                    if (c.target === 'docker') {
+                        lines.push('# Start the Compose stack', 'docker compose up -d');
+                    } else {
+                        lines.push(
+                            '# Deploy commands',
+                            'php artisan migrate --force',
+                            'php artisan encryption:migrate --force',
+                            'php artisan app:bootstrap',
+                        );
+                    }
+
+                    lines.push('');
+                    if (c.onboarding === 'installer') {
+                        lines.push('# Complete the one-time browser setup', `${c.appUrl.replace(/\/$/, '')}/install`);
+                    } else {
+                        const artisan = `php artisan user:create ${this.shellQuote(c.ownerEmail)} ${this.shellQuote(c.ownerPassword)} ${this.shellQuote(c.teamName)}`;
+                        lines.push('# Run once after migrations succeed');
+                        lines.push(c.target === 'docker' ? `docker compose exec app ${artisan}` : artisan);
+                        lines.push('', '# The password above is not stored in .env. Remove it from shell history after use.');
+                    }
+
+                    return lines.join('\n');
+                },
+
+                get activeOutput() {
+                    return this.previewMode === 'env' ? this.envOutput : this.commandOutput;
+                },
+
+                get variableCount() {
+                    return this.envOutput.split('\n').filter(line => line && !line.startsWith('#')).length;
+                },
+
+                async copyOutput(kind = this.previewMode) {
+                    const value = kind === 'env' ? this.envOutput : this.commandOutput;
+                    await navigator.clipboard.writeText(value);
+                    this.copied = kind;
+                    window.setTimeout(() => {
+                        if (this.copied === kind) this.copied = '';
+                    }, 1600);
+                },
+
+                downloadEnv() {
+                    const blob = new Blob([`${this.envOutput}\n`], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = '.env';
+                    anchor.click();
+                    URL.revokeObjectURL(url);
+                },
+            };
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-paper font-sans text-ink antialiased" x-data="appManagerConfigurator()" x-init="init()">
+    <div class="min-h-screen" x-cloak>
+        <header class="border-b border-line bg-panel/90 backdrop-blur">
+            <div class="mx-auto flex max-w-[1560px] items-center justify-between gap-5 px-5 py-4 lg:px-8">
+                <div class="flex items-center gap-3">
+                    <div class="grid h-10 w-10 place-items-center rounded-lg bg-cobalt font-mono text-sm font-medium text-white">AM</div>
+                    <div>
+                        <p class="font-condensed text-lg uppercase tracking-[0.08em]">App Manager Configurator</p>
+                        <p class="text-xs text-slate-500">Deployment worksheet · no data leaves this page</p>
+                    </div>
+                </div>
+                <div class="hidden items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-xs text-slate-600 sm:flex">
+                    <span class="h-2 w-2 rounded-full bg-mint"></span>
+                    <span x-text="`${variableCount} variables prepared`"></span>
+                </div>
+            </div>
+        </header>
+
+        <main class="mx-auto grid max-w-[1560px] gap-5 px-4 py-5 sm:px-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:px-8 xl:grid-cols-[230px_minmax(0,1fr)_360px]">
+            <aside class="rounded-xl border border-line bg-panel p-3 shadow-sm lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)] lg:min-h-[680px]">
+                <div class="border-b border-line px-3 pb-4 pt-2">
+                    <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-cobalt">Configuration route</p>
+                    <p class="mt-2 text-sm leading-5 text-slate-600">Answer only what changes the runtime. You can revise earlier decisions at any time.</p>
+                </div>
+
+                <nav class="mt-3 grid grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-1" aria-label="Configurator steps">
+                    <template x-for="(item, index) in steps" :key="item.label">
+                        <button
+                            type="button"
+                            class="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition"
+                            :class="index === step ? 'bg-cobalt-soft text-cobalt' : index <= maxStep ? 'text-slate-700 hover:bg-slate-50' : 'cursor-not-allowed text-slate-400'"
+                            :disabled="index > maxStep"
+                            :aria-current="index === step ? 'step' : undefined"
+                            @click="goTo(index)"
+                        >
+                            <span class="grid h-7 w-7 shrink-0 place-items-center rounded-md border font-mono text-[11px]"
+                                  :class="index < step ? 'border-mint bg-mint-soft text-mint' : index === step ? 'border-cobalt bg-cobalt text-white' : 'border-line bg-white'">
+                                <span x-text="index < step ? '✓' : String(index + 1).padStart(2, '0')"></span>
+                            </span>
+                            <span class="min-w-0">
+                                <span class="block text-sm font-medium" x-text="item.label"></span>
+                                <span class="block truncate text-[11px] opacity-70" x-text="item.hint"></span>
+                            </span>
+                        </button>
+                    </template>
+                </nav>
+
+                <div class="mt-4 hidden rounded-lg border border-line bg-paper p-3 lg:block">
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Current route</p>
+                    <p class="mt-2 text-sm font-medium" x-text="config.target === 'docker' ? 'Docker Compose' : config.target === 'cloud' ? 'Laravel Cloud' : 'Own server'"></p>
+                    <p class="mt-1 text-xs leading-5 text-slate-500" x-text="config.onboarding === 'installer' ? 'Browser Installer creates the first owner.' : 'Artisan creates one private owner.'"></p>
+                </div>
+            </aside>
+
+            <section class="min-w-0 overflow-hidden rounded-xl border border-line bg-panel shadow-sheet">
+                <div class="border-b border-line px-6 py-5 sm:px-8">
+                    <div class="flex items-center justify-between gap-4">
+                        <div>
+                            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-cobalt" x-text="`Decision ${String(step + 1).padStart(2, '0')} / ${String(steps.length).padStart(2, '0')}`"></p>
+                            <h1 class="mt-2 font-condensed text-2xl uppercase tracking-[0.045em] sm:text-3xl" x-text="steps[step].label"></h1>
+                        </div>
+                        <div class="font-mono text-xs text-slate-400" x-text="`${Math.round((step + 1) / steps.length * 100)}%`"></div>
+                    </div>
+                    <div class="mt-4 h-1 overflow-hidden rounded-full bg-slate-100">
+                        <div class="h-full bg-cobalt transition-all duration-300" :style="`width: ${(step + 1) / steps.length * 100}%`"></div>
+                    </div>
+                </div>
+
+                <div class="min-h-[560px] px-6 py-7 sm:px-8 sm:py-9">
+                    <div x-show="step === 0">
+                        <p class="max-w-2xl text-sm leading-6 text-slate-600">Choose where the application will run, then decide whether the first owner is created in the browser or from a one-time command.</p>
+
+                        <fieldset class="mt-8">
+                            <legend class="text-sm font-semibold">Deployment target</legend>
+                            <div class="mt-3 grid gap-3 md:grid-cols-3">
+                                <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                    <input class="sr-only" type="radio" name="target" value="docker" :checked="config.target === 'docker'" @change="setTarget('docker')">
+                                    <span class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Portable</span>
+                                    <strong class="mt-2 block text-sm">Docker Compose</strong>
+                                    <span class="mt-1.5 block text-xs leading-5 text-slate-500">Bundled PostgreSQL, Redis, app, queue and scheduler.</span>
+                                </label>
+                                <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                    <input class="sr-only" type="radio" name="target" value="cloud" :checked="config.target === 'cloud'" @change="setTarget('cloud')">
+                                    <span class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Managed</span>
+                                    <strong class="mt-2 block text-sm">Laravel Cloud</strong>
+                                    <span class="mt-1.5 block text-xs leading-5 text-slate-500">Cloud injects attached database and KV credentials.</span>
+                                </label>
+                                <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                    <input class="sr-only" type="radio" name="target" value="server" :checked="config.target === 'server'" @change="setTarget('server')">
+                                    <span class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Manual</span>
+                                    <strong class="mt-2 block text-sm">Own server</strong>
+                                    <span class="mt-1.5 block text-xs leading-5 text-slate-500">Provide database, cache and persistent storage yourself.</span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="mt-8">
+                            <legend class="text-sm font-semibold">First owner</legend>
+                            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                                <label class="choice cursor-pointer rounded-xl border border-line p-5 transition hover:border-slate-400">
+                                    <input class="sr-only" type="radio" name="onboarding" value="installer" x-model="config.onboarding">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <strong class="block text-sm">Web Installer</strong>
+                                            <span class="mt-1.5 block text-xs leading-5 text-slate-500">Open <code class="font-mono text-cobalt">/install</code>, verify the server, and configure storage and providers interactively.</span>
+                                        </div>
+                                        <span class="rounded-md bg-mint-soft px-2 py-1 text-[10px] font-semibold uppercase text-mint">Guided</span>
+                                    </div>
+                                </label>
+                                <label class="choice cursor-pointer rounded-xl border border-line p-5 transition hover:border-slate-400">
+                                    <input class="sr-only" type="radio" name="onboarding" value="artisan" x-model="config.onboarding">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <strong class="block text-sm">Private owner via Artisan</strong>
+                                            <span class="mt-1.5 block text-xs leading-5 text-slate-500">Disable the browser setup and run <code class="font-mono text-cobalt">user:create</code> once after migrations.</span>
+                                        </div>
+                                        <span class="rounded-md bg-cobalt-soft px-2 py-1 text-[10px] font-semibold uppercase text-cobalt">Direct</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </fieldset>
+                    </div>
+
+                    <div x-show="step === 1">
+                        <p class="max-w-2xl text-sm leading-6 text-slate-600">These values define generated links, sessions and encryption. The key is created locally in your browser.</p>
+                        <div class="mt-7 grid gap-5 sm:grid-cols-2">
+                            <label>
+                                <span class="mb-2 block text-xs font-semibold">Application name</span>
+                                <input class="field" x-model="config.appName" autocomplete="organization">
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-semibold">Public URL</span>
+                                <input class="field font-mono text-sm" type="url" x-model="config.appUrl" placeholder="https://app.example.com">
+                            </label>
+                            <label x-show="config.target === 'docker'">
+                                <span class="mb-2 block text-xs font-semibold">Published port</span>
+                                <input class="field font-mono text-sm" inputmode="numeric" x-model="config.appPort">
+                            </label>
+                            <div :class="config.target === 'docker' ? '' : 'sm:col-span-2'">
+                                <span class="mb-2 block text-xs font-semibold">Application encryption key</span>
+                                <div class="flex gap-2">
+                                    <input class="field min-w-0 font-mono text-xs" :type="showSecrets ? 'text' : 'password'" x-model="config.appKey" spellcheck="false">
+                                    <button type="button" class="shrink-0 rounded-lg border border-line px-3 text-xs font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-cobalt/30" @click="generateAppKey()">Regenerate</button>
+                                </div>
+                                <p class="mt-2 text-xs leading-5 text-amber">Back up APP_KEY with the database. Encrypted credentials cannot be recovered without it.</p>
+                            </div>
+                        </div>
+
+                        <div x-show="config.onboarding === 'artisan'" class="mt-8 border-t border-line pt-7">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <h2 class="text-sm font-semibold">Initial private owner</h2>
+                                    <p class="mt-1 text-xs text-slate-500">Used only to compose the one-time command; not written to .env.</p>
+                                </div>
+                                <button type="button" class="text-xs font-medium text-cobalt hover:underline" @click="showSecrets = !showSecrets" x-text="showSecrets ? 'Hide secrets' : 'Show secrets'"></button>
+                            </div>
+                            <div class="mt-4 grid gap-5 sm:grid-cols-2">
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Owner email</span>
+                                    <input class="field" type="email" x-model="config.ownerEmail" autocomplete="email">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Team name</span>
+                                    <input class="field" x-model="config.teamName">
+                                </label>
+                                <label class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">Temporary owner password</span>
+                                    <div class="flex gap-2">
+                                        <input class="field min-w-0 font-mono text-sm" :type="showSecrets ? 'text' : 'password'" x-model="config.ownerPassword" autocomplete="new-password">
+                                        <button type="button" class="shrink-0 rounded-lg border border-line px-3 text-xs font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-cobalt/30" @click="config.ownerPassword = randomSecret(22)">Regenerate</button>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="step === 2">
+                        <h2 class="text-sm font-semibold">PostgreSQL connection</h2>
+                        <p class="mt-2 max-w-2xl text-xs leading-5 text-slate-500">Use platform-injected credentials, enter separate fields, or import a standard PostgreSQL URL.</p>
+
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                            <label x-show="config.target === 'cloud'" class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                <input class="sr-only" type="radio" name="dbSource" value="injected" x-model="config.dbSource">
+                                <strong class="block text-sm">Attached Cloud database</strong>
+                                <span class="mt-1.5 block text-xs leading-5 text-slate-500">Let Laravel Cloud inject the database credentials.</span>
+                            </label>
+                            <label x-show="config.target !== 'cloud'" class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                <input class="sr-only" type="radio" name="dbSource" value="fields" x-model="config.dbSource">
+                                <strong class="block text-sm">Connection fields</strong>
+                                <span class="mt-1.5 block text-xs leading-5 text-slate-500">Export host, port, database, username, and password.</span>
+                            </label>
+                            <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                <input class="sr-only" type="radio" name="dbSource" value="url" x-model="config.dbSource">
+                                <strong class="block text-sm">PostgreSQL connection string</strong>
+                                <span class="mt-1.5 block text-xs leading-5 text-slate-500">Parse <code class="font-mono">postgres://</code> or <code class="font-mono">postgresql://</code> into a verified <code class="font-mono">DB_URL</code>.</span>
+                            </label>
+                        </div>
+
+                        <div x-show="config.dbSource === 'injected'" class="mt-5 rounded-xl border border-cobalt/20 bg-cobalt-soft p-5">
+                            <p class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Laravel Cloud</p>
+                            <h3 class="mt-2 text-sm font-semibold">No database secrets will be exported</h3>
+                            <p class="mt-2 text-xs leading-5 text-slate-600">Attach PostgreSQL in Laravel Cloud. Adding custom database values would override the credentials injected by the platform.</p>
+                        </div>
+
+                        <div x-show="config.dbSource === 'url'" class="mt-5 rounded-xl border border-line bg-paper p-5">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <p class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Import connection</p>
+                                    <h3 class="mt-1.5 text-sm font-semibold">Paste a PostgreSQL URL or DB_URL assignment</h3>
+                                </div>
+                                <button type="button" class="text-xs font-medium text-cobalt hover:text-blue-700" @click="showSecrets = !showSecrets" x-text="showSecrets ? 'Hide secrets' : 'Show secrets'"></button>
+                            </div>
+                            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    class="field min-w-0 font-mono text-sm"
+                                    :type="showSecrets ? 'text' : 'password'"
+                                    x-model="config.dbConnectionString"
+                                    @input="pgParsed = false; pgParseType = ''; pgParseMessage = ''"
+                                    @keydown.enter.prevent="parsePgConnectionString()"
+                                    placeholder="postgresql://user:password@db.example.com:5432/app?sslmode=require"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                >
+                                <button type="button" class="shrink-0 rounded-lg bg-cobalt px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700" @click="parsePgConnectionString()">Parse URL</button>
+                            </div>
+                            <p x-show="pgParseMessage" class="mt-3 text-xs leading-5" :class="pgParseType === 'success' ? 'text-mint' : 'text-red-700'" x-text="pgParseMessage"></p>
+                            <div x-show="pgParsed" class="mt-4 grid gap-2 rounded-lg border border-mint/20 bg-mint-soft p-4 text-xs sm:grid-cols-3">
+                                <div><span class="block text-[10px] uppercase tracking-wider text-slate-500">Host</span><strong class="mt-1 block break-all font-mono font-medium" x-text="config.dbHost"></strong></div>
+                                <div><span class="block text-[10px] uppercase tracking-wider text-slate-500">Database</span><strong class="mt-1 block break-all font-mono font-medium" x-text="config.dbName"></strong></div>
+                                <div><span class="block text-[10px] uppercase tracking-wider text-slate-500">SSL mode</span><strong class="mt-1 block font-mono font-medium" x-text="config.dbSslMode"></strong></div>
+                            </div>
+                        </div>
+
+                        <div x-show="config.dbSource === 'fields'" class="mt-5">
+                            <div class="mt-4 grid gap-5 sm:grid-cols-2">
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Host</span>
+                                    <input class="field font-mono text-sm" x-model="config.dbHost">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Port</span>
+                                    <input class="field font-mono text-sm" x-model="config.dbPort" inputmode="numeric">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Database</span>
+                                    <input class="field font-mono text-sm" x-model="config.dbName">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Username</span>
+                                    <input class="field font-mono text-sm" x-model="config.dbUser">
+                                </label>
+                                <label class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">Password</span>
+                                    <div class="flex gap-2">
+                                        <input class="field min-w-0 font-mono text-sm" :type="showSecrets ? 'text' : 'password'" x-model="config.dbPassword">
+                                        <button type="button" class="shrink-0 rounded-lg border border-line px-3 text-xs font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-cobalt/30" @click="config.dbPassword = randomSecret(28)">Regenerate</button>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">SSL mode</span>
+                                    <select class="field text-sm" x-model="config.dbSslMode">
+                                        <option value="prefer">Prefer</option>
+                                        <option value="require">Require</option>
+                                        <option value="verify-ca">Verify CA</option>
+                                        <option value="verify-full">Verify full</option>
+                                        <option value="disable">Disable</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mt-8 border-t border-line pt-7">
+                            <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
+                                <span>
+                                    <strong class="block text-sm" x-text="config.target === 'cloud' ? 'Laravel KV Store attached' : 'Use Redis for cache'"></strong>
+                                    <span class="mt-1 block text-xs leading-5 text-slate-500">Sessions and queues remain in PostgreSQL; Redis accelerates shared cache and locks.</span>
+                                </span>
+                                <span class="shrink-0">
+                                    <input class="switch sr-only" type="checkbox" x-model="config.useRedis">
+                                    <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
+                                </span>
+                            </label>
+                            <div x-show="config.useRedis && config.target !== 'cloud'" class="mt-4 grid gap-5 sm:grid-cols-2">
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Redis host</span>
+                                    <input class="field font-mono text-sm" x-model="config.redisHost">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Redis port</span>
+                                    <input class="field font-mono text-sm" x-model="config.redisPort" inputmode="numeric">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="step === 3">
+                        <p class="max-w-2xl text-sm leading-6 text-slate-600">Credentials, signing files, assets and build artifacts must live outside the public web root.</p>
+                        <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                            <label class="choice cursor-pointer rounded-xl border border-line p-5 transition hover:border-slate-400">
+                                <input class="sr-only" type="radio" name="storage" value="local" x-model="config.storage">
+                                <strong class="block text-sm">Local private storage</strong>
+                                <span class="mt-1.5 block text-xs leading-5 text-slate-500">Good for Docker with a persistent volume or a single server.</span>
+                            </label>
+                            <label class="choice cursor-pointer rounded-xl border border-line p-5 transition hover:border-slate-400">
+                                <input class="sr-only" type="radio" name="storage" value="s3" x-model="config.storage">
+                                <strong class="block text-sm">S3-compatible bucket</strong>
+                                <span class="mt-1.5 block text-xs leading-5 text-slate-500">Required for ephemeral or horizontally scaled compute.</span>
+                            </label>
+                        </div>
+
+                        <div x-show="config.storage === 'local'" class="mt-6 rounded-xl border p-5" :class="config.target === 'cloud' ? 'border-amber/30 bg-amber-soft' : 'border-line bg-paper'">
+                            <p class="text-sm font-semibold" x-text="config.target === 'cloud' ? 'Local files are not durable on Laravel Cloud' : 'Persistent local path'"></p>
+                            <p class="mt-2 text-xs leading-5 text-slate-600" x-text="config.target === 'cloud' ? 'Deployments reset the filesystem and replicas do not share it. Choose S3 for production data.' : 'Leave blank to use storage/app/private, or provide an absolute mounted path.'"></p>
+                            <label x-show="config.target !== 'cloud'" class="mt-4 block">
+                                <span class="mb-2 block text-xs font-semibold">Custom root (optional)</span>
+                                <input class="field font-mono text-sm" x-model="config.localRoot" placeholder="/var/lib/app-manager/media">
+                            </label>
+                        </div>
+
+                        <div x-show="config.storage === 's3'" class="mt-6 rounded-xl border border-line bg-paper p-5">
+                            <div class="rounded-xl border border-cobalt/20 bg-cobalt-soft p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p class="font-mono text-[10px] uppercase tracking-wider text-cobalt">Import environment</p>
+                                        <h3 class="mt-1.5 text-sm font-semibold">Paste S3 environment variables</h3>
+                                        <p class="mt-1 text-xs leading-5 text-slate-600">Accepts AWS names such as <code class="font-mono">AWS_ENDPOINT_URL_S3</code> and App Manager's <code class="font-mono">MEDIA_S3_*</code> names.</p>
+                                    </div>
+                                    <button x-show="config.s3EnvPaste" type="button" class="text-xs font-medium text-cobalt hover:text-blue-700" @click="config.s3EnvPaste = ''; s3ParseType = ''; s3ParseMessage = ''">Clear paste</button>
+                                </div>
+                                <textarea
+                                    class="field mt-3 min-h-36 resize-y font-mono text-xs leading-5"
+                                    x-model="config.s3EnvPaste"
+                                    @input="s3ParseType = ''; s3ParseMessage = ''"
+                                    placeholder="AWS_ENDPOINT_URL_S3=&quot;https://storage.example.com&quot;&#10;AWS_ACCESS_KEY_ID=&quot;your-key-id&quot;&#10;AWS_SECRET_ACCESS_KEY=&quot;your-secret&quot;&#10;AWS_REGION=&quot;us-east-2&quot;"
+                                    autocomplete="off"
+                                    spellcheck="false"
+                                ></textarea>
+                                <div class="mt-3 flex flex-wrap items-center gap-3">
+                                    <button type="button" class="rounded-lg bg-cobalt px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700" @click="parseS3Environment()">Import variables</button>
+                                    <p x-show="s3ParseMessage" class="text-xs leading-5" :class="s3ParseType === 'success' ? 'text-mint' : 'text-red-700'" x-text="s3ParseMessage"></p>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 grid gap-5 sm:grid-cols-2">
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Bucket</span>
+                                    <input class="field font-mono text-sm" x-model="config.s3Bucket" placeholder="app-manager-private">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Region</span>
+                                    <input class="field font-mono text-sm" x-model="config.s3Region">
+                                </label>
+                                <label class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">Endpoint (optional)</span>
+                                    <input class="field font-mono text-sm" type="url" x-model="config.s3Endpoint" placeholder="https://s3.example.com">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Access key ID (optional)</span>
+                                    <input class="field font-mono text-sm" x-model="config.s3AccessKey">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Secret access key</span>
+                                    <input class="field font-mono text-sm" :type="showSecrets ? 'text' : 'password'" x-model="config.s3SecretKey">
+                                </label>
+                                <label class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">Session token (optional)</span>
+                                    <input class="field font-mono text-sm" :type="showSecrets ? 'text' : 'password'" x-model="config.s3SessionToken">
+                                </label>
+                                <label class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">Prefix (optional)</span>
+                                    <input class="field font-mono text-sm" x-model="config.s3Prefix">
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Object ownership</span>
+                                    <select class="field text-sm" x-model="config.s3Acl">
+                                        <option value="bucket-owner-full-control">Bucket owner enforced</option>
+                                        <option value="private">Private ACL</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-xs font-semibold">Server-side encryption</span>
+                                    <select class="field text-sm" x-model="config.s3Encryption">
+                                        <option value="AES256">AES-256</option>
+                                        <option value="aws:kms">AWS KMS</option>
+                                    </select>
+                                </label>
+                                <label x-show="config.s3Encryption === 'aws:kms'" class="sm:col-span-2">
+                                    <span class="mb-2 block text-xs font-semibold">KMS key ID or ARN</span>
+                                    <input class="field font-mono text-sm" x-model="config.s3KmsKey">
+                                </label>
+                                <label class="flex cursor-pointer items-center gap-3 sm:col-span-2">
+                                    <input class="h-4 w-4 accent-cobalt" type="checkbox" x-model="config.s3PathStyle">
+                                    <span class="text-xs">Use path-style addressing (usually required for MinIO)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="step === 4">
+                        <p class="max-w-2xl text-sm leading-6 text-slate-600">Set the instance-wide ceiling. Teams can narrow these permissions later, but cannot widen them beyond this deployment.</p>
+                        <div class="mt-7 grid gap-6">
+                            <fieldset>
+                                <legend class="text-sm font-semibold">Credential storage</legend>
+                                <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                                    <template x-for="option in [
+                                        { value: 'local,external', label: 'Both modes', hint: 'Teams choose per credential.' },
+                                        { value: 'local', label: 'App Manager only', hint: 'Encrypted secrets live here.' },
+                                        { value: 'external', label: 'External vault only', hint: 'Store references, not secrets.' }
+                                    ]" :key="option.value">
+                                        <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                            <input class="sr-only" type="radio" name="credentialModes" :value="option.value" x-model="config.credentialModes">
+                                            <strong class="block text-sm" x-text="option.label"></strong>
+                                            <span class="mt-1.5 block text-xs leading-5 text-slate-500" x-text="option.hint"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                            </fieldset>
+
+                            <fieldset>
+                                <legend class="text-sm font-semibold">Credential API</legend>
+                                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                                    <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                        <input class="sr-only" type="radio" name="apiProfile" value="full" x-model="config.apiProfile">
+                                        <strong class="block text-sm">Full API</strong>
+                                        <span class="mt-1.5 block text-xs leading-5 text-slate-500">Dashboard, CLI and automation may move secret material.</span>
+                                    </label>
+                                    <label class="choice cursor-pointer rounded-xl border border-line p-4 transition hover:border-slate-400">
+                                        <input class="sr-only" type="radio" name="apiProfile" value="dashboard_only" x-model="config.apiProfile">
+                                        <strong class="block text-sm">Dashboard only</strong>
+                                        <span class="mt-1.5 block text-xs leading-5 text-slate-500">Secret-transfer endpoints and credential webhooks are removed.</span>
+                                    </label>
+                                </div>
+                            </fieldset>
+
+                            <div class="grid gap-3">
+                                <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
+                                    <span>
+                                        <strong class="block text-sm">Public registration</strong>
+                                        <span class="mt-1 block text-xs leading-5 text-slate-500">Allow strangers to create accounts. Keep off for private instances.</span>
+                                    </span>
+                                    <span class="shrink-0">
+                                        <input class="switch sr-only" type="checkbox" x-model="config.publicRegistration">
+                                        <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
+                                    <span>
+                                        <strong class="block text-sm">Team invitations</strong>
+                                        <span class="mt-1 block text-xs leading-5 text-slate-500">Managers invite members by email instead of setting passwords directly.</span>
+                                    </span>
+                                    <span class="shrink-0">
+                                        <input class="switch sr-only" type="checkbox" x-model="config.teamInvitations">
+                                        <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line p-4">
+                                    <span>
+                                        <strong class="block text-sm">Trust the platform proxy</strong>
+                                        <span class="mt-1 block text-xs leading-5 text-slate-500">Emit <code class="font-mono">TRUSTED_PROXIES=*</code>. Use only when direct access to the app is blocked.</span>
+                                    </span>
+                                    <span class="shrink-0">
+                                        <input class="switch sr-only" type="checkbox" x-model="config.trustedProxies">
+                                        <span class="relative block h-6 w-11 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition"></span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="step === 5">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p class="font-mono text-[10px] uppercase tracking-wider text-mint">Ready to deploy</p>
+                                <h2 class="mt-2 font-condensed text-2xl uppercase tracking-wide">Your runtime contract</h2>
+                                <p class="mt-2 max-w-xl text-sm leading-6 text-slate-600">Copy the variables into your platform, or download a `.env`. Run the commands only after the database is attached.</p>
+                            </div>
+                            <button type="button" class="rounded-lg bg-cobalt px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-cobalt/20" @click="copyOutput('env')" x-text="copied === 'env' ? 'Copied .env' : 'Copy .env'"></button>
+                        </div>
+
+                        <div class="mt-6 grid gap-3 sm:grid-cols-3">
+                            <div class="rounded-xl border border-line bg-paper p-4">
+                                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Target</p>
+                                <p class="mt-2 text-sm font-medium" x-text="config.target === 'docker' ? 'Docker Compose' : config.target === 'cloud' ? 'Laravel Cloud' : 'Own server'"></p>
+                            </div>
+                            <div class="rounded-xl border border-line bg-paper p-4">
+                                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">First owner</p>
+                                <p class="mt-2 text-sm font-medium" x-text="config.onboarding === 'installer' ? 'Web Installer' : 'Artisan command'"></p>
+                            </div>
+                            <div class="rounded-xl border border-line bg-paper p-4">
+                                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Storage</p>
+                                <p class="mt-2 text-sm font-medium" x-text="config.storage === 's3' ? `S3 · ${config.s3Bucket || 'bucket required'}` : 'Local private disk'"></p>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 overflow-hidden rounded-xl border border-slate-800 bg-[#111827] text-slate-100">
+                            <div class="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                                <div class="flex items-center gap-3">
+                                    <span class="hidden font-mono text-[10px] uppercase tracking-wider text-blue-300 sm:inline">Generated output</span>
+                                    <div class="flex gap-1">
+                                        <button type="button" class="rounded-md px-3 py-1.5 text-xs" :class="previewMode === 'env' ? 'bg-white/10 text-white' : 'text-slate-400'" @click="previewMode = 'env'">.env</button>
+                                        <button type="button" class="rounded-md px-3 py-1.5 text-xs" :class="previewMode === 'commands' ? 'bg-white/10 text-white' : 'text-slate-400'" @click="previewMode = 'commands'">Commands</button>
+                                    </div>
+                                </div>
+                                <button type="button" class="text-xs text-blue-300 hover:text-white" @click="copyOutput()" x-text="copied === previewMode ? 'Copied' : 'Copy'"></button>
+                            </div>
+                            <pre class="max-h-[520px] overflow-auto p-4 font-mono text-[11px] leading-5" x-text="activeOutput"></pre>
+                        </div>
+
+                        <div class="mt-5 rounded-xl border border-amber/20 bg-amber-soft p-4 text-xs leading-5 text-slate-700" x-show="config.onboarding === 'artisan'">
+                            The generated owner password appears in the command preview, not in `.env`. Treat it as temporary secret material and clear it from shell history after use.
+                        </div>
+                    </div>
+                </div>
+
+                <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-paper px-6 py-4 sm:px-8">
+                    <button type="button" class="rounded-lg border border-line bg-white px-4 py-2.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" :disabled="step === 0" @click="previous()">Back</button>
+                    <div class="flex items-center gap-3">
+                        <span class="hidden text-xs text-amber sm:block" x-show="validationHint" x-text="validationHint"></span>
+                        <button
+                            type="button"
+                            class="rounded-lg bg-cobalt px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-cobalt/20 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            :disabled="!canContinue"
+                            @click="step === steps.length - 1 ? downloadEnv() : next()"
+                            x-text="step === steps.length - 1 ? 'Download .env' : step === steps.length - 2 ? 'Build configuration' : 'Continue'"
+                        ></button>
+                    </div>
+                </footer>
+            </section>
+
+            <aside class="hidden min-w-0 xl:block">
+                <div class="sticky top-5 overflow-hidden rounded-xl border border-slate-800 bg-[#111827] text-slate-100 shadow-sheet">
+                    <div class="border-b border-white/10 px-4 py-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-blue-300">Live manifest</p>
+                                <p class="mt-1 text-xs text-slate-400" x-text="`${variableCount} exported variables`"></p>
+                            </div>
+                            <span class="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] text-slate-400">UTF-8</span>
+                        </div>
+                        <div class="mt-4 grid grid-cols-2 rounded-lg bg-black/20 p-1">
+                            <button type="button" class="rounded-md px-3 py-2 text-xs transition" :class="previewMode === 'env' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'" @click="previewMode = 'env'">.env</button>
+                            <button type="button" class="rounded-md px-3 py-2 text-xs transition" :class="previewMode === 'commands' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'" @click="previewMode = 'commands'">Commands</button>
+                        </div>
+                    </div>
+                    <pre class="h-[calc(100vh-250px)] min-h-[480px] overflow-auto p-4 font-mono text-[10px] leading-[1.65] text-slate-300" x-text="activeOutput"></pre>
+                    <div class="flex items-center justify-between border-t border-white/10 bg-black/10 px-4 py-3">
+                        <span class="text-[10px] text-slate-500">Secrets generated locally</span>
+                        <button type="button" class="rounded-md border border-white/10 px-3 py-1.5 text-xs text-blue-300 hover:bg-white/5 hover:text-white" @click="copyOutput()" x-text="copied === previewMode ? 'Copied' : 'Copy output'"></button>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+</body>
+</html>

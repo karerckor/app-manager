@@ -163,7 +163,12 @@ class ExpoProjectController extends Controller
         ImportExpoProject $importer,
     ): JsonResponse {
         $this->ensureConnectedProject($team, $integration, $expoProject);
-        abort_if($expoProject->mobile_app_id, 409, 'This Expo project is already linked.');
+        abort_if(
+            $expoProject->mobile_app_id
+                && MobileApp::query()->whereKey($expoProject->mobile_app_id)->exists(),
+            409,
+            'This Expo project is already linked.',
+        );
 
         try {
             $remote = $expo->projectWithCredentialSecrets($integration, $expoProject->external_id);
@@ -184,6 +189,7 @@ class ExpoProjectController extends Controller
             'meta' => [
                 'identifiers_imported' => $result['identifiers'],
                 'credentials_imported' => $result['credentials'],
+                'restored_from_trash' => $result['restored_from_trash'],
             ],
         ], 201);
     }

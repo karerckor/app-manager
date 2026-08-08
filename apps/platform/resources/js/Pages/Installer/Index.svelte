@@ -21,6 +21,7 @@
     import InstallerSummary from './InstallerSummary.svelte';
     import InstallerUrlRow from './InstallerUrlRow.svelte';
     import Select from '../../Components/Select.svelte';
+    import ThemeToggle from '../../Components/ui/ThemeToggle.svelte';
 
     let { requirements = [], urls, defaults } = $props();
     let step = $state(0);
@@ -155,27 +156,30 @@
     <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<main class="min-h-screen bg-[#f4f6fa] px-4 py-6 text-slate-950 sm:px-6 sm:py-10">
+<main class="min-h-screen bg-surface px-4 py-6 text-text sm:px-6 sm:py-10">
     <div class="mx-auto grid w-full min-w-0 max-w-6xl gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside class="min-w-0 overflow-hidden rounded-3xl bg-slate-950 text-white shadow-2xl shadow-slate-950/15 lg:min-h-[760px]">
-            <div class="border-b border-white/10 p-6">
-                <div class="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-500">
-                    <ServerCog size={23} strokeWidth={2.1} />
+        <aside class="min-w-0 overflow-hidden rounded-md border border-nav-border bg-nav text-nav-strong shadow-xl lg:min-h-[760px]">
+            <div class="border-b border-nav-border p-6">
+                <div class="mb-5 flex items-start justify-between gap-4">
+                    <div class="flex h-11 w-11 items-center justify-center rounded-sm bg-brand text-brand-fg">
+                        <ServerCog size={23} strokeWidth={2.1} />
+                    </div>
+                    <ThemeToggle />
                 </div>
-                <p class="text-[11px] font-bold tracking-[0.18em] text-indigo-300 uppercase">Self-hosted setup</p>
-                <h1 class="mt-2 text-2xl font-bold tracking-tight">App Manager</h1>
-                <p class="mt-2 text-sm leading-6 text-slate-400">A private control plane for your mobile releases.</p>
+                <p class="font-condensed text-2xs font-semibold tracking-[0.18em] text-brand uppercase">Self-hosted setup</p>
+                <h1 class="mt-2 font-condensed text-xl font-semibold tracking-[0.06em] uppercase">App Manager</h1>
+                <p class="mt-2 text-sm leading-6 text-nav-text">A private control plane for your mobile releases.</p>
             </div>
 
             <nav class="grid grid-cols-2 gap-2 p-4 sm:grid-cols-5 lg:grid-cols-1" aria-label="Installation progress">
                 {#each steps as label, index}
                     <button
                         type="button"
-                        class="flex items-center gap-3 rounded-2xl px-3 py-3 text-left shadow-none transition {index === step ? 'bg-white/10 text-white' : index < step ? 'bg-transparent text-slate-300 hover:bg-white/5' : 'cursor-default bg-transparent text-slate-600 hover:bg-transparent'}"
+                        class="flex items-center gap-3 rounded-sm px-3 py-3 text-left shadow-none transition {index === step ? 'bg-nav-text/10 text-nav-strong' : index < step ? 'bg-transparent text-nav-text hover:bg-nav-text/10' : 'cursor-default bg-transparent text-nav-text/50 hover:bg-transparent'}"
                         disabled={index > step}
                         onclick={() => index < step && (step = index)}
                     >
-                        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold {index < step ? 'bg-emerald-400 text-slate-950' : index === step ? 'bg-indigo-500 text-white' : 'bg-white/5 text-slate-500'}">
+                        <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold {index < step ? 'border border-ok text-ok' : index === step ? 'bg-brand text-brand-fg' : 'border border-nav-border text-nav-text'}">
                             {#if index < step}<Check size={15} strokeWidth={3} />{:else}{index + 1}{/if}
                         </span>
                         <span class="text-xs font-semibold">{label}</span>
@@ -183,68 +187,68 @@
                 {/each}
             </nav>
 
-            <div class="mx-6 mt-4 hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 lg:block">
-                <div class="flex items-center gap-2 text-xs font-semibold text-slate-200">
-                    <LockKeyhole size={15} class="text-indigo-300" />
+            <div class="mx-6 mt-4 hidden rounded-md border border-nav-border bg-nav-text/5 p-4 lg:block">
+                <div class="flex items-center gap-2 text-xs font-semibold text-nav-strong">
+                    <LockKeyhole size={15} class="text-brand" />
                     One-time installer
                 </div>
-                <p class="mt-2 text-xs leading-5 text-slate-500">After the owner is created, setup is locked and public registration is disabled.</p>
+                <p class="mt-2 text-xs leading-5 text-nav-text">After the owner is created, setup is locked and public registration is disabled.</p>
             </div>
         </aside>
 
-        <section class="flex min-h-[680px] min-w-0 flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-900/[0.04]">
+        <section class="flex min-h-[680px] min-w-0 flex-col overflow-hidden rounded-md border border-border bg-surface-raised shadow-xl">
             <form class="flex min-h-full flex-1 flex-col" onsubmit={(event) => { event.preventDefault(); submit(); }}>
                 <div class="flex-1 p-6 sm:p-9 lg:p-12">
                     {#if step === 0}
                         <div class="mx-auto max-w-2xl">
-                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-sm bg-brand-soft text-brand">
                                 <ShieldCheck size={28} />
                             </div>
-                            <p class="eyebrow text-indigo-500">Step 1 of 5</p>
-                            <h2 class="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Let’s check your server</h2>
-                            <p class="mt-3 max-w-xl text-sm leading-6 text-slate-500">The database must already be migrated. App Manager will then create the first owner, team, and encrypted operator configuration.</p>
+                            <p class="eyebrow text-brand">Step 1 of 5</p>
+                            <h2 class="mt-2 font-condensed text-3xl font-semibold uppercase">Let’s check your server</h2>
+                            <p class="mt-3 max-w-xl text-sm leading-6 text-muted">The database must already be migrated. App Manager will then create the first owner, team, and encrypted operator configuration.</p>
 
-                            <div class="mt-9 overflow-hidden rounded-2xl border border-slate-200">
+                            <div class="mt-9 overflow-hidden rounded-md border border-border">
                                 {#each requirements as requirement}
-                                    <div class="flex items-start gap-3 border-b border-slate-100 px-4 py-4 last:border-b-0 sm:px-5">
+                                    <div class="flex items-start gap-3 border-b border-border-subtle px-4 py-4 last:border-b-0 sm:px-5">
                                         {#if requirement.passed}
-                                            <CheckCircle2 size={20} class="mt-0.5 shrink-0 text-emerald-500" />
+                                            <CheckCircle2 size={20} class="mt-0.5 shrink-0 text-ok" />
                                         {:else}
-                                            <CircleAlert size={20} class="mt-0.5 shrink-0 text-rose-500" />
+                                            <CircleAlert size={20} class="mt-0.5 shrink-0 text-danger" />
                                         {/if}
                                         <div class="min-w-0 flex-1">
                                             <div class="flex flex-wrap items-center justify-between gap-2">
                                                 <p class="text-sm font-semibold">{requirement.label}</p>
-                                                <span class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase {requirement.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}">
+                                                <span class="rounded-sm px-2.5 py-1 text-2xs font-bold uppercase {requirement.passed ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'}">
                                                     {requirement.passed ? 'Ready' : 'Action needed'}
                                                 </span>
                                             </div>
-                                            <p class="mt-1 break-all text-xs leading-5 text-slate-500">{requirement.detail}</p>
+                                            <p class="mt-1 break-all font-mono text-xs leading-5 text-muted">{requirement.detail}</p>
                                         </div>
                                     </div>
                                 {/each}
                             </div>
 
                             {#if !allRequirementsPassed}
-                                <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+                                <div class="mt-5 rounded-md border border-warn-fill/40 bg-warn-fill/10 px-4 py-3 text-xs leading-5 text-warn-text">
                                     Fix the failed checks and reload this page before continuing.
                                 </div>
                             {/if}
                         </div>
                     {:else if step === 1}
                         <div class="mx-auto max-w-2xl">
-                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-sm bg-brand-soft text-brand">
                                 <KeyRound size={27} />
                             </div>
-                            <p class="eyebrow text-violet-500">Step 2 of 5</p>
-                            <h2 class="mt-2 text-3xl font-bold tracking-tight">Create the first owner</h2>
-                            <p class="mt-3 text-sm leading-6 text-slate-500">This account owns the initial team and can invite everyone else.</p>
+                            <p class="eyebrow text-brand">Step 2 of 5</p>
+                            <h2 class="mt-2 font-condensed text-3xl font-semibold uppercase">Create the first owner</h2>
+                            <p class="mt-3 text-sm leading-6 text-muted">This account owns the initial team and can invite everyone else.</p>
 
                             <div class="mt-9 grid gap-5 sm:grid-cols-2">
                                 <label class="sm:col-span-2">
                                     <span class="label">Instance name</span>
                                     <input bind:value={form.instance_name} autocomplete="organization" required />
-                                    <span class="mt-1.5 block text-xs text-slate-400">Shown in the browser title and system emails.</span>
+                                    <span class="mt-1.5 block text-xs text-faint">Shown in the browser title and system emails.</span>
                                     {#if error('instance_name')}<span class="error">{error('instance_name')}</span>{/if}
                                 </label>
                                 <label class="sm:col-span-2">
@@ -276,33 +280,33 @@
                         </div>
                     {:else if step === 2}
                         <div class="mx-auto max-w-3xl">
-                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-sm bg-brand-soft text-brand">
                                 {#if form.storage.driver === 's3'}<Cloud size={27} />{:else}<HardDrive size={27} />{/if}
                             </div>
-                            <p class="eyebrow text-emerald-600">Step 3 of 5</p>
-                            <h2 class="mt-2 text-3xl font-bold tracking-tight">Choose private file storage</h2>
-                            <p class="mt-3 text-sm leading-6 text-slate-500">Signing files, service-account keys, application assets, and build artifacts are stored on this backend. Downloads always pass through an authorized App Manager route.</p>
+                            <p class="eyebrow text-brand">Step 3 of 5</p>
+                            <h2 class="mt-2 font-condensed text-3xl font-semibold uppercase">Choose private file storage</h2>
+                            <p class="mt-3 text-sm leading-6 text-muted">Signing files, service-account keys, application assets, and build artifacts are stored on this backend. Downloads always pass through an authorized App Manager route.</p>
 
                             <div class="mt-8 grid gap-4 sm:grid-cols-2">
-                                <label class="flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition {form.storage.driver === 'local' ? 'border-emerald-500 bg-emerald-50/40 shadow-lg shadow-emerald-900/[0.05]' : 'border-slate-200'}">
-                                    <input class="mt-1 h-4 w-4 shrink-0 accent-emerald-600" type="radio" value="local" bind:group={form.storage.driver} />
+                                <label class="flex cursor-pointer items-start gap-4 rounded-md border p-5 transition {form.storage.driver === 'local' ? 'border-brand bg-brand-soft' : 'border-border'}">
+                                    <input class="mt-1 h-4 w-4 shrink-0 accent-brand" type="radio" value="local" bind:group={form.storage.driver} />
                                     <span>
                                         <strong class="flex items-center gap-2 text-sm"><HardDrive size={17} /> Local private disk</strong>
-                                        <span class="mt-1.5 block text-xs leading-5 text-slate-500">Best for a single server and local development. Back up the application storage directory.</span>
+                                        <span class="mt-1.5 block text-xs leading-5 text-muted">Best for a single server and local development. Back up the application storage directory.</span>
                                     </span>
                                 </label>
-                                <label class="flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition {form.storage.driver === 's3' ? 'border-sky-500 bg-sky-50/50 shadow-lg shadow-sky-900/[0.05]' : 'border-slate-200'}">
-                                    <input class="mt-1 h-4 w-4 shrink-0 accent-sky-600" type="radio" value="s3" bind:group={form.storage.driver} />
+                                <label class="flex cursor-pointer items-start gap-4 rounded-md border p-5 transition {form.storage.driver === 's3' ? 'border-brand bg-brand-soft' : 'border-border'}">
+                                    <input class="mt-1 h-4 w-4 shrink-0 accent-brand" type="radio" value="s3" bind:group={form.storage.driver} />
                                     <span>
                                         <strong class="flex items-center gap-2 text-sm"><Cloud size={17} /> S3-compatible storage</strong>
-                                        <span class="mt-1.5 block text-xs leading-5 text-slate-500">Amazon S3, DigitalOcean Spaces, MinIO, or another compatible private bucket.</span>
+                                        <span class="mt-1.5 block text-xs leading-5 text-muted">Amazon S3, DigitalOcean Spaces, MinIO, or another compatible private bucket.</span>
                                     </span>
                                 </label>
                             </div>
 
                             {#if form.storage.driver === 's3'}
-                                <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 sm:p-6">
-                                    <div class="mb-5 rounded-xl border border-sky-100 bg-sky-50 p-4 text-xs leading-5 text-sky-900">
+                                <div class="mt-5 rounded-md border border-border bg-surface-sunken p-5 sm:p-6">
+                                    <div class="mb-5 rounded-sm border border-brand-soft-line bg-brand-soft p-4 text-xs leading-5 text-brand">
                                         Leave the endpoint empty for AWS S3. For Spaces use a regional endpoint such as <code>https://nyc3.digitaloceanspaces.com</code>. For MinIO provide its endpoint and enable path-style addressing.
                                     </div>
 
@@ -329,20 +333,20 @@
                                             <InstallerField label="KMS key ID or ARN" field="storage.s3.kms_key_id" bind:value={form.storage.s3.kms_key_id} {error} />
                                         {/if}
 
-                                        <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:col-span-2">
-                                            <input class="mt-0.5 h-4 w-4 shrink-0 accent-sky-600" type="checkbox" bind:checked={form.storage.s3.use_path_style_endpoint} />
+                                        <label class="flex cursor-pointer items-start gap-3 rounded-sm border border-border bg-surface-raised p-4 sm:col-span-2">
+                                            <input class="mt-0.5 h-4 w-4 shrink-0 accent-brand" type="checkbox" bind:checked={form.storage.s3.use_path_style_endpoint} />
                                             <span>
                                                 <strong class="block text-xs">Use path-style endpoint</strong>
-                                                <span class="mt-1 block text-[11px] leading-5 text-slate-500">Usually required by MinIO. Leave disabled for AWS S3 and DigitalOcean Spaces.</span>
+                                                <span class="mt-1 block text-xs leading-5 text-muted">Usually required by MinIO. Leave disabled for AWS S3 and DigitalOcean Spaces.</span>
                                             </span>
                                         </label>
                                     </div>
 
-                                    <p class="mt-5 text-[11px] leading-5 text-slate-500">Use “bucket owner enforced” for modern AWS buckets and “private ACL” for Spaces or MinIO. Access keys may be left empty when the server receives temporary credentials from an IAM role. The installer verifies write, read, and delete access before creating the owner.</p>
+                                    <p class="mt-5 text-xs leading-5 text-muted">Use “bucket owner enforced” for modern AWS buckets and “private ACL” for Spaces or MinIO. Access keys may be left empty when the server receives temporary credentials from an IAM role. The installer verifies write, read, and delete access before creating the owner.</p>
                                     {#if error('storage.driver')}<span class="error mt-3 block">{error('storage.driver')}</span>{/if}
                                 </div>
                             {:else}
-                                <div class="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5 text-xs leading-5 text-emerald-900">
+                                <div class="mt-5 rounded-md border border-brand-soft-line bg-brand-soft p-5 text-xs leading-5 text-brand">
                                     Files are written outside the public web root with private filesystem permissions. The installer verifies that the directory is writable.
                                     {#if error('storage.driver')}<span class="error mt-3 block">{error('storage.driver')}</span>{/if}
                                 </div>
@@ -350,25 +354,25 @@
                         </div>
                     {:else if step === 3}
                         <div class="mx-auto max-w-3xl">
-                            <p class="eyebrow text-indigo-500">Step 4 of 5</p>
-                            <h2 class="mt-2 text-3xl font-bold tracking-tight">Connect your Git providers</h2>
-                            <p class="mt-3 text-sm leading-6 text-slate-500">Add one or both now, or skip them and finish configuration later. Secrets are encrypted before they are stored.</p>
+                            <p class="eyebrow text-brand">Step 4 of 5</p>
+                            <h2 class="mt-2 font-condensed text-3xl font-semibold uppercase">Connect your Git providers</h2>
+                            <p class="mt-3 text-sm leading-6 text-muted">Add one or both now, or skip them and finish configuration later. Secrets are encrypted before they are stored.</p>
 
                             <div class="mt-8 space-y-4">
-                                <article class="overflow-hidden rounded-2xl border transition {form.github.enabled ? 'border-slate-950 shadow-lg shadow-slate-900/[0.06]' : 'border-slate-200'}">
+                                <article class="overflow-hidden rounded-md border transition {form.github.enabled ? 'border-brand shadow-lg' : 'border-border'}">
                                     <label class="flex cursor-pointer items-center gap-4 p-5">
-                                        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white"><FolderGit size={23} /></span>
+                                        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-nav text-nav-strong"><FolderGit size={23} /></span>
                                         <span class="min-w-0 flex-1">
                                             <strong class="block text-sm">GitHub Actions</strong>
-                                            <span class="mt-1 block text-xs text-slate-500">GitHub App with Actions read/write access</span>
+                                            <span class="mt-1 block text-xs text-muted">GitHub App with Actions read/write access</span>
                                         </span>
                                         <input class="peer sr-only" type="checkbox" bind:checked={form.github.enabled} />
-                                        <span class="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-indigo-600 after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition peer-checked:after:translate-x-5"></span>
+                                        <span class="relative h-6 w-11 rounded-full bg-border transition peer-checked:bg-brand after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-surface-raised after:shadow-sm after:transition peer-checked:after:translate-x-5"></span>
                                     </label>
                                     {#if form.github.enabled}
-                                        <div class="space-y-5 border-t border-slate-100 bg-slate-50/70 p-5 sm:p-6">
-                                            <div class="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4">
-                                                <p class="text-xs font-semibold text-indigo-950">Use these URLs in your GitHub App</p>
+                                        <div class="space-y-5 border-t border-border-subtle bg-surface-sunken p-5 sm:p-6">
+                                            <div class="rounded-sm border border-brand-soft-line bg-brand-soft p-4">
+                                                <p class="text-xs font-semibold text-brand">Use these URLs in your GitHub App</p>
                                                 <InstallerUrlRow label="Callback URL" value={urls.github_callback} name="github-callback" {copied} onCopy={copy} />
                                                 <InstallerUrlRow label="Webhook URL" value={urls.github_webhook} name="github-webhook" {copied} onCopy={copy} />
                                             </div>
@@ -390,22 +394,22 @@
                                     {/if}
                                 </article>
 
-                                <article class="overflow-hidden rounded-2xl border transition {form.gitlab.enabled ? 'border-orange-400 shadow-lg shadow-orange-900/[0.06]' : 'border-slate-200'}">
+                                <article class="overflow-hidden rounded-md border transition {form.gitlab.enabled ? 'border-brand shadow-lg' : 'border-border'}">
                                     <label class="flex cursor-pointer items-center gap-4 p-5">
-                                        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><GitBranch size={24} /></span>
+                                        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-brand-soft text-brand"><GitBranch size={24} /></span>
                                         <span class="min-w-0 flex-1">
                                             <strong class="block text-sm">GitLab CI/CD</strong>
-                                            <span class="mt-1 block text-xs text-slate-500">OAuth application for GitLab.com or self-managed</span>
+                                            <span class="mt-1 block text-xs text-muted">OAuth application for GitLab.com or self-managed</span>
                                         </span>
                                         <input class="peer sr-only" type="checkbox" bind:checked={form.gitlab.enabled} />
-                                        <span class="relative h-6 w-11 rounded-full bg-slate-200 transition peer-checked:bg-orange-500 after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition peer-checked:after:translate-x-5"></span>
+                                        <span class="relative h-6 w-11 rounded-full bg-border transition peer-checked:bg-brand after:absolute after:top-0.5 after:left-0.5 after:h-5 after:w-5 after:rounded-full after:bg-surface-raised after:shadow-sm after:transition peer-checked:after:translate-x-5"></span>
                                     </label>
                                     {#if form.gitlab.enabled}
-                                        <div class="space-y-5 border-t border-slate-100 bg-orange-50/30 p-5 sm:p-6">
-                                            <div class="rounded-xl border border-orange-100 bg-orange-50 p-4">
-                                                <p class="text-xs font-semibold text-orange-950">OAuth redirect URI</p>
+                                        <div class="space-y-5 border-t border-border-subtle bg-surface-sunken p-5 sm:p-6">
+                                            <div class="rounded-sm border border-brand-soft-line bg-brand-soft p-4">
+                                                <p class="text-xs font-semibold text-brand">OAuth redirect URI</p>
                                                 <InstallerUrlRow label="Redirect URI" value={urls.gitlab_callback} name="gitlab-callback" {copied} onCopy={copy} />
-                                                <p class="mt-3 text-[11px] leading-5 text-orange-800">Select the <strong>api</strong> and <strong>openid</strong> scopes in GitLab.</p>
+                                                <p class="mt-3 text-xs leading-5 text-muted">Select the <strong>api</strong> and <strong>openid</strong> scopes in GitLab.</p>
                                             </div>
                                             <div class="grid gap-4 sm:grid-cols-2">
                                                 <InstallerField label="Application ID" field="gitlab.client_id" bind:value={form.gitlab.client_id} {error} />
@@ -420,32 +424,32 @@
                         </div>
                     {:else}
                         <div class="mx-auto max-w-2xl">
-                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+                            <div class="mb-7 flex h-14 w-14 items-center justify-center rounded-sm bg-brand-soft text-brand">
                                 <Webhook size={27} />
                             </div>
-                            <p class="eyebrow text-cyan-600">Step 5 of 5</p>
-                            <h2 class="mt-2 text-3xl font-bold tracking-tight">Webhooks and finish</h2>
-                            <p class="mt-3 text-sm leading-6 text-slate-500">Outbound webhooks sign every payload with HMAC-SHA256 and retry transient failures. Endpoint URLs and subscriptions are added from Integrations after setup.</p>
+                            <p class="eyebrow text-brand">Step 5 of 5</p>
+                            <h2 class="mt-2 font-condensed text-3xl font-semibold uppercase">Webhooks and finish</h2>
+                            <p class="mt-3 text-sm leading-6 text-muted">Outbound webhooks sign every payload with HMAC-SHA256 and retry transient failures. Endpoint URLs and subscriptions are added from Integrations after setup.</p>
 
                             <div class="mt-8 space-y-4">
-                                <label class="flex cursor-pointer items-start gap-4 rounded-2xl border p-5 transition {form.webhooks.enabled ? 'border-cyan-400 bg-cyan-50/40' : 'border-slate-200'}">
-                                    <input class="mt-1 h-4 w-4 shrink-0 accent-cyan-600" type="checkbox" bind:checked={form.webhooks.enabled} />
+                                <label class="flex cursor-pointer items-start gap-4 rounded-md border p-5 transition {form.webhooks.enabled ? 'border-brand bg-brand-soft' : 'border-border'}">
+                                    <input class="mt-1 h-4 w-4 shrink-0 accent-brand" type="checkbox" bind:checked={form.webhooks.enabled} />
                                     <span>
                                         <strong class="block text-sm">Enable outbound webhooks</strong>
-                                        <span class="mt-1 block text-xs leading-5 text-slate-500">Send build, artifact, credential, app, and team events to your services.</span>
+                                        <span class="mt-1 block text-xs leading-5 text-muted">Send build, artifact, credential, app, and team events to your services.</span>
                                     </span>
                                 </label>
-                                <label class="flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 p-5 {form.webhooks.enabled ? '' : 'pointer-events-none opacity-50'}">
-                                    <input class="mt-1 h-4 w-4 shrink-0 accent-cyan-600" type="checkbox" bind:checked={form.webhooks.allow_private_addresses} disabled={!form.webhooks.enabled} />
+                                <label class="flex cursor-pointer items-start gap-4 rounded-md border border-border p-5 {form.webhooks.enabled ? '' : 'pointer-events-none opacity-50'}">
+                                    <input class="mt-1 h-4 w-4 shrink-0 accent-brand" type="checkbox" bind:checked={form.webhooks.allow_private_addresses} disabled={!form.webhooks.enabled} />
                                     <span>
                                         <strong class="block text-sm">Allow private-network targets</strong>
-                                        <span class="mt-1 block text-xs leading-5 text-slate-500">Only enable this when internal RFC1918 endpoints are intentional. Public HTTPS targets are safer.</span>
+                                        <span class="mt-1 block text-xs leading-5 text-muted">Only enable this when internal RFC1918 endpoints are intentional. Public HTTPS targets are safer.</span>
                                     </span>
                                 </label>
                             </div>
 
-                            <div class="mt-8 rounded-2xl bg-slate-950 p-5 text-white sm:p-6">
-                                <p class="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">Ready to install</p>
+                            <div class="mt-8 rounded-md border border-nav-border bg-nav p-5 text-nav-strong sm:p-6">
+                                <p class="font-condensed text-2xs font-semibold tracking-[0.14em] text-nav-text uppercase">Ready to install</p>
                                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
                                     <InstallerSummary label="Instance" value={form.instance_name || '—'} />
                                     <InstallerSummary label="Owner" value={form.email || '—'} />
@@ -453,8 +457,8 @@
                                     <InstallerSummary label="Git providers" value={[form.github.enabled && 'GitHub', form.gitlab.enabled && 'GitLab'].filter(Boolean).join(' + ') || 'Configure later'} />
                                     <InstallerSummary label="Outbound webhooks" value={form.webhooks.enabled ? 'Enabled' : 'Disabled'} />
                                 </div>
-                                <div class="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-xs leading-5 text-slate-400">
-                                    <LockKeyhole size={15} class="mt-0.5 shrink-0 text-emerald-400" />
+                                <div class="mt-5 flex items-start gap-2 border-t border-nav-border pt-4 text-xs leading-5 text-nav-text">
+                                    <LockKeyhole size={15} class="mt-0.5 shrink-0 text-ok" />
                                     Provider secrets are encrypted with APP_KEY. They are never returned to the browser after installation.
                                 </div>
                             </div>
@@ -462,14 +466,14 @@
                     {/if}
                 </div>
 
-                <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-5 sm:px-9">
+                <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-5 sm:px-9">
                     <div>
                         {#if step > 0}
                             <button type="button" class="secondary gap-2" onclick={previous}>
                                 <ArrowLeft size={16} /> Back
                             </button>
                         {:else}
-                            <p class="text-xs text-slate-400">No telemetry is sent during setup.</p>
+                            <p class="text-xs text-faint">No telemetry is sent during setup.</p>
                         {/if}
                     </div>
 
@@ -483,7 +487,7 @@
                             Continue <ArrowRight size={16} />
                         </button>
                     {:else}
-                        <button type="submit" class="inline-flex min-w-36 items-center justify-center gap-2 bg-slate-950 hover:bg-slate-800" disabled={form.processing}>
+                        <button type="submit" class="inline-flex min-w-36 items-center justify-center gap-2" disabled={form.processing}>
                             {#if form.processing}
                                 Installing…
                             {:else}

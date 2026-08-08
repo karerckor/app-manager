@@ -165,7 +165,12 @@ class ExpoProjectController extends Controller
         $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
         $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
         $this->assertProject($team, $integration, $expoProject);
-        abort_if($expoProject->mobile_app_id, 409, 'This Expo project is already linked.');
+        abort_if(
+            $expoProject->mobile_app_id
+                && MobileApp::query()->whereKey($expoProject->mobile_app_id)->exists(),
+            409,
+            'This Expo project is already linked.',
+        );
 
         try {
             $remote = $expo->projectWithCredentialSecrets($integration, $expoProject->external_id);
@@ -180,8 +185,11 @@ class ExpoProjectController extends Controller
             ->route('accounts.apps.expo.index', [$team, $app])
             ->with(
                 'status',
-                "Expo project imported with {$result['identifiers']} identifiers and "
-                ."{$result['credentials']} credentials.",
+                $result['restored_from_trash']
+                    ? "Application restored from trash and synchronized with {$result['identifiers']} identifiers and "
+                        ."{$result['credentials']} credentials."
+                    : "Expo project imported with {$result['identifiers']} identifiers and "
+                        ."{$result['credentials']} credentials.",
             );
     }
 

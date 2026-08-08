@@ -3,6 +3,6 @@
 </script>
 
 <div>
-    <p class="text-[10px] font-bold tracking-wide text-slate-500 uppercase">{label}</p>
-    <p class="mt-1 truncate text-sm font-semibold text-slate-100">{value}</p>
+    <p class="font-condensed text-2xs font-semibold tracking-wide text-nav-text uppercase">{label}</p>
+    <p class="mt-1 truncate text-sm font-semibold text-nav-strong">{value}</p>
 </div>

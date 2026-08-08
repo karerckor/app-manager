@@ -236,6 +236,24 @@ class ExpoApiTest extends TestCase
             'identifier' => 'com.example.atlas',
         ]);
         $this->assertNotNull($project->refresh()->mobile_app_id);
+
+        $app = MobileApp::firstOrFail();
+        $app->delete();
+
+        $this->withToken($token)
+            ->postJson($this->api(
+                $team,
+                "/integrations/{$integration->id}/expo/projects/{$project->id}/import",
+            ))
+            ->assertCreated()
+            ->assertJsonPath('data.app.id', $app->id)
+            ->assertJsonPath('meta.restored_from_trash', true);
+
+        $this->assertDatabaseHas('mobile_apps', [
+            'id' => $app->id,
+            'deleted_at' => null,
+        ]);
+        $this->assertSame(1, MobileApp::withTrashed()->where('team_id', $team->id)->count());
     }
 
     public function test_identifier_sync_is_bidirectional(): void

@@ -6,7 +6,7 @@
         "build": "vite build",
         "dev": "vite",
         "test:design": "node --test tests/design/*.test.js",
-        "design:lint": "node scripts/design/design-lint.mjs resources/js/Components/ui resources/js/design resources/js/Components/AppShell.svelte resources/js/Components/WorkspacePage.svelte",
+        "design:lint": "node scripts/design/design-lint.mjs resources/js/Components/ui resources/js/design resources/js/Components/AppShell.svelte resources/js/Components/WorkspacePage.svelte resources/js/Pages/Installer",
         "verify": "npm run test:design && npm run design:lint && vite build"
     },
     "devDependencies": {

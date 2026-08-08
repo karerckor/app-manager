@@ -1788,6 +1788,9 @@ paths:
                         type: integer
                       credentials_imported:
                         type: integer
+                      restored_from_trash:
+                        type: boolean
+                        description: Whether the linked application was restored from recoverable trash.
         '422':
           $ref: '#/components/responses/ValidationError'
       security:

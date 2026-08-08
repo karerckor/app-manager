@@ -545,6 +545,77 @@ class ExpoIntegrationTest extends TestCase
                 ->where('expoIntegration.accounts.0.pagination.next_url', null));
     }
 
+    public function test_reimporting_a_linked_application_restores_it_from_trash(): void
+    {
+        [$owner, $team] = $this->member();
+        [$integration] = $this->expoIntegration($team);
+        $app = MobileApp::factory()->create([
+            'team_id' => $team->id,
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+        ]);
+        $project = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'mobile_app_id' => $app->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'exists_on_expo' => true,
+        ]);
+        $app->delete();
+
+        $this->actingAs($owner)
+            ->get(route('accounts.integrations.eas.index', $team))
+            ->assertSuccessful()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('expoIntegration.accounts.0.projects.0.app_name', 'Atlas')
+                ->where('expoIntegration.accounts.0.projects.0.app_archived', true)
+                ->where('expoIntegration.accounts.0.projects.0.app_url', null));
+
+        Http::fake([
+            'https://expo.test/graphql' => Http::response([
+                'data' => ['app' => ['byId' => [
+                    ...$this->remoteProject(),
+                    'androidAppCredentials' => [],
+                    'iosAppCredentials' => [],
+                    'builds' => [],
+                    'submissions' => [],
+                ]]],
+            ]),
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.expo.projects.import', [
+                $team,
+                $integration,
+                $project,
+            ]))
+            ->assertRedirect(route('accounts.apps.expo.index', [$team, $app]))
+            ->assertSessionHas(
+                'status',
+                'Application restored from trash and synchronized with 0 identifiers and 0 credentials.',
+            );
+
+        $this->assertDatabaseHas('mobile_apps', [
+            'id' => $app->id,
+            'deleted_at' => null,
+        ]);
+        $this->assertSame($app->id, $project->refresh()->mobile_app_id);
+        $this->assertSame(1, MobileApp::withTrashed()->where('team_id', $team->id)->count());
+
+        $this->actingAs($owner)
+            ->post(route('accounts.integrations.expo.projects.import', [
+                $team,
+                $integration,
+                $project,
+            ]))
+            ->assertConflict();
+    }
+
     public function test_bulk_import_queues_each_selected_available_expo_project(): void
     {
         [$owner, $team] = $this->member();
