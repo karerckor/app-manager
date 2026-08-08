@@ -150,6 +150,8 @@ Route::middleware('auth')->group(function () {
                 ->name('integrations.expo.sync');
             Route::delete('/integrations/{integration}/expo', [ExpoConnectionController::class, 'disconnect'])
                 ->name('integrations.expo.disconnect');
+            Route::get('/integrations/{integration}/expo/projects/{expoProject}/identifiers', [ExpoProjectController::class, 'identifiers'])
+                ->name('integrations.expo.projects.identifiers');
             Route::post('/integrations/{integration}/expo/projects/{expoProject}/import', [ExpoProjectController::class, 'import'])
                 ->name('integrations.expo.projects.import');
             Route::post('/integrations/{integration}/expo/projects/import-batch', [ExpoProjectController::class, 'importBatch'])

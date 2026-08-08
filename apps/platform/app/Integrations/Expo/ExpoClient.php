@@ -299,6 +299,10 @@ class ExpoClient
                       bundleIdentifier
                     }
                   }
+                  builds(limit: 100, offset: 0) {
+                    platform
+                    appIdentifier
+                  }
                 }
               }
             }

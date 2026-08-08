@@ -11,6 +11,7 @@ use App\Enums\ProfileType;
 use App\Enums\TeamRole;
 use App\Enums\WebhookEventType;
 use App\Integrations\Expo\ExpoClient;
+use App\Integrations\Expo\ExpoGraphqlException;
 use App\Jobs\Integrations\ImportExpoProject;
 use App\Models\Credential;
 use App\Models\ExpoCredentialLink;
@@ -404,7 +405,7 @@ class ExpoIntegrationTest extends TestCase
 
             return str_contains($query, 'AppManagerExpoProjectIdentifiers')
                 && ! str_contains($query, 'keyJson')
-                && ! str_contains($query, 'builds(')
+                && str_contains($query, 'builds(limit: 100, offset: 0)')
                 && ! str_contains($query, 'submissions(');
         });
     }
@@ -527,6 +528,15 @@ class ExpoIntegrationTest extends TestCase
                 ->where(
                     'expoIntegration.accounts.0.projects.0.icon_url',
                     'https://cdn.expo.test/project-21.png',
+                )
+                ->where('expoIntegration.accounts.0.projects.0.import_status', 'idle')
+                ->where(
+                    'expoIntegration.accounts.0.projects.0.identifiers_url',
+                    route('accounts.integrations.expo.projects.identifiers', [
+                        $team,
+                        $integration,
+                        ExpoProject::query()->where('external_id', 'project-21')->sole(),
+                    ]),
                 )
                 ->where('expoIntegration.accounts.0.pagination.page', 2)
                 ->where('expoIntegration.accounts.0.pagination.last_page', 2)
@@ -657,6 +667,78 @@ class ExpoIntegrationTest extends TestCase
             return $job->teamId === $team->id
                 && in_array($job->projectId, [$first->id, $second->id], true);
         });
+        $this->assertDatabaseHas('expo_projects', [
+            'id' => $first->id,
+            'import_status' => 'queued',
+            'import_error' => null,
+        ]);
+        $this->assertDatabaseHas('expo_projects', [
+            'id' => $second->id,
+            'import_status' => 'queued',
+            'import_error' => null,
+        ]);
+    }
+
+    public function test_single_import_loads_identifier_choices_from_expo(): void
+    {
+        [$owner, $team] = $this->member();
+        [$integration] = $this->expoIntegration($team);
+        $project = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'exists_on_expo' => true,
+        ]);
+        Http::fake([
+            'https://expo.test/graphql' => Http::response([
+                'data' => ['app' => ['byId' => [
+                    'id' => 'project-1',
+                    'androidAppCredentials' => [[
+                        'id' => 'android-creds-1',
+                        'applicationIdentifier' => 'com.example.atlas',
+                    ]],
+                    'iosAppCredentials' => [[
+                        'id' => 'ios-creds-1',
+                        'appleAppIdentifier' => [
+                            'id' => 'apple-app-id-1',
+                            'bundleIdentifier' => 'com.example.atlas.ios',
+                        ],
+                    ]],
+                    'builds' => [[
+                        'platform' => 'ANDROID',
+                        'appIdentifier' => 'com.example.atlas.preview',
+                    ]],
+                ]]],
+            ]),
+        ]);
+
+        $this->actingAs($owner)
+            ->getJson(route('accounts.integrations.expo.projects.identifiers', [
+                $team,
+                $integration,
+                $project,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.ios', ['com.example.atlas.ios'])
+            ->assertJsonPath('data.android', [
+                'com.example.atlas',
+                'com.example.atlas.preview',
+            ])
+            ->assertJsonPath('data.defaults.ios', 'com.example.atlas.ios')
+            ->assertJsonPath('data.defaults.android', 'com.example.atlas');
+
+        Http::assertSent(fn (HttpRequest $request) => str_contains(
+            (string) data_get($request->data(), 'query', ''),
+            'AppManagerExpoProjectIdentifiers',
+        ) && str_contains(
+            (string) data_get($request->data(), 'query', ''),
+            'builds(limit: 100, offset: 0)',
+        ));
     }
 
     public function test_integration_page_searches_expo_projects_by_name_slug_or_project_id(): void
@@ -1285,6 +1367,51 @@ class ExpoIntegrationTest extends TestCase
             'identifier' => 'com.example.atlas.preview.ios',
             'is_default' => false,
         ]);
+        $this->assertDatabaseHas('expo_projects', [
+            'id' => $project->id,
+            'import_status' => 'completed',
+            'import_error' => null,
+        ]);
+    }
+
+    public function test_failed_queued_import_records_the_expo_error(): void
+    {
+        [, $team] = $this->member();
+        [$integration] = $this->expoIntegration($team);
+        $project = ExpoProject::create([
+            'team_id' => $team->id,
+            'integration_id' => $integration->id,
+            'external_id' => 'project-1',
+            'account_id' => 'account-1',
+            'account_name' => 'acme',
+            'slug' => 'atlas',
+            'name' => 'Atlas',
+            'full_name' => '@acme/atlas',
+            'exists_on_expo' => true,
+            'import_status' => 'queued',
+        ]);
+        Http::fake([
+            'https://expo.test/graphql' => Http::response([
+                'errors' => [['message' => 'Expo credential access was denied.']],
+            ]),
+        ]);
+
+        $job = new ImportExpoProject($team->id, $project->id);
+
+        try {
+            $job->handle(
+                app(ExpoClient::class),
+                app(\App\Actions\Integrations\ImportExpoProject::class),
+            );
+            $this->fail('The queued import should propagate the Expo error.');
+        } catch (ExpoGraphqlException $exception) {
+            $job->failed($exception);
+        }
+
+        $project->refresh();
+        $this->assertSame('failed', $project->import_status);
+        $this->assertStringContainsString('Expo credential access was denied.', $project->import_error);
+        $this->assertNotNull($project->import_finished_at);
     }
 
     public function test_import_records_webhooks_for_created_app_identifiers_and_credentials(): void

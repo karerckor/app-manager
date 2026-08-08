@@ -1,5 +1,6 @@
 <script>
     import { Link, router, useForm } from '@inertiajs/svelte';
+    import { onMount } from 'svelte';
     import {
         CheckCircle2,
         ChevronRight,
@@ -66,6 +67,9 @@
     let importingExpoProjectId = null;
     let importingExpoProject = null;
     let expoImportErrors = {};
+    let expoIdentifierOptions = { ios: [], android: [] };
+    let expoIdentifierRequest = 0;
+    let loadingExpoIdentifiers = false;
     let selectedExpoProjectIds = {};
     let bulkImportingExpoIntegrationId = null;
     let expoSearch = expoIntegration.search ?? '';
@@ -195,22 +199,69 @@
         expoSearch = '';
         searchExpoProjects();
     };
-    const openExpoProjectImport = (project) => {
+    const openExpoProjectImport = async (project) => {
         if (importingExpoProjectId) return;
 
+        const request = ++expoIdentifierRequest;
         expoImportForm.reset();
         expoImportForm.clearErrors();
+        expoIdentifierOptions = { ios: [], android: [] };
         importingExpoProject = project;
+        loadingExpoIdentifiers = true;
+
+        try {
+            const response = await fetch(project.identifiers_url, {
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            });
+            const payload = await response.json().catch(() => ({}));
+
+            if (request !== expoIdentifierRequest) return;
+            if (!response.ok) {
+                throw new Error(firstError(
+                    payload?.errors,
+                    payload?.message ?? 'Expo identifiers could not be loaded.',
+                ));
+            }
+
+            expoIdentifierOptions = {
+                ios: payload?.data?.ios ?? [],
+                android: payload?.data?.android ?? [],
+            };
+            expoImportForm.default_identifiers = {
+                ios: payload?.data?.defaults?.ios ?? '',
+                android: payload?.data?.defaults?.android ?? '',
+            };
+        } catch (error) {
+            if (request === expoIdentifierRequest) {
+                expoImportForm.setError(
+                    'expo',
+                    error?.message ?? 'Expo identifiers could not be loaded.',
+                );
+            }
+        } finally {
+            if (request === expoIdentifierRequest) loadingExpoIdentifiers = false;
+        }
     };
     const closeExpoProjectImport = () => {
-        if (expoImportForm.processing) return;
+        if (expoImportForm.processing || importingExpoProjectId) return;
 
+        expoIdentifierRequest += 1;
+        loadingExpoIdentifiers = false;
+        expoIdentifierOptions = { ios: [], android: [] };
         importingExpoProject = null;
         expoImportForm.reset();
         expoImportForm.clearErrors();
     };
     const importExpoProject = () => {
-        if (!importingExpoProject || importingExpoProjectId || expoImportForm.processing) return;
+        if (!importingExpoProject
+            || importingExpoProjectId
+            || loadingExpoIdentifiers
+            || expoImportForm.processing
+            || expoImportForm.errors.expo) return;
 
         const project = importingExpoProject;
         importingExpoProjectId = project.id;
@@ -239,7 +290,10 @@
             },
         });
     };
-    const canBulkImportExpoProject = (project) => !project.app_url && !project.app_archived && project.exists_on_expo;
+    const canBulkImportExpoProject = (project) => !project.app_url
+        && !project.app_archived
+        && project.exists_on_expo
+        && !['queued', 'importing'].includes(project.import_status);
     const importableExpoProjects = (integration) => integration.projects.filter(canBulkImportExpoProject);
     const selectedExpoProjects = (integration, selection = selectedExpoProjectIds) => importableExpoProjects(integration)
         .filter((project) => selection[project.id]);
@@ -275,6 +329,24 @@
             },
         });
     };
+    onMount(() => {
+        const interval = window.setInterval(() => {
+            const hasActiveImport = activeTab === 'expo'
+                && (expoIntegration.accounts ?? []).some((integration) => integration.projects.some(
+                    (project) => ['queued', 'importing'].includes(project.import_status),
+                ));
+
+            if (hasActiveImport) {
+                router.reload({
+                    only: ['expoIntegration'],
+                    preserveScroll: true,
+                    preserveState: true,
+                });
+            }
+        }, 4000);
+
+        return () => window.clearInterval(interval);
+    });
     const openCreateWebhook = () => {
         editingEndpoint = null;
         webhookForm.reset();
@@ -630,15 +702,15 @@
                                                 {/if}
                                             </span>
                                             <div class="min-w-0">
-                                                <div class="flex items-center gap-2"><p class="truncate text-[12px] font-semibold text-text">{project.name}</p>{#if project.app_url}<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ok"><CheckCircle2 class="h-3 w-3" />In App Manager</span>{:else if project.app_archived}<span class="inline-flex shrink-0 items-center rounded-full bg-warn-text/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warn-fill">In trash</span>{/if}</div>
+                                                <div class="flex items-center gap-2"><p class="truncate text-[12px] font-semibold text-text">{project.name}</p>{#if project.app_url}<span class="inline-flex shrink-0 items-center gap-1 rounded-full bg-ok/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ok"><CheckCircle2 class="h-3 w-3" />In App Manager</span>{:else if project.app_archived}<span class="inline-flex shrink-0 items-center rounded-full bg-warn-text/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warn-fill">In trash</span>{:else if project.import_status === 'queued'}<span class="inline-flex shrink-0 items-center rounded-full bg-warn-text/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warn-fill">Queued</span>{:else if project.import_status === 'importing'}<span class="inline-flex shrink-0 items-center rounded-full bg-brand/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-brand">Importing</span>{:else if project.import_status === 'failed'}<span class="inline-flex shrink-0 items-center rounded-full bg-danger/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-danger">Import failed</span>{/if}</div>
                                                 <code class="mt-0.5 block truncate text-[10px] text-faint">{project.full_name}</code>
                                                 <p class="mt-0.5 truncate font-mono text-[9px] text-faint">Slug {project.slug} · Project ID {project.project_id}</p>
-                                                {#if expoImportErrors[project.id]}<p class="mt-1 text-xs font-medium text-danger">{expoImportErrors[project.id]}</p>{/if}
+                                                {#if expoImportErrors[project.id] || project.import_error}<p class="mt-1 text-xs font-medium text-danger">{expoImportErrors[project.id] || project.import_error}</p>{/if}
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-2">
                                             {#if !project.exists_on_expo}<span class="rounded-full bg-danger/10 px-2 py-1 text-[10px] font-semibold text-danger">Missing on Expo</span>{/if}
-                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null} on:click={() => openExpoProjectImport(project)}>{importingExpoProjectId === project.id ? (project.app_archived ? 'Restoring…' : 'Importing…') : (project.app_archived ? 'Restore & import' : 'Import as application')}</button>{/if}
+                                            {#if project.app_url}<Link href={project.app_url} class="secondary border-ok px-3 py-2 text-xs text-ok hover:bg-ok/10">{project.app_name}</Link>{:else if project.exists_on_expo}<button class="secondary px-3 py-2 text-xs" disabled={importingExpoProjectId !== null || ['queued', 'importing'].includes(project.import_status)} on:click={() => openExpoProjectImport(project)}>{project.import_status === 'queued' ? 'Queued…' : project.import_status === 'importing' ? 'Importing…' : importingExpoProjectId === project.id ? (project.app_archived ? 'Restoring…' : 'Importing…') : (project.app_archived ? 'Restore & import' : project.import_status === 'failed' ? 'Retry import' : 'Import as application')}</button>{/if}
                                         </div>
                                     </div>
                                 {/each}
@@ -838,26 +910,36 @@
                     <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0" strokeWidth={1.9} />
                     <p>Builds without an explicit identifier use the default for their platform. If Expo returns only one identifier, App Manager selects it automatically.</p>
                 </div>
+                {#if loadingExpoIdentifiers}
+                    <div class="rounded-md border border-border bg-surface-sunken px-4 py-5 text-center text-sm text-muted">Loading current identifiers from Expo…</div>
+                {:else}
                 <div class="grid gap-4 sm:grid-cols-2">
                     <label class="rounded-md border border-border bg-surface-sunken p-4">
                         <span class="label">Default iOS identifier</span>
-                        <input class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.ios} placeholder="com.example.app" autocomplete="off" />
-                        <span class="mt-1.5 block text-xs leading-5 text-muted">Enter the bundle identifier exactly as it appears in Expo.</span>
+                        <select class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.ios} disabled={!expoIdentifierOptions.ios.length} required={expoIdentifierOptions.ios.length > 1}>
+                            {#if !expoIdentifierOptions.ios.length}<option value="">No iOS identifier found</option>{:else if expoIdentifierOptions.ios.length > 1}<option value="" disabled>Choose an identifier…</option>{/if}
+                            {#each expoIdentifierOptions.ios as identifier}<option value={identifier}>{identifier}</option>{/each}
+                        </select>
+                        <span class="mt-1.5 block text-xs leading-5 text-muted">Bundle identifiers currently returned by Expo.</span>
                         {#if expoImportForm.errors['default_identifiers.ios']}<span class="error">{expoImportForm.errors['default_identifiers.ios']}</span>{/if}
                     </label>
                     <label class="rounded-md border border-border bg-surface-sunken p-4">
                         <span class="label">Default Android identifier</span>
-                        <input class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.android} placeholder="com.example.app" autocomplete="off" />
-                        <span class="mt-1.5 block text-xs leading-5 text-muted">Enter the application ID exactly as it appears in Expo.</span>
+                        <select class="bg-surface-raised font-mono text-sm" bind:value={expoImportForm.default_identifiers.android} disabled={!expoIdentifierOptions.android.length} required={expoIdentifierOptions.android.length > 1}>
+                            {#if !expoIdentifierOptions.android.length}<option value="">No Android identifier found</option>{:else if expoIdentifierOptions.android.length > 1}<option value="" disabled>Choose an identifier…</option>{/if}
+                            {#each expoIdentifierOptions.android as identifier}<option value={identifier}>{identifier}</option>{/each}
+                        </select>
+                        <span class="mt-1.5 block text-xs leading-5 text-muted">Application IDs currently returned by Expo.</span>
                         {#if expoImportForm.errors['default_identifiers.android']}<span class="error">{expoImportForm.errors['default_identifiers.android']}</span>{/if}
                     </label>
                 </div>
-                <p class="text-xs leading-5 text-muted">Leave a platform blank to use its sole current Expo identifier. If Expo contains several possible identifiers, the import will list the values you can choose from.</p>
+                <p class="text-xs leading-5 text-muted">A sole current credential identifier is selected automatically. Choose only when Expo returns several possible values.</p>
+                {/if}
                 {#if expoImportForm.errors.expo}<div class="rounded-md border border-danger bg-danger/10 px-4 py-3 text-xs leading-5 text-danger">{expoImportForm.errors.expo}</div>{/if}
             </div>
             <div class="flex justify-end gap-3 border-t border-border-subtle bg-surface-sunken px-6 py-4">
                 <button type="button" class="secondary" disabled={expoImportForm.processing} on:click={closeExpoProjectImport}>Cancel</button>
-                <button disabled={expoImportForm.processing}>{expoImportForm.processing ? (importingExpoProject.app_archived ? 'Restoring…' : 'Importing…') : (importingExpoProject.app_archived ? 'Restore & import' : 'Import application')}</button>
+                <button disabled={loadingExpoIdentifiers || expoImportForm.processing || Boolean(expoImportForm.errors.expo)}>{loadingExpoIdentifiers ? 'Loading identifiers…' : expoImportForm.processing ? (importingExpoProject.app_archived ? 'Restoring…' : 'Importing…') : (importingExpoProject.app_archived ? 'Restore & import' : 'Import application')}</button>
             </div>
         </form>
     </div>

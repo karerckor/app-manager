@@ -11,18 +11,21 @@ use App\Integrations\Expo\ExpoAutoSyncDispatcher;
 use App\Integrations\Expo\ExpoClient;
 use App\Integrations\Expo\ExpoCredentialExporter;
 use App\Integrations\Expo\ExpoGraphqlException;
+use App\Integrations\Expo\ExpoIdentifierDiscovery;
 use App\Jobs\Integrations\ImportExpoProject as ImportExpoProjectJob;
 use App\Models\ExpoProject;
 use App\Models\Integration;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Support\Blueprints\BlueprintComplianceEvaluator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Throwable;
 
 class ExpoProjectController extends Controller
 {
@@ -177,6 +180,13 @@ class ExpoProjectController extends Controller
             'default_identifiers.android' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $expoProject->update([
+            'import_status' => 'importing',
+            'import_error' => null,
+            'import_started_at' => now(),
+            'import_finished_at' => null,
+        ]);
+
         try {
             $remote = $expo->projectWithCredentialSecrets($integration, $expoProject->external_id);
             $result = $importer->handle(
@@ -185,9 +195,25 @@ class ExpoProjectController extends Controller
                 $remote,
                 defaultIdentifiers: (array) ($data['default_identifiers'] ?? []),
             );
-        } catch (ExpoGraphqlException|RuntimeException $exception) {
-            throw ValidationException::withMessages(['expo' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            $expoProject->update([
+                'import_status' => 'failed',
+                'import_error' => $exception->getMessage(),
+                'import_finished_at' => now(),
+            ]);
+
+            if ($exception instanceof RuntimeException) {
+                throw ValidationException::withMessages(['expo' => $exception->getMessage()]);
+            }
+
+            throw $exception;
         }
+
+        $expoProject->refresh()->update([
+            'import_status' => 'completed',
+            'import_error' => null,
+            'import_finished_at' => now(),
+        ]);
 
         $app = $result['app'];
 
@@ -201,6 +227,34 @@ class ExpoProjectController extends Controller
                     : "Expo project imported with {$result['identifiers']} identifiers and "
                         ."{$result['credentials']} credentials.",
             );
+    }
+
+    public function identifiers(
+        Request $request,
+        Team $team,
+        Integration $integration,
+        ExpoProject $expoProject,
+        ExpoClient $expo,
+        ExpoIdentifierDiscovery $discovery,
+    ): JsonResponse {
+        $this->ensureEnabled();
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageApplications);
+        $this->authorizeTeamPermission($request, $team, TeamPermission::ManageCredentials);
+        $this->assertProject($team, $integration, $expoProject);
+        abort_unless(
+            $expoProject->exists_on_expo
+            && in_array($integration->status, [IntegrationStatus::Active, IntegrationStatus::Degraded], true)
+            && $integration->oauthCredential()->exists(),
+            404,
+        );
+
+        try {
+            $project = $expo->projectIdentifiers($integration, $expoProject->external_id);
+        } catch (ExpoGraphqlException|RuntimeException $exception) {
+            throw ValidationException::withMessages(['expo' => $exception->getMessage()]);
+        }
+
+        return response()->json(['data' => $discovery->discover($project)]);
     }
 
     public function importBatch(
@@ -237,9 +291,18 @@ class ExpoProjectController extends Controller
             ]);
         }
 
-        DB::afterCommit(fn () => $projects->each(
+        DB::transaction(fn () => ExpoProject::query()
+            ->whereIn('id', $projects)
+            ->update([
+                'import_status' => 'queued',
+                'import_error' => null,
+                'import_started_at' => null,
+                'import_finished_at' => null,
+            ]));
+
+        $projects->each(
             fn (string $projectId) => ImportExpoProjectJob::dispatch($team->id, $projectId),
-        ));
+        );
 
         return back()->with('status', "{$projects->count()} Expo project(s) queued for import.");
     }

@@ -21,6 +21,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'description',
     'icon_url',
     'sync_metadata',
+    'import_status',
+    'import_error',
+    'import_started_at',
+    'import_finished_at',
     'auto_sync_enabled',
     'auto_sync_status',
     'auto_sync_snapshot',
@@ -36,6 +40,7 @@ class ExpoProject extends Model
     use HasUuids;
 
     protected $attributes = [
+        'import_status' => 'idle',
         'auto_sync_enabled' => false,
         'auto_sync_status' => 'idle',
     ];
@@ -64,6 +69,8 @@ class ExpoProject extends Model
     {
         return [
             'sync_metadata' => 'boolean',
+            'import_started_at' => 'datetime',
+            'import_finished_at' => 'datetime',
             'auto_sync_enabled' => 'boolean',
             'auto_sync_snapshot' => 'array',
             'auto_sync_pending_at' => 'datetime',

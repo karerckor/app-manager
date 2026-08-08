@@ -706,6 +706,14 @@ class IntegrationIndexController extends Controller
                     'app_url' => $project->mobileApp && ! $project->mobileApp->trashed()
                         ? route('accounts.apps.expo.index', [$team, $project->mobileApp])
                         : null,
+                    'import_status' => $project->import_status,
+                    'import_error' => $project->import_error,
+                    'import_started_at' => $project->import_started_at,
+                    'import_finished_at' => $project->import_finished_at,
+                    'identifiers_url' => route(
+                        'accounts.integrations.expo.projects.identifiers',
+                        [$team, $integration, $project],
+                    ),
                     'import_url' => route(
                         'accounts.integrations.expo.projects.import',
                         [$team, $integration, $project],
