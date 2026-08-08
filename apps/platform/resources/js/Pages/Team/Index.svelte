@@ -95,7 +95,7 @@
     {/snippet}
 
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-            <section class="card overflow-hidden p-0">
+            <section class="card p-0">
                 <div class="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 class="text-sm font-bold">Members <span class="ml-1 font-medium text-muted">{members.length}</span></h2>
