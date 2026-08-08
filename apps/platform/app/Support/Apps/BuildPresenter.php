@@ -12,12 +12,25 @@ class BuildPresenter
     public static function present(Team $team, MobileApp $app, BuildRecord $build, bool $canRunPipelines, bool $canManageArtifacts): array
     {
         $run = $canRunPipelines ? $build->ciCdRun : null;
+        $identifier = $build->appIdentifier;
 
         return [
             'id' => $build->id,
             'status' => $build->status->value,
             'profile_type' => $build->profile_type->value,
             'pipeline_name' => $run?->pipeline?->name,
+            'identifier' => $identifier ? [
+                'id' => $identifier->id,
+                'name' => $identifier->name,
+                'identifier' => $identifier->identifier,
+                'platform' => $identifier->platform->value,
+                'platform_label' => match ($identifier->platform->value) {
+                    'ios' => 'iOS',
+                    'android' => 'Android',
+                    default => 'Web',
+                },
+                'url' => route('accounts.apps.identifiers.show', [$team, $app, $identifier]),
+            ] : null,
             'external_url' => $run?->external_run_url,
             'provider_status' => $run?->provider_status,
             'reporting_mode' => $build->reporting_mode->value,

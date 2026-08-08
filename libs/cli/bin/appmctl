@@ -1560,7 +1560,7 @@ Options:
   --context JSON           Inline JSON context/metadata
   --reporting-mode MODE    Build reporting mode: manual (default) or eas
   --expo-build-id ID       Expo/EAS build ID (required when reporting-mode=eas)
-  --platform PLATFORM      iOS or Android; resolves the default identifier
+  --platform PLATFORM      iOS, Android, or Web; resolves the default identifier
   --app-identifier-id UUID Target app identifier ID
   --tag NAME[:#HEX]        Attach a tag; repeatable (e.g. --tag ios:#3b82f6)
 
@@ -1879,8 +1879,8 @@ _builds_create() {
   require_app
   [ -n "$profile" ] || die "--profile is required"
   case "$platform" in
-    ""|ios|android) ;;
-    *) die "--platform must be 'ios' or 'android'" ;;
+    ""|ios|android|web) ;;
+    *) die "--platform must be 'ios', 'android', or 'web'" ;;
   esac
   case "$reporting_mode" in
     manual|eas) ;;

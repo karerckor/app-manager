@@ -21,10 +21,11 @@ class BuildCredentialProfileTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_build_targets_describe_ios_and_android_artifacts(): void
+    public function test_build_targets_describe_ios_android_and_web_artifacts(): void
     {
         $ios = collect(BuildProfileSchema::forPlatform(Platform::Ios));
         $android = collect(BuildProfileSchema::forPlatform(Platform::Android));
+        $web = collect(BuildProfileSchema::forPlatform(Platform::Web));
 
         $this->assertSame(
             ['development', 'adhoc', 'appstore', 'enterprise'],
@@ -37,6 +38,8 @@ class BuildCredentialProfileTest extends TestCase
         );
         $this->assertSame('.apk', $android->firstWhere('value', 'preview')['artifact']);
         $this->assertSame('.aab', $android->firstWhere('value', 'production')['artifact']);
+        $this->assertSame(['production'], $web->pluck('value')->all());
+        $this->assertSame('.zip', $web->firstWhere('value', 'production')['artifact']);
 
         $this->assertSame('profile', CredentialSchema::definition(CredentialType::IosCertificate)['attachment']);
         $this->assertSame('profile', CredentialSchema::definition(CredentialType::AndroidKeystore)['attachment']);

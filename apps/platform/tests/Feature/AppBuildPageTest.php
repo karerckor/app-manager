@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Enums\CiCdDispatchStatus;
+use App\Enums\Platform;
 use App\Enums\ProfileType;
+use App\Models\AppIdentifier;
 use App\Models\Artifact;
 use App\Models\BuildRecord;
 use App\Models\CiCdPipeline;
@@ -34,10 +36,15 @@ class AppBuildPageTest extends TestCase
     {
         [$user, $team] = $this->userWithTeam();
         $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $identifier = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Android,
+            'identifier' => 'com.example.storefront',
+        ]);
         $build = BuildRecord::factory()->create([
             'team_id' => $team->id,
             'mobile_app_id' => $app->id,
-            'app_identifier_id' => null,
+            'app_identifier_id' => $identifier->id,
             'requested_by_user_id' => null,
             'profile_type' => ProfileType::Production,
             'status' => 'completed',
@@ -51,7 +58,11 @@ class AppBuildPageTest extends TestCase
                 ->where('app.id', $app->id)
                 ->has('builds', 1)
                 ->where('builds.0.id', $build->id)
-                ->where('builds.0.status', 'completed'));
+                ->where('builds.0.status', 'completed')
+                ->where('builds.0.identifier.identifier', 'com.example.storefront')
+                ->where('builds.0.identifier.platform', 'android')
+                ->where('builds.0.identifier.platform_label', 'Android')
+                ->where('builds.0.identifier.url', route('accounts.apps.identifiers.show', [$team, $app, $identifier])));
     }
 
     public function test_index_forbidden_for_non_member(): void

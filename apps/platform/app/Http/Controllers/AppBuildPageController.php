@@ -39,7 +39,7 @@ class AppBuildPageController extends Controller
         $filters['pipelines'] = $this->cleanArrayFilter($filters['pipelines'] ?? []);
 
         $query = $mobileApp->buildRecords()
-            ->with(['ciCdRun.pipeline', 'artifacts.media'])
+            ->with(['appIdentifier', 'ciCdRun.pipeline', 'artifacts.media'])
             ->latest();
 
         if ($filters['tags'] !== []) {
@@ -96,7 +96,7 @@ class AppBuildPageController extends Controller
     public function show(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): Response
     {
         [$canRun, $canManage] = $this->permissions($request, $team);
-        $buildRecord->load(['ciCdRun.pipeline', 'artifacts.media']);
+        $buildRecord->load(['appIdentifier', 'ciCdRun.pipeline', 'artifacts.media']);
 
         return Inertia::render('Apps/Builds/Show', [
             ...AppContext::for($request, $team, $mobileApp),
@@ -108,7 +108,7 @@ class AppBuildPageController extends Controller
     public function state(Request $request, Team $team, MobileApp $mobileApp, BuildRecord $buildRecord): JsonResponse
     {
         [$canRun, $canManage] = $this->permissions($request, $team);
-        $buildRecord->load(['ciCdRun.pipeline', 'artifacts.media']);
+        $buildRecord->load(['appIdentifier', 'ciCdRun.pipeline', 'artifacts.media']);
 
         return response()->json([
             'build' => BuildPresenter::present($team, $mobileApp, $buildRecord, $canRun, $canManage),

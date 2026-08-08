@@ -151,6 +151,30 @@ class BuildParametersTest extends TestCase
         $this->assertSame($identifier->identifier, $build->context_snapshot['target']['identifier']);
     }
 
+    public function test_manual_web_build_uses_the_default_identifier_without_an_override(): void
+    {
+        [$owner, $team, $app, $identifier] = $this->context();
+        $identifier->update([
+            'platform' => Platform::Web,
+            'identifier' => 'www.example.com',
+            'is_default' => true,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.apps.builds.store', [$team, $app]), [
+                'request_uuid' => (string) Str::uuid(),
+                'platform' => Platform::Web->value,
+                'profile_type' => ProfileType::Production->value,
+            ])
+            ->assertRedirect(route('accounts.apps.builds.index', [$team, $app]))
+            ->assertSessionHasNoErrors();
+
+        $build = BuildRecord::query()->sole();
+        $this->assertSame($identifier->id, $build->app_identifier_id);
+        $this->assertSame(Platform::Web->value, $build->context_snapshot['target']['platform']);
+        $this->assertSame('www.example.com', $build->context_snapshot['target']['identifier']);
+    }
+
     public function test_user_without_pipeline_permission_cannot_create_a_manual_build(): void
     {
         [, $team, $app, $identifier] = $this->context();

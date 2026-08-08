@@ -59,6 +59,13 @@ class BuildProfileSchema
                 '.aab',
                 'For a fully signed Android App Bundle submitted to Google Play.',
             ),
+            self::make(
+                ProfileType::Production,
+                Platform::Web,
+                'Production',
+                '.zip',
+                'For deploying a production web application.',
+            ),
         ];
     }
 

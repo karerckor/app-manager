@@ -83,6 +83,13 @@ request_body=$(grep -o 'profile_type.*production' "$MOCK_LOG" || true)
 assert_contains "$(cat "$MOCK_LOG")" '"platform": "android"' 'builds create sends the target platform'
 pass 'builds create'
 
+# --- builds create for Web default identifier resolution ---
+: >"$MOCK_LOG"
+output=$("$CLI" --json builds create --app customer-app --platform web --profile production 2>&1)
+assert_contains "$output" 'bld-003' 'Web builds create returns new build'
+assert_contains "$(cat "$MOCK_LOG")" '"platform": "web"' 'Web builds create sends the target platform'
+pass 'builds create for Web'
+
 # --- builds cancel ---
 : >"$MOCK_LOG"
 output=$("$CLI" builds cancel --app customer-app bld-001 2>&1)

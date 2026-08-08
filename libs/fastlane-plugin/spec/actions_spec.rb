@@ -112,6 +112,30 @@ RSpec.describe "App Manager actions" do
     Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::PLATFORM_NAME] = nil
   end
 
+  it "creates a Web build with an explicit platform" do
+    build = { "id" => "web-build-1", "status" => "pending" }
+    allow(Fastlane::Helper::AppManagerHelper).to receive(:create_build).and_return(build)
+
+    result = Fastlane::Actions::AppManagerCreateBuildAction.run(
+      request_uuid: "web-request-1",
+      profile_type: "production",
+      platform: "web",
+      app_identifier_id: nil,
+      context: { runner: "webapp" }
+    )
+
+    expect(result).to eq(build)
+    expect(Fastlane::Helper::AppManagerHelper).to have_received(:create_build).with(
+      request_uuid: "web-request-1",
+      profile_type: "production",
+      platform: "web",
+      app_identifier_id: nil,
+      context: { runner: "webapp" }
+    )
+  ensure
+    Fastlane::Actions.lane_context[Fastlane::Actions::SharedValues::APP_MANAGER_BUILD_ID] = nil
+  end
+
   it "appends a newline and reports a terminal build status" do
     allow(Fastlane::Helper::AppManagerHelper).to receive(:append_build_log).and_return("bytes" => 6)
     allow(Fastlane::Helper::AppManagerHelper).to receive(:update_build).and_return(

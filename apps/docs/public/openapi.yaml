@@ -4518,6 +4518,9 @@ components:
           type: string
           format: uuid
           nullable: true
+        platform:
+          $ref: '#/components/schemas/Platform'
+          description: Resolves the default identifier for the selected platform when app_identifier_id is omitted
         context:
           type: object
           additionalProperties: true

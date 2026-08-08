@@ -126,6 +126,36 @@ class BuildApiTest extends TestCase
         $this->assertSame('com.example.default', $build->context_snapshot['target']['identifier']);
     }
 
+    public function test_web_platform_build_without_an_explicit_identifier_uses_the_default(): void
+    {
+        [$user, $team, $app, $first] = $this->context();
+        $first->update([
+            'platform' => Platform::Web,
+            'identifier' => 'preview.example.com',
+            'is_default' => false,
+        ]);
+        $default = AppIdentifier::factory()->create([
+            'mobile_app_id' => $app->id,
+            'platform' => Platform::Web,
+            'identifier' => 'www.example.com',
+            'is_default' => true,
+        ]);
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+
+        $response = $this->postJson($this->api($team, $app, '/builds'), [
+            'request_uuid' => (string) Str::uuid(),
+            'platform' => Platform::Web->value,
+            'profile_type' => ProfileType::Production->value,
+        ])->assertCreated()
+            ->assertJsonPath('data.app_identifier_id', $default->id)
+            ->assertJsonPath('data.context.target.platform', Platform::Web->value)
+            ->assertJsonPath('data.context.target.identifier', 'www.example.com');
+
+        $build = BuildRecord::query()->findOrFail($response->json('data.id'));
+        $this->assertSame($default->id, $build->app_identifier_id);
+        $this->assertSame('www.example.com', $build->context_snapshot['target']['identifier']);
+    }
+
     public function test_platform_build_is_rejected_when_multiple_identifiers_have_no_default(): void
     {
         [$user, $team, $app, $first] = $this->context();

@@ -204,7 +204,7 @@ All subcommands support `--help` for detailed usage and `--dry-run` to preview t
 ```bash
 appmctl builds list [--app APP] [--status STATUS] [--page N]
 appmctl builds get [--app APP] <build-id>
-appmctl builds create [--app APP] --profile TYPE [--platform ios|android] [--app-identifier-id UUID] [--status pending|completed|failed] [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
+appmctl builds create [--app APP] --profile TYPE [--platform ios|android|web] [--app-identifier-id UUID] [--status pending|completed|failed] [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
 appmctl builds cancel [--app APP] <build-id>
 appmctl builds patch [--app APP] <build-id> [--status STATUS] [--expo-build-id ID] [--tag NAME[:#HEX]]
 ```

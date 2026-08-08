@@ -80,14 +80,15 @@ appmctl build failed    --new [--profile TYPE]`} />
       <tr><td><code>--context JSON</code></td><td>Arbitrary JSON recorded with the build, e.g. the commit and runner</td></tr>
       <tr><td><code>--reporting-mode MODE</code></td><td><code>manual</code> (default) or <code>eas</code></td></tr>
       <tr><td><code>--expo-build-id ID</code></td><td>Required when <code>--reporting-mode eas</code></td></tr>
+      <tr><td><code>--platform PLATFORM</code></td><td><code>ios</code>, <code>android</code>, or <code>web</code>. When <code>--app-identifier-id</code> is omitted, selects that platform's default identifier.</td></tr>
       <tr><td><code>--app-identifier-id UUID</code></td><td>Target identifier, when the app has more than one for the profile</td></tr>
       <tr><td><code>--tag NAME[:#HEX]</code></td><td>Attach a tag; repeatable</td></tr>
     </tbody>
   </table>
-  <CodeBlock lang="bash" code={`appmctl builds create --profile production \\
+  <CodeBlock lang="bash" code={`appmctl builds create --platform web --profile production \\
   --request-uuid "$(uuidgen)" \\
   --context '{"runner":"github-actions","commit":"a1b2c3d"}' \\
-  --tag android:#3ddc84 --tag 1.4.0:#f59e0b`} />
+  --tag web:#f59e0b --tag 1.4.0:#8b5cf6`} />
 
   <h3>Tags</h3>
   <p>

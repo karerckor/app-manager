@@ -157,7 +157,7 @@ App Manager also evaluates the team permissions associated with the API key crea
 | `app_manager_delete_file` | Delete a file attached to the app | iOS, Android |
 | `app_manager_list_credentials` | List all credentials for the app | iOS, Android |
 | `app_manager_list_identifiers` | List app identifiers (bundle IDs, package names) | iOS, Android |
-| `app_manager_create_build` | Create an API-managed build in `pending` | iOS, Android |
+| `app_manager_create_build` | Create an API-managed build in `pending` | iOS, Android, Web |
 | `app_manager_build_start` | Mark an API-managed build as `running` | iOS, Android |
 | `app_manager_build_log` | Append plain-text build output | iOS, Android |
 | `app_manager_build_finish` | Finish as `completed`, `failed`, or `cancelled` | iOS, Android |
@@ -178,7 +178,7 @@ App Manager also evaluates the team permissions associated with the API key crea
 | Signing credential actions | `profile_type`, `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
 | Service credential actions | `output_path` | `app_identifier`, `credential_id`, `credential_name`, `overwrite: true` | Credential result hash |
 | `app_manager_download_artifact` | `artifact_id`, `output_path` | `build_id` defaults to lane context, `overwrite: true` | Absolute output path |
-| `app_manager_create_build` | `profile_type` | `platform` defaults to the current lane and resolves its default identifier; `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
+| `app_manager_create_build` | `profile_type` | `platform` accepts `ios`, `android`, or `web`; it defaults to the current mobile lane and resolves the platform's default identifier; `request_uuid` generated when absent, `app_identifier_id`, `context: {}` | Build API resource |
 | `app_manager_build_start` | A resolved build ID | `build_id` defaults to lane context or `APP_MANAGER_BUILD_ID` | Updated build resource |
 | `app_manager_build_log` | `message` and a resolved build ID | `newline: true`, optional `build_id` | Build-log metadata |
 | `app_manager_build_finish` | A resolved build ID | `status: "completed"`; also accepts `failed`, `cancelled` | Updated build resource |
@@ -194,7 +194,8 @@ All download actions require:
 Credential actions accept an optional `app_identifier` (bundle ID or Android package name). When omitted, the plugin requests the configured application's identifiers and uses the declared default for the action platform. Legacy API responses without `is_default` still fall back to the first identifier. Signing actions require a `profile_type`:
 
 - iOS: `development`, `adhoc`, `appstore`, `enterprise`;
-- Android: `development`, `preview`, `production`.
+- Android: `development`, `preview`, `production`;
+- Web: `production`.
 
 iOS-only actions select the default iOS identifier, and Android-only actions select the default Android identifier. `app_manager_download_firebase_config` uses the current Fastlane platform lane (`ios` or `android`). Pass `app_identifier` explicitly when the action should target a non-default identifier.
 

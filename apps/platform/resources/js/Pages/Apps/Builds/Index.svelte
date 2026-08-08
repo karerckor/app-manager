@@ -172,14 +172,24 @@
         </div>
         {#if builds.length}
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[1040px] text-left text-xs">
-                    <thead class="bg-surface-sunken text-[10px] font-bold uppercase text-faint"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Artifacts</th><th class="px-4 py-3">Started</th><th class="px-4 py-3">Duration</th><th class="px-4 py-3">Finished</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
+                <table class="w-full min-w-[1180px] text-left text-xs">
+                    <thead class="bg-surface-sunken text-[10px] font-bold uppercase text-faint"><tr><th class="px-5 py-3">Pipeline</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Profile</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Artifacts</th><th class="px-4 py-3">Started</th><th class="px-4 py-3">Duration</th><th class="px-4 py-3">Finished</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-border-subtle">
                         {#each builds as build (build.id)}
                             <tr class="align-top">
                                 <td class="px-5 py-4">
                                     <div class="flex items-center gap-2"><span class="font-semibold">{build.pipeline_name || 'Manual build'}</span><span class="rounded bg-border-subtle px-1.5 py-0.5 text-[9px] font-bold text-muted uppercase">{build.reporting_mode}</span></div>
                                     <div class="mt-1.5"><TagEditor tags={build.tags} url={build.tags_url} suggestions={allTags} /></div>
+                                </td>
+                                <td class="px-4 py-4">
+                                    {#if build.identifier}
+                                        <Link href={build.identifier.url} class="block max-w-56 hover:text-brand">
+                                            <span class="block text-xs font-semibold">{build.identifier.platform_label}</span>
+                                            <code class="mt-0.5 block truncate text-[10px] text-faint" title={build.identifier.identifier}>{build.identifier.identifier}</code>
+                                        </Link>
+                                    {:else}
+                                        <span class="text-[10px] text-faint">No identifier</span>
+                                    {/if}
                                 </td>
                                 <td class="px-4 py-4 text-muted">{build.profile_type}</td>
                                 <!-- Pills carry vertical padding and a full radius, so a label that
