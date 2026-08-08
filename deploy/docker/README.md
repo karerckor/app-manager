@@ -32,6 +32,7 @@ automatic TLS for `APP_DOMAIN`.
 | Platform-held secrets only | `CREDENTIAL_STORAGE_MODES=local` |
 | Both (default) | `CREDENTIAL_STORAGE_MODES=local,external` |
 | Secrets never traverse the API | `CREDENTIALS_API_PROFILE=dashboard_only` |
+| Create members without email invitations | `TEAM_INVITATIONS_ENABLED=false` |
 
 Changing any of these is `docker compose up -d` away: the containers are
 recreated and the new configuration is picked up at boot.

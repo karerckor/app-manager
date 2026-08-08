@@ -15,12 +15,14 @@ use App\Models\Team;
 use App\Models\User;
 use App\Support\Audit\ActorContext;
 use App\Support\Audit\ActorContextManager;
+use App\Support\Builds\BuildLifecycle;
 use Illuminate\Support\Facades\DB;
 
 class CreateManualBuild
 {
     public function __construct(
         private readonly WebhookEventRecorder $webhookEvents,
+        private readonly BuildLifecycle $lifecycle,
     ) {}
 
     /** @param array<string, mixed> $context */
@@ -34,6 +36,7 @@ class CreateManualBuild
         array $context = [],
         array $parameters = [],
         string $source = 'api',
+        BuildStatus $status = BuildStatus::Pending,
     ): BuildRecord {
         $existing = BuildRecord::query()
             ->where('team_id', $team->id)
@@ -62,6 +65,7 @@ class CreateManualBuild
             $context,
             $parameters,
             $source,
+            $status,
         ) {
             $build = BuildRecord::create([
                 'team_id' => $team->id,
@@ -98,6 +102,14 @@ class CreateManualBuild
                 WebhookPayload::build($build),
                 ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
             );
+
+            if ($status->isTerminal()) {
+                return $this->lifecycle->finish(
+                    $build,
+                    $status,
+                    actor: ActorContext::forUser($user, app(ActorContextManager::class)->current()->source),
+                );
+            }
 
             return $build->refresh();
         });

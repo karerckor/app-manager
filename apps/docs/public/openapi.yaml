@@ -1250,7 +1250,8 @@ paths:
       operationId: createBuild
       summary: Create build
       description: |
-        Create a manual build in `pending` status.
+        Create a manual build. The status defaults to `pending`; pass `completed`
+        or `failed` to create a build that is already finished.
         Creation is idempotent per team + `request_uuid` pair.
         `parameters` is an arbitrary JSON object up to 64 KB.
       tags: [Builds & Logs]
@@ -1301,9 +1302,12 @@ paths:
 
     patch:
       operationId: updateBuild
-      summary: Update build status
+      summary: Update a build or hand it off to EAS
       description: |
-        Update build status. Only allowed for manual builds.
+        Update build status, replace tags, or attach an Expo build ID to a manual
+        build. Attaching `expo_build_id` switches the record to EAS reporting,
+        preserves its existing manual logs, and starts polling Expo for status,
+        logs, and artifacts.
         Automatic builds return 409 for manual status writes.
         Terminal transitions (to completed/failed/cancelled) on already-finished builds return 409.
       tags: [Builds & Logs]
@@ -4503,6 +4507,10 @@ components:
           format: uuid
         profile_type:
           $ref: '#/components/schemas/ProfileType'
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          default: pending
         app_identifier_id:
           type: string
           format: uuid
@@ -4517,11 +4525,25 @@ components:
 
     UpdateBuild:
       type: object
-      required: [status]
+      anyOf:
+        - required: [status]
+        - required: [expo_build_id]
+        - required: [tags]
       properties:
         status:
           type: string
           enum: [running, completed, failed, cancelled]
+        expo_build_id:
+          type: string
+          description: Expo build ID; switches a manual build to EAS reporting
+        tags:
+          type: array
+          items:
+            type: array
+            minItems: 1
+            maxItems: 2
+            items:
+              type: string
 
     BuildLog:
       type: object
@@ -5168,7 +5190,7 @@ components:
 
     BuildReportingMode:
       type: string
-      enum: [manual, automatic]
+      enum: [manual, automatic, eas]
 
     ProfileType:
       type: string

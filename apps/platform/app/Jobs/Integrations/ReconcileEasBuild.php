@@ -26,6 +26,8 @@ class ReconcileEasBuild implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
 
+    private const HANDOFF_LOG_HEADER = '--- EAS build logs ---';
+
     public int $tries = 3;
 
     /** @var list<int> */
@@ -178,7 +180,9 @@ class ReconcileEasBuild implements ShouldBeUniqueUntilProcessing, ShouldQueue
             ]);
         }
 
-        if ($logContent === '' && $build->log_output === null) {
+        $isManualHandoff = $this->isManualHandoff($build);
+
+        if ($logContent === '' && ($build->log_output === null || $isManualHandoff)) {
             $logContent = $this->buildSummary($easBuild);
         }
 
@@ -186,17 +190,46 @@ class ReconcileEasBuild implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
+        $combinedLogContent = $isManualHandoff
+            ? $this->combineWithManualLogs($build, $logContent)
+            : $logContent;
+
         $build->update([
-            'log_output' => $logContent,
+            'log_output' => $combinedLogContent,
             'logs_updated_at' => now(),
         ]);
 
         // Inline logs beyond the manual-log ceiling make the build page
         // unrenderable; move them to the archive download instead.
-        if (strlen($logContent) > BuildLog::MAX_TOTAL_BYTES) {
+        if (strlen($combinedLogContent) > BuildLog::MAX_TOTAL_BYTES) {
             app(BuildLogArchive::class)->archive($build);
             $build->refresh();
         }
+    }
+
+    private function isManualHandoff(BuildRecord $build): bool
+    {
+        $easContext = data_get($build->context_snapshot, 'eas');
+
+        return is_array($easContext) && array_key_exists('preserved_manual_log_bytes', $easContext);
+    }
+
+    private function combineWithManualLogs(BuildRecord $build, string $easLogs): string
+    {
+        $preservedBytes = max(0, (int) data_get(
+            $build->context_snapshot,
+            'eas.preserved_manual_log_bytes',
+            0,
+        ));
+        $manualLogs = substr((string) $build->log_output, 0, $preservedBytes);
+
+        if ($manualLogs === '') {
+            return $easLogs;
+        }
+
+        $separator = str_ends_with($manualLogs, "\n") ? "\n" : "\n\n";
+
+        return $manualLogs.$separator.self::HANDOFF_LOG_HEADER."\n".$easLogs;
     }
 
     /** @param array<string, mixed> $easBuild */

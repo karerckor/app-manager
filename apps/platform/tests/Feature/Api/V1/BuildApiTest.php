@@ -7,12 +7,15 @@ use App\Enums\ApiKeyScope;
 use App\Enums\BuildReportingMode;
 use App\Enums\BuildStatus;
 use App\Enums\ProfileType;
+use App\Enums\WebhookEventType;
 use App\Models\AppIdentifier;
 use App\Models\BuildRecord;
 use App\Models\MobileApp;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\WebhookEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -67,6 +70,51 @@ class BuildApiTest extends TestCase
         $this->assertNotNull($build->logs_updated_at);
     }
 
+    public function test_runner_can_create_a_manual_build_in_a_terminal_status(): void
+    {
+        Queue::fake();
+        config(['integrations.enabled' => true, 'integrations.webhooks.enabled' => true]);
+        [$user, $team, $app] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+        $url = $this->api($team, $app, '/builds');
+
+        foreach ([BuildStatus::Completed, BuildStatus::Failed] as $status) {
+            $response = $this->postJson($url, [
+                'request_uuid' => (string) Str::uuid(),
+                'profile_type' => ProfileType::Production->value,
+                'status' => $status->value,
+            ])
+                ->assertCreated()
+                ->assertJsonPath('data.status', $status->value)
+                ->assertJsonPath('data.started_at', null);
+
+            $build = BuildRecord::query()->findOrFail($response->json('data.id'));
+            $this->assertSame($status, $build->status);
+            $this->assertNotNull($build->finished_at);
+        }
+
+        $this->assertSame(2, WebhookEvent::query()->where('event_type', WebhookEventType::BuildCreated)->count());
+        $this->assertSame(2, WebhookEvent::query()->where('event_type', WebhookEventType::BuildCompleted)->count());
+    }
+
+    public function test_terminal_status_cannot_be_set_when_creating_an_eas_build(): void
+    {
+        [$user, $team, $app] = $this->context();
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+
+        $this->postJson($this->api($team, $app, '/builds'), [
+            'request_uuid' => (string) Str::uuid(),
+            'profile_type' => ProfileType::Production->value,
+            'reporting_mode' => 'eas',
+            'expo_build_id' => 'eas-build-id',
+            'status' => BuildStatus::Completed->value,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertDatabaseCount('build_records', 0);
+    }
+
     public function test_build_and_log_read_scopes_are_independent(): void
     {
         [$user, $team, $app] = $this->context();
@@ -107,6 +155,26 @@ class BuildApiTest extends TestCase
         $this->postJson($buildUrl.'/logs', ['content' => 'spoofed'])->assertStatus(409);
         $this->assertSame(BuildStatus::Pending, $build->refresh()->status);
         $this->assertNull($build->log_output);
+    }
+
+    public function test_automatic_build_cannot_be_switched_to_eas_reporting(): void
+    {
+        [$user, $team, $app] = $this->context();
+        $build = BuildRecord::factory()->create([
+            'team_id' => $team->id,
+            'mobile_app_id' => $app->id,
+            'app_identifier_id' => null,
+            'reporting_mode' => BuildReportingMode::Automatic,
+        ]);
+        $this->authenticate($user, $team, [ApiKeyScope::BuildsWrite]);
+
+        $this->patchJson($this->api($team, $app, '/builds/'.$build->id), [
+            'expo_build_id' => 'eas-build-id',
+        ])->assertStatus(409);
+
+        $build->refresh();
+        $this->assertSame(BuildReportingMode::Automatic, $build->reporting_mode);
+        $this->assertNull($build->expo_build_id);
     }
 
     public function test_cancelling_an_api_build_waits_for_runner_confirmation(): void

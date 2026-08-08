@@ -1,6 +1,6 @@
 <script>
     import { router, useForm } from '@inertiajs/svelte';
-    import { Check, MailPlus, Search, ShieldCheck, UserMinus, Users, X } from '@lucide/svelte';
+    import { Check, MailPlus, Search, ShieldCheck, UserMinus, UserPlus, Users, X } from '@lucide/svelte';
     import WorkspacePage from '../../Components/WorkspacePage.svelte';
     import Select from '../../Components/Select.svelte';
 
@@ -12,12 +12,14 @@
     export let invitations = [];
     export let roles = [];
     export let canManage = false;
+    export let invitationsEnabled = true;
     export let checkCredentialUniquenessByDefault = true;
     export let storageModes = { instance: [], selected: null };
     export let updateTeamUrl;
     export let inviteUrl;
+    export let memberStoreUrl;
 
-    let showInvite = false;
+    let showAddMember = false;
     let search = '';
     const renameForm = useForm({ name: navigationTeam?.name ?? '' });
     const uniquenessForm = useForm({
@@ -26,7 +28,13 @@
     const storageModesForm = useForm({
         allowed_credential_storage_modes: storageModes.selected,
     });
-    const inviteForm = useForm({ email: '', role: 'contributor' });
+    const memberForm = useForm({
+        name: '',
+        email: '',
+        password: '',
+        password_confirmation: '',
+        role: 'contributor',
+    });
 
     $: filteredMembers = members.filter((member) =>
         `${member.name} ${member.email}`.toLowerCase().includes(search.trim().toLowerCase())
@@ -43,17 +51,18 @@
             : current.filter((mode) => mode !== value);
     };
     const saveStorageModes = () => storageModesForm.patch(updateTeamUrl, { preserveScroll: true });
-    const sendInvite = () => inviteForm.post(inviteUrl, {
+    const submitMember = () => memberForm.post(invitationsEnabled ? inviteUrl : memberStoreUrl, {
         preserveScroll: true,
         onSuccess: () => {
-            inviteForm.reset();
-            inviteForm.role = 'contributor';
-            showInvite = false;
+            memberForm.reset();
+            memberForm.role = 'contributor';
+            showAddMember = false;
         },
     });
-    const closeInvite = () => {
-        showInvite = false;
-        inviteForm.clearErrors();
+    const closeAddMember = () => {
+        showAddMember = false;
+        memberForm.clearErrors();
+        memberForm.reset('password', 'password_confirmation');
     };
     const changeRole = (member, role) => router.patch(member.update_url, { role }, { preserveScroll: true });
     const removeMember = (member) => {
@@ -73,9 +82,14 @@
 <WorkspacePage {auth} {navigationTeams} {navigationTeam} active="team" eyebrow="Workspace settings" title="Team access" description="Manage who can access this workspace and what they can do." {flash}>
     {#snippet actions()}
         {#if canManage}
-            <button class="flex items-center gap-2" on:click={() => showInvite = true}>
-                <MailPlus class="h-4 w-4" strokeWidth={2.2} />
-                Invite member
+            <button class="flex items-center gap-2" on:click={() => showAddMember = true}>
+                {#if invitationsEnabled}
+                    <MailPlus class="h-4 w-4" strokeWidth={2.2} />
+                    Invite member
+                {:else}
+                    <UserPlus class="h-4 w-4" strokeWidth={2.2} />
+                    Create member
+                {/if}
             </button>
         {/if}
     {/snippet}
@@ -208,7 +222,7 @@
                     </section>
                 {/if}
 
-                {#if canManage}
+                {#if canManage && invitationsEnabled}
                     <section class="card overflow-hidden p-0">
                         <div class="border-b border-border px-5 py-4">
                             <h2 class="text-sm font-bold">Pending invitations <span class="ml-1 font-medium text-muted">{invitations.length}</span></h2>
@@ -233,19 +247,35 @@
         </div>
 </WorkspacePage>
 
-{#if showInvite}
-    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeInvite()}>
-        <form class="modal" on:submit|preventDefault={sendInvite}>
+{#if showAddMember}
+    <div class="modal-backdrop" role="presentation" on:click={(event) => event.target === event.currentTarget && closeAddMember()}>
+        <form class="modal" on:submit|preventDefault={submitMember}>
             <div class="flex items-start justify-between border-b border-border px-6 py-5">
-                <div><h2 class="text-lg font-bold">Invite a team member</h2><p class="mt-1 text-sm text-muted">They will receive an email valid for 7 days.</p></div>
-                <button type="button" class="ghost -mr-2 p-2" on:click={closeInvite} aria-label="Close"><X class="h-4 w-4" /></button>
+                <div>
+                    <h2 class="text-lg font-bold">{invitationsEnabled ? 'Invite a team member' : 'Create a team member'}</h2>
+                    <p class="mt-1 text-sm text-muted">{invitationsEnabled ? 'They will receive an email valid for 7 days.' : 'Create their login and give them immediate access.'}</p>
+                </div>
+                <button type="button" class="ghost -mr-2 p-2" on:click={closeAddMember} aria-label="Close"><X class="h-4 w-4" /></button>
             </div>
             <div class="space-y-5 p-6">
-                <label><span class="label">Email address</span><input type="email" bind:value={inviteForm.email} placeholder="teammate@company.com" required />{#if inviteForm.errors.email}<span class="error">{inviteForm.errors.email}</span>{/if}</label>
-                <label><span class="label">Role</span><Select bind:value={inviteForm.role} options={roles} ariaLabel="Role" />{#if inviteForm.errors.role}<span class="error">{inviteForm.errors.role}</span>{/if}</label>
+                {#if !invitationsEnabled}
+                    <label><span class="label">Full name</span><input bind:value={memberForm.name} autocomplete="name" placeholder="Alex Morgan" required />{#if memberForm.errors.name}<span class="error">{memberForm.errors.name}</span>{/if}</label>
+                {/if}
+                <label><span class="label">Email address</span><input type="email" bind:value={memberForm.email} autocomplete="email" placeholder="teammate@company.com" required />{#if memberForm.errors.email}<span class="error">{memberForm.errors.email}</span>{/if}</label>
+                {#if !invitationsEnabled}
+                    <div class="grid gap-5 sm:grid-cols-2">
+                        <label><span class="label">Initial password</span><input type="password" bind:value={memberForm.password} autocomplete="new-password" minlength="8" required />{#if memberForm.errors.password}<span class="error">{memberForm.errors.password}</span>{/if}</label>
+                        <label><span class="label">Confirm password</span><input type="password" bind:value={memberForm.password_confirmation} autocomplete="new-password" minlength="8" required />{#if memberForm.password_confirmation && memberForm.password !== memberForm.password_confirmation}<span class="error">Passwords do not match.</span>{/if}</label>
+                    </div>
+                    <p class="rounded-md border border-border bg-surface-sunken px-3 py-2.5 text-xs leading-5 text-muted">Share the initial password securely. The member can change it after signing in.</p>
+                {/if}
+                <label><span class="label">Role</span><Select bind:value={memberForm.role} options={roles} ariaLabel="Role" />{#if memberForm.errors.role}<span class="error">{memberForm.errors.role}</span>{/if}</label>
                 <div class="rounded-md bg-surface-sunken p-3 text-xs leading-5 text-muted"><strong class="text-text">Admin</strong> manages the workspace and team. <strong class="text-text">Contributor</strong> manages credentials. <strong class="text-text">Viewer</strong> has read-only access.</div>
             </div>
-            <div class="flex justify-end gap-3 border-t border-border bg-surface-sunken px-6 py-4"><button type="button" class="secondary" on:click={closeInvite}>Cancel</button><button disabled={inviteForm.processing}>{inviteForm.processing ? 'Sending…' : 'Send invitation'}</button></div>
+            <div class="flex justify-end gap-3 border-t border-border bg-surface-sunken px-6 py-4">
+                <button type="button" class="secondary" on:click={closeAddMember}>Cancel</button>
+                <button disabled={memberForm.processing || (!invitationsEnabled && memberForm.password !== memberForm.password_confirmation)}>{memberForm.processing ? (invitationsEnabled ? 'Sending…' : 'Creating…') : (invitationsEnabled ? 'Send invitation' : 'Create member')}</button>
+            </div>
         </form>
     </div>
 {/if}

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\Builds\AttachEasBuild;
 use App\Actions\Builds\CreateEasBuild;
 use App\Actions\Builds\CreateManualBuild;
 use App\Actions\Integrations\RequestPipelineBuildCancellation;
@@ -49,6 +50,15 @@ class BuildController extends Controller
             'request_uuid' => ['required', 'uuid'],
             'profile_type' => ['required', Rule::enum(ProfileType::class)],
             'reporting_mode' => ['sometimes', Rule::in(['manual', 'eas'])],
+            'status' => [
+                'sometimes',
+                Rule::in([
+                    BuildStatus::Pending->value,
+                    BuildStatus::Completed->value,
+                    BuildStatus::Failed->value,
+                ]),
+                Rule::prohibitedIf(fn () => $request->input('reporting_mode', 'manual') !== 'manual'),
+            ],
             'expo_build_id' => ['required_if:reporting_mode,eas', 'nullable', 'string'],
             'app_identifier_id' => ['nullable', 'uuid'],
             'context' => ['sometimes', 'array'],
@@ -94,6 +104,7 @@ class BuildController extends Controller
                 $identifier,
                 $data['context'] ?? [],
                 $data['parameters'] ?? [],
+                status: BuildStatus::from($data['status'] ?? BuildStatus::Pending->value),
             );
         }
 
@@ -117,30 +128,40 @@ class BuildController extends Controller
         MobileApp $mobileApp,
         BuildRecord $buildRecord,
         BuildLifecycle $lifecycle,
+        AttachEasBuild $attachEasBuild,
     ): BuildRecordResource|JsonResponse {
         $this->assertBuild($team, $mobileApp, $buildRecord);
         $data = $request->validate([
             ...TagRules::rules(),
-            'status' => ['required_without:tags', Rule::in([
-                BuildStatus::Running->value,
-                BuildStatus::Completed->value,
-                BuildStatus::Failed->value,
-                BuildStatus::Cancelled->value,
-            ])],
-            'tags' => ['required_without:status', 'array'],
+            'status' => [
+                'required_without_all:tags,expo_build_id',
+                Rule::prohibitedIf(fn () => $request->filled('expo_build_id')),
+                Rule::in([
+                    BuildStatus::Running->value,
+                    BuildStatus::Completed->value,
+                    BuildStatus::Failed->value,
+                    BuildStatus::Cancelled->value,
+                ]),
+            ],
+            'tags' => ['required_without_all:status,expo_build_id', 'array'],
+            'expo_build_id' => ['required_without_all:status,tags', 'string', 'max:255'],
         ]);
         $build = $buildRecord;
+
+        if (isset($data['expo_build_id'])) {
+            $build = $attachEasBuild->handle($team, $mobileApp, $buildRecord, $data['expo_build_id']);
+        }
 
         // Tags are metadata, so they stay writable on automatically reported
         // builds; only the lifecycle itself is off limits there.
         if (isset($data['status'])) {
-            abort_unless($buildRecord->reporting_mode === BuildReportingMode::Manual, 409, 'This build is managed automatically.');
+            abort_unless($build->reporting_mode === BuildReportingMode::Manual, 409, 'This build is managed automatically.');
             $status = BuildStatus::from($data['status']);
 
             try {
                 $build = $status === BuildStatus::Running
-                    ? $lifecycle->start($buildRecord)
-                    : $lifecycle->finish($buildRecord, $status);
+                    ? $lifecycle->start($build)
+                    : $lifecycle->finish($build, $status);
             } catch (InvalidBuildTransition $exception) {
                 return response()->json(['message' => $exception->getMessage()], 409);
             }

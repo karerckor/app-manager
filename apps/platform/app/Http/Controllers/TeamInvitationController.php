@@ -23,6 +23,8 @@ class TeamInvitationController extends Controller
 
     public function show(Request $request, TeamInvitation $invitation): Response
     {
+        $this->ensureInvitationsEnabled();
+
         return Inertia::render('Team/AcceptInvitation', [
             'invitation' => [
                 'email' => $invitation->email,
@@ -40,6 +42,7 @@ class TeamInvitationController extends Controller
 
     public function store(Request $request, Team $team): RedirectResponse
     {
+        $this->ensureInvitationsEnabled();
         $this->authorizeManagement($request, $team);
 
         $data = $request->validate([
@@ -80,6 +83,7 @@ class TeamInvitationController extends Controller
 
     public function destroy(Request $request, Team $team, TeamInvitation $invitation): RedirectResponse
     {
+        $this->ensureInvitationsEnabled();
         $this->authorizeManagement($request, $team);
         abort_unless($invitation->team_id === $team->id && $invitation->isPending(), 404);
 
@@ -90,6 +94,7 @@ class TeamInvitationController extends Controller
 
     public function accept(Request $request, TeamInvitation $invitation): RedirectResponse
     {
+        $this->ensureInvitationsEnabled();
         abort_unless(hash_equals(mb_strtolower($invitation->email), mb_strtolower($request->user()->email)), 403);
 
         DB::transaction(function () use ($request, $invitation) {
@@ -109,5 +114,10 @@ class TeamInvitationController extends Controller
     private function authorizeManagement(Request $request, Team $team): void
     {
         abort_unless($team->allows($request->user(), TeamPermission::ManageTeam), 403);
+    }
+
+    private function ensureInvitationsEnabled(): void
+    {
+        abort_unless(config('team.invitations_enabled', true), 404);
     }
 }

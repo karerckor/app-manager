@@ -74,7 +74,7 @@ For repository development, `php artisan db:seed` is another local-only option. 
 
 ## What it provides
 
-- A multi-team web application with registration, login, two-factor authentication, invitations, and role-based permissions.
+- A multi-team web application with registration, login, two-factor authentication, configurable invitations or direct member creation, and role-based permissions.
 - Application records with iOS bundle identifiers, Android package names, Web domains, versions, icons, splash screens, and tags.
 - Typed signing and service credentials for Apple, Android, Firebase, APNs, App Store Connect, and Google Play.
 - GitHub Actions, GitLab CI/CD, and Expo EAS Workflows connections with project/repository, pipeline, ref, and input discovery.

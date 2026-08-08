@@ -48,7 +48,8 @@ Actions:
 Options:
   --app APP           App slug (default: APP_MANAGER_APP)
   --build-id ID       Build ID (required for get, cancel, patch)
-  --status STATUS     Filter by status (list) or set status (patch)
+  --status STATUS     Filter by status (list), or set initial/new status
+  --expo-build-id ID  Hand a manual build off to EAS (patch)
   --profile TYPE      Build profile type (create)
   --request-uuid UUID Idempotency key (create)
   --context JSON      Build context metadata (create)
@@ -69,13 +70,15 @@ Lifecycle aliases:
   completed           Set the build status to completed
   failed              Set the build status to failed
 
-BUILD_ID defaults to APP_MANAGER_BUILD_ID when omitted. These commands are
-short aliases for "appmctl builds patch BUILD_ID --status STATUS" and apply to
-manually reported builds only.
+BUILD_ID defaults to APP_MANAGER_BUILD_ID when omitted. Without --new these
+commands are short aliases for "appmctl builds patch BUILD_ID --status STATUS"
+and apply to manually reported builds only.
 
 Examples:
   appmctl build start
   appmctl build completed "$APP_MANAGER_BUILD_ID"
+  appmctl build completed --new
+  appmctl build failed --new --profile preview
   appmctl build failed --app customer-app bld-abc123
 EOF
 }
@@ -86,12 +89,16 @@ build_action_usage() {
 
   cat <<EOF
 Usage:
-  appmctl build $action [build-id] [--app APP] [--tag NAME[:#HEX]]
+  appmctl build $action [build-id] [--app APP] [--tag NAME[:#HEX]] [--new]
 
 Set a manually reported build's status to $status. BUILD_ID defaults to
 APP_MANAGER_BUILD_ID when omitted.
 
-Equivalent to:
+For completed and failed, --new creates a build directly in that status instead
+of updating an existing build. The new build uses the production profile unless
+--profile TYPE is provided.
+
+Without --new, equivalent to:
   appmctl builds patch BUILD_ID --status $status
 EOF
 }
@@ -132,6 +139,7 @@ Create a build. Defaults to manual reporting mode.
 
 Options:
   --profile TYPE           Build profile (e.g. production, staging, appstore)
+  --status STATUS          Initial status: pending, completed, or failed
   --request-uuid UUID      Idempotency key for CI retries
   --context JSON           Inline JSON context/metadata
   --reporting-mode MODE    Build reporting mode: manual (default) or eas
@@ -141,6 +149,7 @@ Options:
 
 Examples:
   appmctl builds create --app customer-app --profile production
+  appmctl builds create --profile production --status completed
   appmctl builds create --profile staging --request-uuid "$(uuidgen)"
   appmctl builds create --profile production --context '{"runner":"github"}'
   appmctl builds create --profile production --reporting-mode eas --expo-build-id "abc-123"
@@ -163,19 +172,21 @@ EOF
 builds_patch_usage() {
   cat <<'EOF'
 Usage:
-  appmctl builds patch [--app APP] <build-id> [--status STATUS] [--tag NAME[:#HEX]]
+  appmctl builds patch [--app APP] <build-id> [--status STATUS] [--expo-build-id ID] [--tag NAME[:#HEX]]
 
-Update a build's status and/or its tags. At least one of --status or --tag is
-required. Status transitions apply to manually reported builds only; tags can be
-set on any build.
+Update a build's status or tags, or hand a manual build off to EAS. At least one
+update option is required. Status transitions apply to manually reported builds
+only; tags can be set on any build.
 
 Options:
-  --status STATUS     New status: running, completed, failed, cancelled
-  --tag NAME[:#HEX]   Replace the tag set; repeatable (e.g. --tag ios:#3b82f6)
+  --status STATUS      New status: running, completed, failed, cancelled
+  --expo-build-id ID   Switch a manual build to EAS reporting and start polling
+  --tag NAME[:#HEX]    Replace the tag set; repeatable (e.g. --tag ios:#3b82f6)
 
 Examples:
   appmctl builds patch bld-abc123 --status completed
   appmctl builds patch bld-abc123 --status failed
+  appmctl builds patch bld-abc123 --expo-build-id 22222222-3333-4444-5555-666666666666
   appmctl builds patch bld-abc123 --tag ios:#3b82f6 --tag 1.0.0
 EOF
 }
@@ -260,6 +271,8 @@ _build_status_alias() {
   shift 2
 
   local has_build_id=0
+  local create_new=0
+  local has_profile=0
   local skip_value=0
   local arg
 
@@ -272,14 +285,31 @@ _build_status_alias() {
     fi
 
     case "$arg" in
-      --app|--tag|-o|--output) skip_value=1 ;;
-      --app=*|--tag=*|--dry-run|--json|--force) ;;
+      --profile) has_profile=1; skip_value=1 ;;
+      --app|--tag|--request-uuid|--context|--app-identifier-id|-o|--output) skip_value=1 ;;
+      --profile=*) has_profile=1 ;;
+      --app=*|--tag=*|--request-uuid=*|--context=*|--app-identifier-id=*|--dry-run|--json|--force) ;;
+      --new) create_new=1 ;;
       --status|--status=*) die "appmctl build $action fixes the status to $status; do not pass --status" ;;
       -h|--help) build_action_usage "$action" "$status"; return 0 ;;
       -*) ;;
       *) has_build_id=1 ;;
     esac
   done
+
+  if [ "$create_new" -eq 1 ]; then
+    [ "$status" != "running" ] || die "--new is only supported by appmctl build completed and appmctl build failed"
+    [ "$has_build_id" -eq 0 ] || die "do not pass a build ID with --new"
+
+    local create_args=()
+    for arg in "$@"; do
+      [ "$arg" = "--new" ] || create_args+=("$arg")
+    done
+    [ "$has_profile" -eq 1 ] || create_args+=(--profile production)
+
+    _builds_create "${create_args[@]}" --status "$status"
+    return
+  fi
 
   if [ "$has_build_id" -eq 0 ]; then
     [ -n "${APP_MANAGER_BUILD_ID:-}" ] \
@@ -386,6 +416,7 @@ _builds_get() {
 _builds_create() {
   local app="${APP:-}"
   local profile=""
+  local initial_status=""
   local request_uuid=""
   local context=""
   local reporting_mode="manual"
@@ -400,6 +431,8 @@ _builds_create() {
       --app=*) app=${1#*=}; shift ;;
       --profile) require_value "$1" "$2"; profile="$2"; shift 2 ;;
       --profile=*) profile=${1#*=}; shift ;;
+      --status) require_value "$1" "$2"; initial_status="$2"; shift 2 ;;
+      --status=*) initial_status=${1#*=}; shift ;;
       --request-uuid) require_value "$1" "$2"; request_uuid="$2"; shift 2 ;;
       --request-uuid=*) request_uuid=${1#*=}; shift ;;
       --context) require_value "$1" "$2"; context="$2"; shift 2 ;;
@@ -428,8 +461,15 @@ _builds_create() {
     manual|eas) ;;
     *) die "--reporting-mode must be 'manual' or 'eas'" ;;
   esac
+  case "$initial_status" in
+    ""|pending|completed|failed) ;;
+    *) die "--status must be 'pending', 'completed', or 'failed'" ;;
+  esac
   if [ "$reporting_mode" = "eas" ] && [ -z "$expo_build_id" ]; then
     die "--expo-build-id is required when --reporting-mode=eas"
+  fi
+  if [ "$reporting_mode" = "eas" ] && [ -n "$initial_status" ]; then
+    die "--status is only available for manually reported builds"
   fi
 
   # Validate tags before anything else is allocated. Assign separately:
@@ -447,6 +487,11 @@ _builds_create() {
 
   local jq_args=(--arg pid "$request_uuid" --arg pf "$profile" --arg rm "$reporting_mode")
   local jq_filter='{request_uuid: $pid, profile_type: $pf, reporting_mode: $rm'
+
+  if [ -n "$initial_status" ]; then
+    jq_args+=(--arg st "$initial_status")
+    jq_filter="$jq_filter, status: \$st"
+  fi
 
   if [ -n "$expo_build_id" ]; then
     jq_args+=(--arg eid "$expo_build_id")
@@ -538,6 +583,7 @@ _builds_patch() {
   local app="${APP:-}"
   local build_id=""
   local new_status=""
+  local expo_build_id=""
   local tag_specs=()
 
   while [ "$#" -gt 0 ]; do
@@ -546,6 +592,8 @@ _builds_patch() {
       --app=*) app=${1#*=}; shift ;;
       --status) require_value "$1" "$2"; new_status="$2"; shift 2 ;;
       --status=*) new_status=${1#*=}; shift ;;
+      --expo-build-id) require_value "$1" "$2"; expo_build_id="$2"; shift 2 ;;
+      --expo-build-id=*) expo_build_id=${1#*=}; shift ;;
       --tag) require_value "$1" "$2"; tag_specs+=("$2"); shift 2 ;;
       --tag=*) tag_specs+=("${1#*=}"); shift ;;
       --dry-run) DRY_RUN=1; shift ;;
@@ -565,8 +613,11 @@ _builds_patch() {
   APP="$app"
   require_app
   [ -n "$build_id" ] || die "build ID is required"
-  if [ -z "$new_status" ] && [ "${#tag_specs[@]}" -eq 0 ]; then
-    die "--status or --tag is required"
+  if [ -z "$new_status" ] && [ -z "$expo_build_id" ] && [ "${#tag_specs[@]}" -eq 0 ]; then
+    die "--status, --expo-build-id, or --tag is required"
+  fi
+  if [ -n "$new_status" ] && [ -n "$expo_build_id" ]; then
+    die "--status and --expo-build-id cannot be used together"
   fi
   validate_slug "build ID" "$build_id"
 
@@ -589,9 +640,17 @@ _builds_patch() {
     jq_filter="${jq_filter}status: \$st"
   fi
 
+  if [ -n "$expo_build_id" ]; then
+    jq_args+=(--arg eid "$expo_build_id")
+    [ -n "$new_status" ] && jq_filter="$jq_filter, "
+    jq_filter="${jq_filter}expo_build_id: \$eid"
+  fi
+
   if [ -n "$tags_json" ]; then
     jq_args+=(--argjson tags "$tags_json")
-    [ -n "$new_status" ] && jq_filter="$jq_filter, "
+    if [ -n "$new_status" ] || [ -n "$expo_build_id" ]; then
+      jq_filter="$jq_filter, "
+    fi
     jq_filter="${jq_filter}tags: \$tags"
   fi
 
@@ -614,6 +673,8 @@ _builds_patch() {
   rm -f -- "$body_file"
   if [ -n "$new_status" ]; then
     printf 'Build %s updated to %s\n' "$build_id" "$new_status"
+  elif [ -n "$expo_build_id" ]; then
+    printf 'Build %s switched to EAS build %s\n' "$build_id" "$expo_build_id"
   else
     printf 'Build %s tags updated\n' "$build_id"
   fi

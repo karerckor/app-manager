@@ -97,6 +97,15 @@ request_body=$(grep -o '"status":"completed"' "$MOCK_LOG" || true)
 [ -n "$request_body" ] || fail 'builds patch sends status in body'
 pass 'builds patch'
 
+# --- manual build handoff to EAS ---
+: >"$MOCK_LOG"
+output=$("$CLI" builds patch --app customer-app bld-001 --expo-build-id eas-build-123 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$output" 'switched to EAS build eas-build-123' 'builds patch reports EAS handoff'
+assert_contains "$log_line" '"expo_build_id":"eas-build-123"' 'builds patch sends the Expo build ID'
+assert_not_contains "$log_line" '"status"' 'EAS handoff does not send a manual status'
+pass 'builds patch hands a manual build off to EAS'
+
 # --- build lifecycle aliases ---
 : >"$MOCK_LOG"
 output=$("$CLI" build start --app customer-app 2>&1)
@@ -119,6 +128,23 @@ output=$("$CLI" build failed --app customer-app 2>&1)
 assert_contains "$output" 'updated to failed' 'build failed prints the failed status'
 assert_contains "$(cat "$MOCK_LOG")" '"status":"failed"' 'build failed sends failed status'
 pass 'build failed alias'
+
+: >"$MOCK_LOG"
+output=$(APP_MANAGER_BUILD_ID='' "$CLI" build completed --new --app customer-app 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$output" 'bld-003' 'build completed --new prints the new build'
+assert_contains "$log_line" $'POST\thttps://manager.example/api/v1/mobile-team/apps/customer-app/builds' 'build completed --new creates a build'
+assert_contains "$log_line" '"status": "completed"' 'build completed --new sends completed status'
+assert_contains "$log_line" '"profile_type": "production"' 'build completed --new defaults to production profile'
+pass 'build completed --new alias'
+
+: >"$MOCK_LOG"
+output=$(APP_MANAGER_BUILD_ID='' "$CLI" build failed --new --profile preview 2>&1)
+log_line=$(cat "$MOCK_LOG")
+assert_contains "$output" 'bld-003' 'build failed --new prints the new build'
+assert_contains "$log_line" '"status": "failed"' 'build failed --new sends failed status'
+assert_contains "$log_line" '"profile_type": "preview"' 'build failed --new accepts an explicit profile'
+pass 'build failed --new alias'
 
 build_help=$("$CLI" build --help 2>&1)
 assert_contains "$build_help" 'APP_MANAGER_BUILD_ID' 'build help documents the default build ID'
@@ -185,4 +211,4 @@ assert_contains "$output" 'android, 1.4.0' 'builds get prints tag names'
 assert_contains "$output" 'completed' 'builds get prints the status'
 pass 'builds get default output'
 
-printf '1..17\n'
+printf '1..20\n'

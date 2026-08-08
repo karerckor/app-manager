@@ -41,6 +41,27 @@ appmctl builds create \\
 #   "expo_build_id": "22222222-3333-4444-5555-666666666666"
 # }`} />
 
+  <h2>Handing a manual build over to EAS</h2>
+  <p>
+    A build may begin in manual mode while a runner prepares or submits the Expo build. Once
+    Expo returns its build id, patch that id onto the existing record:
+  </p>
+  <CodeBlock lang="bash" code={`APP_MANAGER_BUILD_ID=$(
+  appmctl --json builds create --profile appstore | jq -er '.data.id'
+)
+export APP_MANAGER_BUILD_ID
+
+appmctl logs post --build-id "$APP_MANAGER_BUILD_ID" --content "Submitting to EAS…\n"
+EXPO_BUILD_ID=$(eas build --platform ios --profile production --json --non-interactive | jq -er '.[0].id')
+appmctl builds patch "$APP_MANAGER_BUILD_ID" --expo-build-id "$EXPO_BUILD_ID"`} />
+  <p>
+    The patch validates the id against the linked Expo project, switches the same record to
+    <code>eas</code> reporting, and starts polling. Existing manual logs remain at the start
+    of the combined log; each poll replaces only the Expo portion, so output is not duplicated.
+    Manual log writes return <code>409</code> after the handoff because Expo is then the source
+    of truth.
+  </p>
+
   <h2>What the CLI will not do here</h2>
   <p>
     Like provider-driven builds, an EAS record is a mirror. Status and log writes are refused

@@ -93,9 +93,16 @@ appmctl build start
 # ... run the build ...
 appmctl build completed`} />
   <p>
-    <code>build start</code>, <code>build completed</code>, and <code>build failed</code>
-    are aliases for <code>builds patch --status running|completed|failed</code>. Pass an
-    explicit build ID when it should override the environment. Use
+    If the build attempt has already ended before a record exists, create the terminal
+    result in one request: <code>appmctl build completed --new</code> or
+    <code>appmctl build failed --new</code>. These use the <code>production</code> profile by
+    default; pass <code>--profile TYPE</code> to choose another one.
+  </p>
+  <p>
+    Without <code>--new</code>, <code>build start</code>, <code>build completed</code>, and
+    <code>build failed</code> are aliases for
+    <code>builds patch --status running|completed|failed</code>. Pass an explicit build ID
+    when it should override the environment. Use
     <code>builds patch --status cancelled</code> for the less common cancelled transition.
     A transition into a terminal state is final; patching a build that is already
     <code>completed</code> answers <code>409</code>.

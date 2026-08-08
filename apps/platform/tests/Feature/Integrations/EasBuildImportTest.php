@@ -433,6 +433,72 @@ class EasBuildImportTest extends TestCase
             ->assertJsonPath('data.status', BuildStatus::Completed->value);
     }
 
+    public function test_manual_build_can_handoff_to_eas_without_losing_its_existing_logs(): void
+    {
+        Storage::fake((string) config('media-library.disk_name'));
+        [$owner, $team] = $this->member();
+        $integration = $this->expoIntegration($team);
+        $app = MobileApp::factory()->create(['team_id' => $team->id]);
+        $this->project($integration, $app);
+
+        $remote = new ArrayObject([
+            'builds' => [$this->easBuild('eas-handoff-1', status: 'IN_PROGRESS')],
+            'logFiles' => ['https://logs.test/eas-handoff-1.txt'],
+            'logContent' => 'EAS remote output',
+        ]);
+        $this->fakeExpo($remote);
+
+        $token = $owner->createTeamApiKey($team, 'Runner', [
+            ApiKeyScope::BuildsWrite->value,
+            ApiKeyScope::LogsWrite->value,
+        ])->plainTextToken;
+        $this->withToken($token);
+        $buildsUrl = "/api/v1/{$team->slug}/apps/{$app->slug}/builds";
+
+        $created = $this->postJson($buildsUrl, [
+            'request_uuid' => (string) Str::uuid(),
+            'profile_type' => 'production',
+        ])->assertCreated();
+        $buildId = $created->json('data.id');
+        $buildUrl = $buildsUrl.'/'.$buildId;
+
+        $this->postJson($buildUrl.'/logs', ['content' => "manual runner output\n"])
+            ->assertOk();
+
+        $this->patchJson($buildUrl, ['expo_build_id' => 'eas-handoff-1'])
+            ->assertOk()
+            ->assertJsonPath('data.reporting_mode', BuildReportingMode::Eas->value)
+            ->assertJsonPath('data.expo_build_id', 'eas-handoff-1');
+
+        $build = BuildRecord::query()->findOrFail($buildId);
+        $this->assertSame(strlen("manual runner output\n"), data_get(
+            $build->context_snapshot,
+            'eas.preserved_manual_log_bytes',
+        ));
+        Queue::assertPushed(
+            ReconcileEasBuild::class,
+            fn (ReconcileEasBuild $job) => $job->buildId === $buildId,
+        );
+
+        $this->postJson($buildUrl.'/logs', ['content' => 'manual write after handoff'])
+            ->assertStatus(409);
+
+        (new ReconcileEasBuild($buildId, notify: false))
+            ->handle(app(ExpoClient::class), app(BuildLifecycle::class));
+
+        $expected = "manual runner output\n\n--- EAS build logs ---\nEAS remote output";
+        $this->assertSame($expected, BuildRecord::query()->findOrFail($buildId)->log_output);
+
+        $remote['logContent'] = "EAS remote output\nnext remote line";
+        (new ReconcileEasBuild($buildId, notify: false))
+            ->handle(app(ExpoClient::class), app(BuildLifecycle::class));
+
+        $updatedLog = (string) BuildRecord::query()->findOrFail($buildId)->log_output;
+        $this->assertSame($expected."\nnext remote line", $updatedLog);
+        $this->assertSame(1, substr_count($updatedLog, 'manual runner output'));
+        $this->assertSame(1, substr_count($updatedLog, '--- EAS build logs ---'));
+    }
+
     /**
      * @param  array{builds: list<array<string, mixed>>, logFiles: list<string>, logContent?: string, artifactBody?: string}|ArrayObject  $remote
      */

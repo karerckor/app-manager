@@ -26,6 +26,7 @@ class TeamController extends Controller
         abort_unless($team->allows($request->user(), TeamPermission::View), 403);
 
         $canManage = $team->allows($request->user(), TeamPermission::ManageTeam);
+        $invitationsEnabled = (bool) config('team.invitations_enabled', true);
         $members = $team->users()
             ->orderByRaw('CASE WHEN users.id = ? THEN 0 ELSE 1 END', [$team->owner_id])
             ->orderBy('users.name')
@@ -40,7 +41,7 @@ class TeamController extends Controller
                 'remove_url' => route('accounts.team.members.destroy', ['team' => $team, 'user' => $user]),
             ]);
 
-        $invitations = $canManage
+        $invitations = $canManage && $invitationsEnabled
             ? $team->invitations()
                 ->whereNull('accepted_at')
                 ->whereNull('revoked_at')
@@ -60,6 +61,7 @@ class TeamController extends Controller
                 ->map(fn (TeamRole $role) => ['value' => $role->value, 'label' => ucfirst($role->value)])
                 ->all(),
             'canManage' => $canManage,
+            'invitationsEnabled' => $invitationsEnabled,
             'checkCredentialUniquenessByDefault' => $team->check_credential_uniqueness_by_default,
             'storageModes' => [
                 'instance' => array_map(
@@ -69,7 +71,12 @@ class TeamController extends Controller
                 'selected' => $team->allowed_credential_storage_modes,
             ],
             'updateTeamUrl' => route('accounts.team.update', ['team' => $team]),
-            'inviteUrl' => route('accounts.team.invitations.store', ['team' => $team]),
+            'inviteUrl' => $invitationsEnabled
+                ? route('accounts.team.invitations.store', ['team' => $team])
+                : null,
+            'memberStoreUrl' => $invitationsEnabled
+                ? null
+                : route('accounts.team.members.store', ['team' => $team]),
         ]);
     }
 

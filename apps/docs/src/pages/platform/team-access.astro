@@ -59,15 +59,21 @@ import Screenshot from '../../components/Screenshot.astro';
     open it.
   </p>
 
-  <h2>Inviting someone</h2>
+  <h2>Adding someone</h2>
   <p>
-    <strong>Invite member</strong> takes an email and a role and sends an invitation that expires.
-    Pending invitations are listed on the right with their role and expiry, and can be revoked before
-    they are accepted.
+    By default, <strong>Invite member</strong> takes an email and a role and sends an invitation that
+    expires. Pending invitations are listed on the right with their role and expiry, and can be
+    revoked before they are accepted.
   </p>
   <p>
     An invitation is tied to the email it was sent to. The recipient accepts it from their own
     account, which is why inviting someone does not require them to exist in the system first.
+  </p>
+  <p>
+    Self-hosted instances can set <code>TEAM_INVITATIONS_ENABLED=false</code>. The action then becomes
+    <strong>Create member</strong>: a workspace manager enters the member's name, email, role and
+    initial password, and the new account receives access immediately. Invitation links and pending
+    invitations are unavailable in this mode.
   </p>
 
   <h2>Changing a role or removing a member</h2>
@@ -153,8 +159,8 @@ import Screenshot from '../../components/Screenshot.astro';
 
   <h2>No API for membership</h2>
   <p>
-    Members, roles, and invitations are console-only. There is no API v1 endpoint and no CLI
-    command, so access changes are deliberately a human action rather than something a pipeline can
-    perform.
+    Members, roles, invitations, and direct member creation are console-only. There is no API v1
+    endpoint and no CLI command, so access changes are deliberately a human action rather than
+    something a pipeline can perform.
   </p>
 </DocsLayout>

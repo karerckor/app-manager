@@ -7,6 +7,7 @@ use App\Models\TeamInvitation;
 use App\Models\User;
 use App\Notifications\TeamInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -43,8 +44,33 @@ class TeamManagementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Team/Index')
                 ->where('canManage', true)
+                ->where('invitationsEnabled', true)
                 ->where('checkCredentialUniquenessByDefault', true)
+                ->where('memberStoreUrl', null)
                 ->has('invitations', 1));
+    }
+
+    public function test_team_page_switches_to_direct_member_creation_when_invitations_are_disabled(): void
+    {
+        config(['team.invitations_enabled' => false]);
+        [$owner, $team] = $this->team();
+        TeamInvitation::create([
+            'team_id' => $team->id,
+            'invited_by' => $owner->id,
+            'email' => 'pending@example.com',
+            'role' => 'contributor',
+            'expires_at' => now()->addWeek(),
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('accounts.team.index', $team))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Team/Index')
+                ->where('invitationsEnabled', false)
+                ->where('inviteUrl', null)
+                ->where('memberStoreUrl', route('accounts.team.members.store', $team))
+                ->has('invitations', 0));
     }
 
     public function test_admin_can_rename_team_and_invite_a_member(): void
@@ -98,6 +124,65 @@ class TeamManagementTest extends TestCase
             ->get(route('team-invitations.show', ['invitation' => $plainTextToken]))
             ->assertOk();
         $this->get(route('team-invitations.show', ['invitation' => $storedHash]))
+            ->assertNotFound();
+    }
+
+    public function test_manager_can_create_a_member_with_a_password_when_invitations_are_disabled(): void
+    {
+        config(['team.invitations_enabled' => false]);
+        [$owner, $team] = $this->team();
+
+        $this->actingAs($owner)
+            ->post(route('accounts.team.members.store', $team), [
+                'name' => 'New Member',
+                'email' => 'New.Member@Example.com',
+                'password' => 'Sup3rSecret!',
+                'password_confirmation' => 'Sup3rSecret!',
+                'role' => 'contributor',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'New Member was added to the team.');
+
+        $member = User::query()->where('email', 'new.member@example.com')->firstOrFail();
+
+        $this->assertTrue(Hash::check('Sup3rSecret!', $member->password));
+        $this->assertSame($team->id, $member->current_team_id);
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $member->id,
+            'role' => 'contributor',
+        ]);
+        $this->assertDatabaseHas('audits', [
+            'team_id' => $team->id,
+            'auditable_id' => $team->id,
+            'event' => 'membership_added',
+            'new_values->member_id' => $member->id,
+        ]);
+        $this->assertDatabaseCount('team_invitations', 0);
+    }
+
+    public function test_invitation_and_direct_creation_endpoints_follow_the_configured_mode(): void
+    {
+        [$owner, $team] = $this->team();
+
+        $this->actingAs($owner)
+            ->post(route('accounts.team.members.store', $team), [
+                'name' => 'Direct Member',
+                'email' => 'direct@example.com',
+                'password' => 'Sup3rSecret!',
+                'password_confirmation' => 'Sup3rSecret!',
+                'role' => 'viewer',
+            ])
+            ->assertNotFound();
+
+        config(['team.invitations_enabled' => false]);
+
+        $this->actingAs($owner)
+            ->post(route('accounts.team.invitations.store', $team), [
+                'email' => 'invited@example.com',
+                'role' => 'viewer',
+            ])
             ->assertNotFound();
     }
 

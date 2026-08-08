@@ -21,9 +21,9 @@ import CommandOutput from '../../components/CommandOutput.astro';
   <h2>Commands</h2>
   <CodeBlock lang="bash" code={`appmctl builds list         [--app APP] [--page N]
 appmctl builds get          [--app APP] BUILD_ID
-appmctl builds create       [--app APP] --profile TYPE [options]
+appmctl builds create       [--app APP] --profile TYPE [--status STATUS] [options]
 appmctl builds cancel       [--app APP] BUILD_ID
-appmctl builds patch        [--app APP] BUILD_ID [--status STATUS] [--tag NAME[:#HEX]]
+appmctl builds patch        [--app APP] BUILD_ID [--status STATUS] [--expo-build-id ID] [--tag NAME[:#HEX]]
 appmctl builds wait         [--app APP] BUILD_ID [--timeout SECONDS]
 appmctl builds when-running [--app APP] BUILD_ID -- COMMAND [ARG ...]`} />
 
@@ -34,12 +34,20 @@ appmctl builds when-running [--app APP] BUILD_ID -- COMMAND [ARG ...]`} />
   </p>
   <CodeBlock lang="bash" code={`appmctl build start     [BUILD_ID] [--app APP] # status: running
 appmctl build completed [BUILD_ID] [--app APP] # status: completed
-appmctl build failed    [BUILD_ID] [--app APP] # status: failed`} />
+appmctl build failed    [BUILD_ID] [--app APP] # status: failed
+appmctl build completed --new [--profile TYPE]
+appmctl build failed    --new [--profile TYPE]`} />
   <p>
-    These map directly to <code>builds patch BUILD_ID --status ...</code>, so the same
-    manual-reporting restrictions apply. An explicit ID overrides
+    Without <code>--new</code>, these map directly to
+    <code>builds patch BUILD_ID --status ...</code>, so the same manual-reporting
+    restrictions apply. An explicit ID overrides
     <code>APP_MANAGER_BUILD_ID</code>; <code>--tag</code> may also be included when the
     status and tags should be updated together.
+  </p>
+  <p>
+    For a result with no existing record, <code>completed --new</code> and
+    <code>failed --new</code> create a build directly in that terminal status. The profile
+    defaults to <code>production</code> and can be changed with <code>--profile</code>.
   </p>
 
   <h3>List</h3>
@@ -67,6 +75,7 @@ appmctl build failed    [BUILD_ID] [--app APP] # status: failed`} />
     </thead>
     <tbody>
       <tr><td><code>--profile TYPE</code></td><td>Build profile: <code>production</code>, <code>appstore</code>, <code>development</code>, <code>enterprise</code>, <code>adhoc</code>, <code>preview</code>. Required.</td></tr>
+      <tr><td><code>--status STATUS</code></td><td>Initial status: <code>pending</code> (default), <code>completed</code>, or <code>failed</code></td></tr>
       <tr><td><code>--request-uuid UUID</code></td><td>Idempotency key. Generated for you when omitted; supply your own so a CI retry does not create a second build.</td></tr>
       <tr><td><code>--context JSON</code></td><td>Arbitrary JSON recorded with the build, e.g. the commit and runner</td></tr>
       <tr><td><code>--reporting-mode MODE</code></td><td><code>manual</code> (default) or <code>eas</code></td></tr>
@@ -91,9 +100,15 @@ appmctl build failed    [BUILD_ID] [--app APP] # status: failed`} />
 # Replaces the set: after this the build has one tag
 appmctl builds patch 019fc789-47b5-7034-9291-4cd3c57b75d5 --tag nightly`} />
   <p>
-    <code>patch</code> requires at least one of <code>--status</code> or <code>--tag</code>.
-    Status transitions are limited to manually reported builds; see
+    <code>patch</code> requires at least one of <code>--status</code>,
+    <code>--expo-build-id</code>, or <code>--tag</code>. Status transitions are limited to
+    manually reported builds; see
     <a href="/cli/builds/manual-builds">Manual builds</a>.
+  </p>
+  <p>
+    <code>--expo-build-id</code> hands an existing manual build over to EAS reporting. Its
+    current logs are retained, and subsequent status, logs, and artifacts are pulled from
+    Expo. See <a href="/cli/builds/eas-builds">EAS builds</a> for the full flow.
   </p>
 
   <h3>Cancel</h3>

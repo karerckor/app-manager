@@ -134,6 +134,7 @@ TRUSTED_PROXIES=*`} />
       <tr><td><code>CREDENTIAL_STORAGE_MODES</code></td><td><code>local,external</code></td><td>Instance-wide ceiling on credential storage modes. A team may narrow it, never widen it.</td></tr>
       <tr><td><code>CREDENTIALS_API_PROFILE</code></td><td><code>full</code></td><td><code>dashboard_only</code> removes every endpoint that moves secret material.</td></tr>
       <tr><td><code>ALLOW_PUBLIC_REGISTRATION</code></td><td><code>false</code></td><td>Opens the public sign-up form. Leave closed on anything internet-facing.</td></tr>
+      <tr><td><code>TEAM_INVITATIONS_ENABLED</code></td><td><code>true</code></td><td>Set to <code>false</code> to disable email invitations and let workspace managers create member accounts with an initial password.</td></tr>
       <tr><td><code>TRUSTED_PROXIES</code></td><td>empty</td><td><code>*</code> or a comma-separated list. Set only when a reverse proxy terminates TLS.</td></tr>
       <tr><td><code>MEDIA_STORAGE_DRIVER</code></td><td><code>local</code></td><td><code>local</code> keeps files in the <code>storage-app</code> volume; <code>s3</code> uses the <code>MEDIA_S3_*</code> variables.</td></tr>
       <tr><td><code>TRASH_RETENTION_DAYS</code></td><td><code>90</code></td><td>Minimum recovery window before soft-deleted applications, identifiers, profiles, builds, artifacts, blueprints, teams and users are permanently purged. Parents remain longer when a child cold archive is still retained.</td></tr>

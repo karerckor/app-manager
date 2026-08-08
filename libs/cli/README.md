@@ -204,9 +204,9 @@ All subcommands support `--help` for detailed usage and `--dry-run` to preview t
 ```bash
 appmctl builds list [--app APP] [--status STATUS] [--page N]
 appmctl builds get [--app APP] <build-id>
-appmctl builds create [--app APP] --profile TYPE [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
+appmctl builds create [--app APP] --profile TYPE [--status pending|completed|failed] [--request-uuid UUID] [--context JSON] [--tag NAME[:#HEX]]
 appmctl builds cancel [--app APP] <build-id>
-appmctl builds patch [--app APP] <build-id> [--status STATUS] [--tag NAME[:#HEX]]
+appmctl builds patch [--app APP] <build-id> [--status STATUS] [--expo-build-id ID] [--tag NAME[:#HEX]]
 ```
 
 For the three common manual-build status transitions, the singular `build`
@@ -217,15 +217,34 @@ command provides shorter aliases. The build ID is optional when
 appmctl build start [<build-id>]
 appmctl build completed [<build-id>]
 appmctl build failed [<build-id>]
+appmctl build completed --new [--profile TYPE]
+appmctl build failed --new [--profile TYPE]
 ```
 
-They map to `builds patch --status running|completed|failed`, respectively, and
-accept the same `--app` and `--tag` options as `builds patch`.
+Without `--new`, they map to `builds patch --status running|completed|failed`,
+respectively, and accept the same `--app` and `--tag` options as `builds patch`.
 
 `--tag` is repeatable and takes either a bare name or `NAME:#RRGGBB` for a colored
 badge. On `patch` it replaces the build's whole tag set, and at least one of
-`--status` or `--tag` must be given. Tags may be set on any build; `--status`
-transitions remain limited to manually reported builds.
+`--status`, `--expo-build-id`, or `--tag` must be given. Tags may be set on any
+build; `--status` transitions remain limited to manually reported builds.
+
+To start with a manual build and hand reporting over to Expo later, patch in the
+Expo build ID. The same build record switches to EAS reporting and keeps the
+manual log before the logs pulled from Expo:
+
+```bash
+appmctl builds patch "$APP_MANAGER_BUILD_ID" --expo-build-id "$EXPO_BUILD_ID"
+```
+
+For a result that has no previously-created build record, add `--new` to
+`build completed` or `build failed`. It creates the build directly in the chosen
+terminal status and defaults to the `production` profile:
+
+```bash
+appmctl build completed --new
+appmctl build failed --new --profile preview
+```
 
 ```bash
 appmctl builds create --profile appstore --tag ios:#3b82f6 --tag 1.0.0:#f59e0b
