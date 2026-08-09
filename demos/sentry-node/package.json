@@ -6,6 +6,6 @@
     "demo": "node --env-file=.env demo.mjs"
   },
   "dependencies": {
-    "@sentry/node": "9.47.1"
+    "@sentry/node": "10.69.0"
   }
 }
