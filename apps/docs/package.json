@@ -13,7 +13,7 @@
     "capture:screenshots": "node scripts/capture-ui-screenshots.mjs"
   },
   "dependencies": {
-    "@scalar/api-reference": "^1.63.0",
+    "@scalar/api-reference": "^1.67.0",
     "astro": "^7.1.6",
     "shiki": "^4.3.1"
   },
